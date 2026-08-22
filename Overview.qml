@@ -23,6 +23,14 @@ Item {
     }
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     readonly property bool hotCornerEnabled: root.pluginEntry && root.pluginEntry.hotCornerEnabled === true
+    readonly property string hotCornerPosition: {
+        var position = String((root.pluginEntry && root.pluginEntry.hotCornerPosition) || "top-left");
+        return ["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) !== -1
+            ? position
+            : "top-left";
+    }
+    readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
+    readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
     readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
     property bool opened: false
     property bool surfaceMounted: false
@@ -121,6 +129,13 @@ Item {
         var next = enabled === true;
         if (next !== root.hotCornerEnabled)
             root.updatePluginSetting("hotCornerEnabled", next);
+    }
+
+    function setHotCornerPosition(value) {
+        var positions = ["top-left", "top-right", "bottom-left", "bottom-right"];
+        var position = positions.indexOf(value) !== -1 ? value : "top-left";
+        if (position !== root.hotCornerPosition)
+            root.updatePluginSetting("hotCornerPosition", position);
     }
 
     function setMoveCursorToWindow(enabled) {
@@ -655,6 +670,12 @@ Item {
             root.setHotCornerEnabled(mode === "on");
             return mode;
         }
+        function hotCornerPosition(position: string): string {
+            if (["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) === -1)
+                return "expected top-left, top-right, bottom-left, or bottom-right";
+            root.setHotCornerPosition(position);
+            return position;
+        }
         function moveCursorToWindow(mode: string): string {
             if (mode !== "on" && mode !== "off")
                 return "expected on or off";
@@ -672,8 +693,10 @@ Item {
             screen: modelData
             visible: true
             anchors {
-                top: true
-                left: true
+                top: root.hotCornerOnTop
+                right: !root.hotCornerOnLeft
+                bottom: !root.hotCornerOnTop
+                left: root.hotCornerOnLeft
             }
             implicitWidth: Style.space(12)
             implicitHeight: Style.space(12)
@@ -1095,12 +1118,10 @@ Item {
 
             MouseArea {
                 id: openHotCorner
-                anchors {
-                    top: parent.top
-                    left: parent.left
-                }
                 width: Style.space(12)
                 height: Style.space(12)
+                x: root.hotCornerOnLeft ? 0 : parent.width - width
+                y: root.hotCornerOnTop ? 0 : parent.height - height
                 z: 100
                 enabled: root.hotCornerEnabled
                 hoverEnabled: true

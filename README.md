@@ -78,7 +78,7 @@ The plugin deliberately has no separate color settings: it reads Omarchy's curre
 
 Space previews expand in place by default. Click the preview-placement control in the overview footer or press Ctrl+P to switch to centered previews. The choice is persisted inline on the plugin's entry in `~/.config/omarchy/shell.json`.
 
-The optional top-left hot corner opens Exposé while it is closed and reverses it closed while it is open. It re-arms only after the pointer leaves the corner, avoiding close/reopen loops. Enable or disable it with the IPC commands below; the choice is persisted with the other plugin settings.
+The optional hot corner opens Exposé while it is closed and reverses it closed while it is open. It re-arms only after the pointer leaves the corner, avoiding close/reopen loops. Choose any screen corner and enable or disable it with the IPC commands below; both choices are persisted with the other plugin settings. Disable the matching corner in any other hot-corner plugin to avoid overlapping input surfaces.
 
 Window activation moves the pointer to the chosen window by default, matching Hyprland's normal focus behavior. This can be disabled per Exposé activation without changing the global Hyprland cursor setting.
 
@@ -92,6 +92,10 @@ omarchy-shell expose previewPlacement in-place
 omarchy-shell expose previewPlacement centered
 omarchy-shell expose hotCorner on
 omarchy-shell expose hotCorner off
+omarchy-shell expose hotCornerPosition top-left
+omarchy-shell expose hotCornerPosition top-right
+omarchy-shell expose hotCornerPosition bottom-left
+omarchy-shell expose hotCornerPosition bottom-right
 omarchy-shell expose moveCursorToWindow on
 omarchy-shell expose moveCursorToWindow off
 ```
