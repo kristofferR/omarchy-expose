@@ -10,7 +10,7 @@ Item {
 
     property var shell: null
     property var manifest: null
-    readonly property string pluginId: String((root.manifest && root.manifest.id) || "overlook.window-overview")
+    readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
     readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
         || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
     readonly property var pluginEntry: {
@@ -566,7 +566,7 @@ Item {
     }
 
     IpcHandler {
-        target: "overlook"
+        target: "expose"
         function open(): string {
             root.toggle();
             return "ok";
@@ -604,7 +604,7 @@ Item {
             }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "overlook-window-overview"
+            WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
             readonly property bool acceptsKeyboard: {
                 var active = ToplevelManager.activeToplevel;

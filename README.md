@@ -1,8 +1,8 @@
-# Overlook
+# Exposé
 
-Overlook is a native Omarchy Shell overview for every open Hyprland window. It uses Quickshell's foreign-toplevel and screencopy integrations for live, clickable previews without launching a separate UI process.
+Exposé is a native Omarchy Shell overview for every open Hyprland window. It uses Quickshell's foreign-toplevel and screencopy integrations for live, clickable previews without launching a separate UI process.
 
-![Overlook overview](preview.png)
+![Exposé overview](preview.png)
 
 > The marketplace image uses generic mock windows. Replace it with a real, privacy-reviewed screenshot before publication if desired.
 
@@ -19,7 +19,7 @@ Overlook is a native Omarchy Shell overview for every open Hyprland window. It u
 - Live updates as windows open, close, move, or change title
 - Native Omarchy colors, spacing, typography, and rounded corners
 - Theme-aware fallback when a screencopy frame is unavailable
-- `overlook toggle` shell IPC endpoint
+- `expose toggle` shell IPC endpoint
 
 ## Requirements
 
@@ -33,7 +33,7 @@ Overlook is a native Omarchy Shell overview for every open Hyprland window. It u
 From a published Git repository:
 
 ```sh
-omarchy plugin add https://github.com/kristofferR/omarchy-overlook --enable
+omarchy plugin add https://github.com/kristofferR/omarchy-expose --enable
 ```
 
 For local development, clone/copy this repository to a Git URL, then use `omarchy plugin add <git-url> --enable`. Omarchy intentionally installs plugins from Git after validating their manifests.
@@ -41,18 +41,18 @@ For local development, clone/copy this repository to a Git URL, then use `omarch
 Add a Hyprland binding to `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + A", "Overlook", "omarchy-shell overlook toggle")
+o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
 ```
 
 Choose any unused chord if `SUPER + A` is already bound. Call `hl.unbind(...)` only when intentionally replacing an existing binding, and document what it replaced. Run `hyprctl reload` afterward.
 
 ## Remove
 
-Remove the Overlook lines from `~/.config/hypr/bindings.lua`, then run:
+Remove the Exposé lines from `~/.config/hypr/bindings.lua`, then run:
 
 ```sh
-omarchy plugin disable overlook.window-overview
-omarchy plugin remove overlook.window-overview
+omarchy plugin disable expose.window-overview
+omarchy plugin remove expose.window-overview
 hyprctl reload
 ```
 
@@ -81,11 +81,11 @@ Space previews expand in place by default. Click the preview-placement control i
 External tools can toggle, open, or close the overview:
 
 ```sh
-omarchy-shell overlook toggle
-omarchy-shell overlook open # Run again to close with the reverse animation
-omarchy-shell overlook close
-omarchy-shell overlook previewPlacement in-place
-omarchy-shell overlook previewPlacement centered
+omarchy-shell expose toggle
+omarchy-shell expose open # Run again to close with the reverse animation
+omarchy-shell expose close
+omarchy-shell expose previewPlacement in-place
+omarchy-shell expose previewPlacement centered
 ```
 
 The Hyprland shortcut is user configuration and can be changed to any unused combination.
@@ -93,9 +93,9 @@ The Hyprland shortcut is user configuration and can be changed to any unused com
 ## Troubleshooting
 
 - **No thumbnails:** verify that Hyprland exposes toplevel-export support and that no screen-capture policy blocks Quickshell. Cards remain usable with fallback labels.
-- **Workspace says “—”:** Overlook matches foreign-toplevel objects to `hyprctl clients -j`. Very short-lived windows or multiple identical title/class pairs can briefly be ambiguous.
+- **Workspace says “—”:** Exposé matches foreign-toplevel objects to `hyprctl clients -j`. Very short-lived windows or multiple identical title/class pairs can briefly be ambiguous.
 - **Plugin is not listed:** run `omarchy plugin validate .`, then `omarchy-shell shell rescanPlugins`.
-- **Shortcut does nothing:** run `hyprctl reload`, inspect `hyprctl configerrors`, and test `omarchy-shell overlook toggle` directly.
+- **Shortcut does nothing:** run `hyprctl reload`, inspect `hyprctl configerrors`, and test `omarchy-shell expose toggle` directly.
 - **Standalone Super:** Hyprland modifier-only bindings are not reliably distinguishable from the start of normal Super shortcuts in current configurations. A chord such as Super+Tab avoids delayed or accidental activation.
 
 ## License
