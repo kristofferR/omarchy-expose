@@ -23,6 +23,7 @@ Item {
     }
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     property bool opened: false
+    property bool surfaceMounted: false
     property string filterText: ""
     property int selectedIndex: 0
     property int hoveredIndex: -1
@@ -49,26 +50,42 @@ Item {
     }
 
     function open(payload) {
+        dismissTimer.stop();
+        dismissTimer.notifyShell = false;
         root.filterText = "";
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
         root.hoveredIndex = -1;
         root.previewIndex = -1;
-        root.opened = true;
+        var wasMounted = root.surfaceMounted;
+        root.surfaceMounted = true;
+        if (wasMounted)
+            root.opened = true;
         root.refreshClients();
-        Qt.callLater(root.focusKeyboardWindow);
+        Qt.callLater(function () {
+            if (!root.surfaceMounted)
+                return;
+            root.opened = true;
+            root.focusKeyboardWindow();
+        });
     }
 
     function close() {
-        root.previewIndex = -1;
-        root.opened = false;
+        if (root.surfaceMounted)
+            root.startDismiss(false);
+        else
+            root.opened = false;
     }
 
-    function dismiss() {
+    function startDismiss(notifyShell) {
         root.hoveredIndex = -1;
         root.previewIndex = -1;
         root.opened = false;
-        if (root.shell && typeof root.shell.hide === "function")
-            root.shell.hide(root.pluginId);
+        dismissTimer.notifyShell = notifyShell;
+        dismissTimer.restart();
+    }
+
+    function dismiss() {
+        root.startDismiss(true);
     }
 
     function toggle() {
@@ -512,6 +529,18 @@ Item {
     }
 
     Timer {
+        id: dismissTimer
+        property bool notifyShell: false
+        interval: 190
+        onTriggered: {
+            root.surfaceMounted = false;
+            if (notifyShell && root.shell && typeof root.shell.hide === "function")
+                root.shell.hide(root.pluginId);
+            notifyShell = false;
+        }
+    }
+
+    Timer {
         // Toplevel changes refresh immediately above. This slower fallback
         // catches workspace moves, which the foreign-toplevel protocol does
         // not expose, without continuously pressuring the shell process.
@@ -539,7 +568,7 @@ Item {
     IpcHandler {
         target: "overlook"
         function open(): string {
-            root.open("{}");
+            root.toggle();
             return "ok";
         }
         function close(): string {
@@ -560,7 +589,7 @@ Item {
 
     Variants {
         id: surfaceInstances
-        model: root.opened ? Quickshell.screens : []
+        model: root.surfaceMounted ? Quickshell.screens : []
 
         PanelWindow {
             id: overviewWindow
@@ -583,7 +612,7 @@ Item {
                     return Quickshell.screens.length > 0 && Quickshell.screens[0].name === modelData.name;
                 return active.screens[0].name === modelData.name;
             }
-            WlrLayershell.keyboardFocus: acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: root.opened && acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             property alias keyboardItem: keyCatcher
             readonly property int screenMonitorId: {
                 for (var i = 0; i < Quickshell.screens.length; i++)
@@ -607,6 +636,22 @@ Item {
                 id: keyCatcher
                 anchors.fill: parent
                 focus: overviewWindow.acceptsKeyboard
+                enabled: root.opened
+                opacity: root.opened ? 1 : 0
+                scale: root.opened ? 1 : 0.96
+                transformOrigin: Item.Center
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 190
+                        easing.type: Easing.OutQuart
+                    }
+                }
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 190
+                        easing.type: Easing.OutQuart
+                    }
+                }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
                     root.handleKey(event, overviewArea.windowLayout);

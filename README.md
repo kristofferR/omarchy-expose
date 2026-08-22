@@ -82,7 +82,7 @@ External tools can toggle, open, or close the overview:
 
 ```sh
 omarchy-shell overlook toggle
-omarchy-shell overlook open
+omarchy-shell overlook open # Run again to close with the reverse animation
 omarchy-shell overlook close
 omarchy-shell overlook previewPlacement in-place
 omarchy-shell overlook previewPlacement centered
