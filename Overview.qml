@@ -39,6 +39,9 @@ Item {
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
+    property bool previewSlowMotion: false
+    readonly property int previewAnimationDuration: root.previewSlowMotion ? 4000 : 190
+    readonly property int previewFadeDuration: root.previewSlowMotion ? 4000 : 130
     property var clients: []
     property var pendingClients: []
     property bool clientSnapshotRejected: false
@@ -66,6 +69,7 @@ Item {
         root.filterText = "";
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
         root.hoveredIndex = -1;
+        root.previewSlowMotion = false;
         root.previewIndex = -1;
         var wasMounted = root.surfaceMounted;
         root.surfaceMounted = true;
@@ -89,6 +93,7 @@ Item {
 
     function startDismiss(notifyShell) {
         root.hoveredIndex = -1;
+        root.previewSlowMotion = false;
         root.previewIndex = -1;
         root.opened = false;
         dismissTimer.notifyShell = notifyShell;
@@ -187,6 +192,7 @@ Item {
         root.filterText = value;
         root.selectedIndex = 0;
         root.hoveredIndex = -1;
+        root.previewSlowMotion = false;
         root.previewIndex = -1;
         root.modelRevision++;
     }
@@ -524,7 +530,8 @@ Item {
             root.selectedIndex = bestIndex;
     }
 
-    function togglePreview() {
+    function togglePreview(slowMotion) {
+        root.previewSlowMotion = slowMotion === true;
         if (root.previewIndex >= 0) {
             root.previewIndex = -1;
             return;
@@ -551,12 +558,14 @@ Item {
 
     function handleKey(event, layout) {
         if (event.key === Qt.Key_Escape) {
-            if (root.previewIndex >= 0)
+            if (root.previewIndex >= 0) {
+                root.previewSlowMotion = false;
                 root.previewIndex = -1;
-            else
+            } else
                 root.dismiss();
         } else if (event.key === Qt.Key_Space || event.text === " ") {
-            root.togglePreview();
+            if (!event.isAutoRepeat)
+                root.togglePreview(Boolean(event.modifiers & Qt.ShiftModifier));
         }
         else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))
             root.togglePreviewPlacement();
@@ -585,8 +594,10 @@ Item {
             root.modelRevision++;
             if (root.selectedIndex >= root.filteredToplevels.length)
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length)
+            if (root.previewIndex >= root.filteredToplevels.length) {
+                root.previewSlowMotion = false;
                 root.previewIndex = -1;
+            }
             root.refreshClients();
         }
     }
@@ -793,9 +804,10 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        if (root.previewIndex >= 0)
+                        if (root.previewIndex >= 0) {
+                            root.previewSlowMotion = false;
                             root.previewIndex = -1;
-                        else
+                        } else
                             root.dismiss();
                     }
                 }
@@ -888,31 +900,31 @@ Item {
                                     opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
                                     Behavior on x {
                                         NumberAnimation {
-                                            duration: 190
+                                            duration: root.previewAnimationDuration
                                             easing.type: Easing.OutQuart
                                         }
                                     }
                                     Behavior on y {
                                         NumberAnimation {
-                                            duration: 190
+                                            duration: root.previewAnimationDuration
                                             easing.type: Easing.OutQuart
                                         }
                                     }
                                     Behavior on width {
                                         NumberAnimation {
-                                            duration: 190
+                                            duration: root.previewAnimationDuration
                                             easing.type: Easing.OutQuart
                                         }
                                     }
                                     Behavior on height {
                                         NumberAnimation {
-                                            duration: 190
+                                            duration: root.previewAnimationDuration
                                             easing.type: Easing.OutQuart
                                         }
                                     }
                                     Behavior on opacity {
                                         NumberAnimation {
-                                            duration: 130
+                                            duration: root.previewFadeDuration
                                         }
                                     }
 
@@ -1085,7 +1097,7 @@ Item {
                         spacing: Style.spacing.xl
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Enter open   Esc close   Click × twice to close"
+                            text: "← ↑ ↓ → navigate   Space preview   Shift+Space slow motion   Enter open   Esc close   Click × twice to close"
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.55

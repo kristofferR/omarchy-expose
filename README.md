@@ -62,6 +62,7 @@ hyprctl reload
 | --- | --- |
 | Arrow keys | Move selection |
 | Space | Enlarge or restore the hovered or selected window preview |
+| Shift+Space | Enlarge or restore the preview in exaggerated slow motion |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview, then close the overview |
 | Letters, numbers, and punctuation | Filter by title or application |
