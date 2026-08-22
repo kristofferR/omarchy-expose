@@ -23,6 +23,7 @@ Item {
     }
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     readonly property bool hotCornerEnabled: root.pluginEntry && root.pluginEntry.hotCornerEnabled === true
+    readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -122,6 +123,12 @@ Item {
             root.updatePluginSetting("hotCornerEnabled", next);
     }
 
+    function setMoveCursorToWindow(enabled) {
+        var next = enabled === true;
+        if (next !== root.moveCursorToWindow)
+            root.updatePluginSetting("moveCursorToWindow", next);
+    }
+
     function hotCornerHovered() {
         var groups = [hotCornerInstances, surfaceInstances];
         for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
@@ -177,7 +184,13 @@ Item {
         // Resolve against fresh compositor state in the helper: the metadata
         // poll can be between updates at the exact moment Enter is pressed.
         var helper = root.pluginDir + "/activate-window";
-        Quickshell.execDetached([helper, address, String(top.appId || ""), String(top.title || "")]);
+        Quickshell.execDetached([
+            helper,
+            address,
+            String(top.appId || ""),
+            String(top.title || ""),
+            root.moveCursorToWindow ? "true" : "false"
+        ]);
         root.dismiss();
     }
 
@@ -640,6 +653,12 @@ Item {
             if (mode !== "on" && mode !== "off")
                 return "expected on or off";
             root.setHotCornerEnabled(mode === "on");
+            return mode;
+        }
+        function moveCursorToWindow(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setMoveCursorToWindow(mode === "on");
             return mode;
         }
     }

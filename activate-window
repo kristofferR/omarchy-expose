@@ -4,6 +4,7 @@ set -euo pipefail
 address="${1:-}"
 app_id="${2:-}"
 title="${3:-}"
+move_cursor="${4:-true}"
 
 if [[ ! $address =~ ^0x[0-9a-fA-F]+$ ]]; then
   address=$(hyprctl -j clients | jq -r --arg app "${app_id,,}" --arg title "$title" '
@@ -16,4 +17,21 @@ fi
 
 # Let the layer-shell surface unmap before taking final compositor focus.
 sleep 0.2
+
+if [[ $move_cursor == "false" ]]; then
+  cursor_position=$(hyprctl cursorpos 2>/dev/null || true)
+  IFS=',' read -r cursor_x cursor_y <<< "$cursor_position"
+  cursor_x="${cursor_x//[[:space:]]/}"
+  cursor_y="${cursor_y//[[:space:]]/}"
+
+  if [[ ! $cursor_x =~ ^-?[0-9]+([.][0-9]+)?$ || ! $cursor_y =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+    cursor_x=""
+    cursor_y=""
+  fi
+fi
+
 hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$address' }))" >/dev/null
+
+if [[ -n ${cursor_x:-} && -n ${cursor_y:-} ]]; then
+  hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $cursor_x, y = $cursor_y }))" >/dev/null
+fi

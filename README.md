@@ -80,6 +80,8 @@ Space previews expand in place by default. Click the preview-placement control i
 
 The optional top-left hot corner opens Exposé while it is closed and reverses it closed while it is open. It re-arms only after the pointer leaves the corner, avoiding close/reopen loops. Enable or disable it with the IPC commands below; the choice is persisted with the other plugin settings.
 
+Window activation moves the pointer to the chosen window by default, matching Hyprland's normal focus behavior. This can be disabled per Exposé activation without changing the global Hyprland cursor setting.
+
 External tools can toggle, open, or close the overview:
 
 ```sh
@@ -90,6 +92,8 @@ omarchy-shell expose previewPlacement in-place
 omarchy-shell expose previewPlacement centered
 omarchy-shell expose hotCorner on
 omarchy-shell expose hotCorner off
+omarchy-shell expose moveCursorToWindow on
+omarchy-shell expose moveCursorToWindow off
 ```
 
 The Hyprland shortcut is user configuration and can be changed to any unused combination.
