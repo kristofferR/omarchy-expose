@@ -747,7 +747,11 @@ Item {
                                     radius: Style.cornerRadius
                                     color: Color.menu.background
                                     border.color: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
-                                    border.width: focusedWindow ? Math.max(2, Style.selectedBorderWidth) : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth))
+                                    border.width: hovered
+                                        ? Math.max(4, Style.hoverBorderWidth * 2)
+                                        : (focusedWindow
+                                            ? Math.max(2, Style.selectedBorderWidth)
+                                            : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
                                     opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
                                     Behavior on x {
                                         NumberAnimation {
