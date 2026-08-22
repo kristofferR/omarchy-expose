@@ -7,7 +7,6 @@ ulimit -v 131072
 
 timeout --signal=TERM --kill-after=1 2 hyprctl -j clients | jq -c '
   def bounded($n): if type == "string" then .[0:$n] else "" end;
-  def dimension: if type == "number" and . > 0 and . <= 32768 then floor else 0 end;
   limit(256;
     .[]
     | select(.mapped != false)
@@ -20,8 +19,7 @@ timeout --signal=TERM --kill-after=1 2 hyprctl -j clients | jq -c '
           id: (if (.workspace.id | type) == "number" then .workspace.id else 0 end),
           name: (.workspace.name | bounded(128))
         },
-        monitor: (if (.monitor | type) == "number" then .monitor else 0 end),
-        size: (if (.size | type) == "array" then [(.size[0] | dimension), (.size[1] | dimension)] else [0, 0] end)
+        monitor: (if (.monitor | type) == "number" then .monitor else 0 end)
       }
   )
 '

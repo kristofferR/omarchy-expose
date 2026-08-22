@@ -10,24 +10,9 @@ Item {
 
     property var shell: null
     property var manifest: null
-    readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
-    readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
-        || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
-    readonly property var pluginEntry: {
-        var config = root.shell && root.shell.shellConfig ? root.shell.shellConfig : null;
-        var plugins = config && Array.isArray(config.plugins) ? config.plugins : [];
-        for (var i = 0; i < plugins.length; i++)
-            if (plugins[i] && String(plugins[i].id || "") === root.pluginId)
-                return plugins[i];
-        return null;
-    }
-    readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     property bool opened: false
-    property bool surfaceMounted: false
     property string filterText: ""
     property int selectedIndex: 0
-    property int hoveredIndex: -1
-    property int previewIndex: -1
     property var clients: []
     property var pendingClients: []
     property bool clientSnapshotRejected: false
@@ -50,63 +35,25 @@ Item {
     }
 
     function open(payload) {
-        dismissTimer.stop();
-        dismissTimer.notifyShell = false;
         root.filterText = "";
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
-        root.hoveredIndex = -1;
-        root.previewIndex = -1;
-        var wasMounted = root.surfaceMounted;
-        root.surfaceMounted = true;
-        if (wasMounted)
-            root.opened = true;
+        root.opened = true;
         root.refreshClients();
-        Qt.callLater(function () {
-            if (!root.surfaceMounted)
-                return;
-            root.opened = true;
-            root.focusKeyboardWindow();
-        });
+        Qt.callLater(root.focusKeyboardWindow);
     }
 
     function close() {
-        if (root.surfaceMounted)
-            root.startDismiss(false);
-        else
-            root.opened = false;
-    }
-
-    function startDismiss(notifyShell) {
-        root.hoveredIndex = -1;
-        root.previewIndex = -1;
         root.opened = false;
-        dismissTimer.notifyShell = notifyShell;
-        dismissTimer.restart();
     }
 
     function dismiss() {
-        root.startDismiss(true);
+        root.opened = false;
+        if (root.shell && typeof root.shell.hide === "function")
+            root.shell.hide((root.manifest && root.manifest.id) || "birdseye.window-overview");
     }
 
     function toggle() {
         root.opened ? root.dismiss() : root.open("{}");
-    }
-
-    function setPreviewPlacement(value) {
-        var mode = value === "centered" ? "centered" : "in-place";
-        if (mode === root.previewPlacement || !root.shell || typeof root.shell.updateEntryInline !== "function")
-            return;
-        var settings = {};
-        var current = root.pluginEntry || {};
-        for (var key in current)
-            if (key !== "id")
-                settings[key] = current[key];
-        settings.previewPlacement = mode;
-        root.shell.updateEntryInline(root.pluginId, settings);
-    }
-
-    function togglePreviewPlacement() {
-        root.setPreviewPlacement(root.previewPlacement === "centered" ? "in-place" : "centered");
     }
 
     function focusKeyboardWindow() {
@@ -122,9 +69,21 @@ Item {
     function setFilter(value) {
         root.filterText = value;
         root.selectedIndex = 0;
-        root.hoveredIndex = -1;
-        root.previewIndex = -1;
         root.modelRevision++;
+    }
+
+    function moveSelection(delta) {
+        var count = root.filteredToplevels.length;
+        if (!count)
+            return;
+        root.selectedIndex = (root.selectedIndex + delta + count) % count;
+    }
+
+    function moveRow(delta, columns) {
+        var count = root.filteredToplevels.length;
+        if (!count)
+            return;
+        root.selectedIndex = Math.max(0, Math.min(count - 1, root.selectedIndex + delta * Math.max(1, columns)));
     }
 
     function activate(top) {
@@ -134,7 +93,7 @@ Item {
         var address = client && client.address ? String(client.address) : "";
         // Resolve against fresh compositor state in the helper: the metadata
         // poll can be between updates at the exact moment Enter is pressed.
-        var helper = root.pluginDir + "/activate-window";
+        var helper = Quickshell.env("HOME") + "/.config/omarchy/plugins/birdseye.window-overview/activate-window";
         Quickshell.execDetached([helper, address, String(top.appId || ""), String(top.title || "")]);
         root.dismiss();
     }
@@ -164,7 +123,6 @@ Item {
                 return;
             }
             var workspace = row.workspace && typeof row.workspace === "object" ? row.workspace : {};
-            var size = row.size && typeof row.size === "object" && typeof row.size.length === "number" ? row.size : [];
             root.pendingClients.push({
                 address: String(row.address).slice(0, 32),
                 class: String(row.class || "").slice(0, 512),
@@ -174,11 +132,7 @@ Item {
                     id: Number(workspace.id) || 0,
                     name: String(workspace.name || "").slice(0, 128)
                 },
-                monitor: Number(row.monitor) || 0,
-                size: [
-                    Math.max(0, Math.min(32768, Number(size[0]) || 0)),
-                    Math.max(0, Math.min(32768, Number(size[1]) || 0))
-                ]
+                monitor: Number(row.monitor) || 0
             });
         } catch (e) {
             root.clientSnapshotRejected = true;
@@ -238,234 +192,6 @@ Item {
         return client ? Number(client.monitor) : -1;
     }
 
-    function aspectRatioFor(top) {
-        var client = clientFor(top);
-        if (!client || !client.size || client.size.length < 2 || client.size[0] <= 0 || client.size[1] <= 0)
-            return 1.6;
-        return Math.max(0.45, Math.min(4, client.size[0] / client.size[1]));
-    }
-
-    function assignCompositionRows(entries, rowCount) {
-        var rows = [];
-        for (var rowIndex = 0; rowIndex < rowCount; rowIndex++)
-            rows.push({ entries: [], naturalWidth: 0 });
-
-        var ordered = entries.slice();
-        ordered.sort(function (a, b) {
-            var widthA = Math.sqrt(a.weight * a.ratio);
-            var widthB = Math.sqrt(b.weight * b.ratio);
-            if (widthA !== widthB)
-                return widthB - widthA;
-            return a.index - b.index;
-        });
-
-        for (var entryIndex = 0; entryIndex < ordered.length; entryIndex++) {
-            var bestRow = 0;
-            for (var candidateRow = 1; candidateRow < rows.length; candidateRow++) {
-                if (rows[candidateRow].naturalWidth < rows[bestRow].naturalWidth
-                        || (rows[candidateRow].naturalWidth === rows[bestRow].naturalWidth
-                            && rows[candidateRow].entries.length < rows[bestRow].entries.length))
-                    bestRow = candidateRow;
-            }
-            var entry = ordered[entryIndex];
-            rows[bestRow].entries.push(entry);
-            rows[bestRow].naturalWidth += Math.sqrt(entry.weight * entry.ratio);
-        }
-
-        for (var sortRow = 0; sortRow < rows.length; sortRow++)
-            rows[sortRow].entries.sort(function (a, b) { return a.index - b.index; });
-        return rows;
-    }
-
-    function composeRows(rows, scale, width, height, gap, padding, footerHeight) {
-        var measuredRows = [];
-        var totalHeight = 0;
-        for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-            var entries = rows[rowIndex].entries;
-            var cards = [];
-            var totalWidth = Math.max(0, entries.length - 1) * gap;
-            var rowHeight = 0;
-            for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
-                var entry = entries[entryIndex];
-                var previewWidth = scale * Math.sqrt(entry.weight * entry.ratio);
-                var previewHeight = scale * Math.sqrt(entry.weight / entry.ratio);
-                var card = {
-                    index: entry.index,
-                    width: previewWidth + padding * 2,
-                    height: previewHeight + footerHeight + padding * 3
-                };
-                cards.push(card);
-                totalWidth += card.width;
-                rowHeight = Math.max(rowHeight, card.height);
-            }
-            if (totalWidth > width || rowHeight > height)
-                return null;
-            measuredRows.push({ cards: cards, width: totalWidth, height: rowHeight });
-            totalHeight += rowHeight;
-        }
-        totalHeight += Math.max(0, measuredRows.length - 1) * gap;
-        if (totalHeight > height)
-            return null;
-
-        var verticalGap = measuredRows.length > 1 ? gap : 0;
-        var y = (height - totalHeight) / 2;
-        var result = [];
-        for (var outputRow = 0; outputRow < measuredRows.length; outputRow++) {
-            var row = measuredRows[outputRow];
-            var horizontalGap = row.cards.length > 1 ? gap : 0;
-            var x = (width - row.width) / 2;
-            for (var cardIndex = 0; cardIndex < row.cards.length; cardIndex++) {
-                var card = row.cards[cardIndex];
-                var align = ((card.index + outputRow) % 3) / 2;
-                result[card.index] = {
-                    x: x,
-                    y: y + (row.height - card.height) * align,
-                    width: card.width,
-                    height: card.height
-                };
-                x += card.width + horizontalGap;
-            }
-            y += row.height + verticalGap;
-        }
-        return result;
-    }
-
-    function computeWindowLayout(width, height, gap, padding, footerHeight) {
-        var count = root.filteredToplevels.length;
-        if (!count || width <= 0 || height <= 0)
-            return [];
-
-        var edgeInset = gap / 2;
-        var availableWidth = Math.max(1, width - edgeInset * 2);
-        var availableHeight = Math.max(1, height - edgeInset * 2);
-        var entries = [];
-        var active = ToplevelManager.activeToplevel;
-        for (var index = 0; index < count; index++) {
-            var ratio = root.aspectRatioFor(root.filteredToplevels[index]);
-            var adaptiveWeight = Math.max(0.72, Math.min(1.28, Math.sqrt(ratio / 1.6)));
-            if (root.filteredToplevels[index] === active)
-                adaptiveWeight *= 1.15;
-            entries.push({
-                index: index,
-                ratio: ratio,
-                weight: adaptiveWeight,
-                active: root.filteredToplevels[index] === active,
-                extremity: Math.max(ratio, 1 / ratio)
-            });
-        }
-        entries.sort(function (a, b) {
-            if (a.active !== b.active)
-                return a.active ? -1 : 1;
-            if (a.extremity !== b.extremity)
-                return b.extremity - a.extremity;
-            return a.index - b.index;
-        });
-
-        var high = Math.min(availableWidth, availableHeight);
-        for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
-            var entry = entries[entryIndex];
-            high = Math.min(high,
-                (availableWidth - padding * 2) / Math.sqrt(entry.weight * entry.ratio),
-                (availableHeight - footerHeight - padding * 3) / Math.sqrt(entry.weight / entry.ratio));
-        }
-        high = Math.max(1, high);
-
-        var best = null;
-        var bestScale = -1;
-        var maxRows = Math.min(count, 4);
-        for (var rowCount = 1; rowCount <= maxRows; rowCount++) {
-            var rows = root.assignCompositionRows(entries, rowCount);
-            var low = 0;
-            var rowHigh = high;
-            var rowBest = null;
-            for (var iteration = 0; iteration < 12; iteration++) {
-                var scale = (low + rowHigh) / 2;
-                var composed = root.composeRows(rows, scale, availableWidth, availableHeight, gap, padding, footerHeight);
-                if (composed) {
-                    rowBest = composed;
-                    low = scale;
-                } else {
-                    rowHigh = scale;
-                }
-            }
-            if (rowBest && low > bestScale) {
-                best = rowBest;
-                bestScale = low;
-            }
-        }
-        if (!best)
-            best = root.composeRows(root.assignCompositionRows(entries, 1), 1, availableWidth, availableHeight, gap, padding, footerHeight) || [];
-        for (var resultIndex = 0; resultIndex < best.length; resultIndex++) {
-            if (!best[resultIndex])
-                continue;
-            best[resultIndex].x += edgeInset;
-            best[resultIndex].y += edgeInset;
-        }
-        return best;
-    }
-
-    function previewRectFor(top, sourceRect, width, height, padding, footerHeight) {
-        var ratio = root.aspectRatioFor(top);
-        var maxWidth = width * 0.84;
-        var maxHeight = height * 0.78;
-        var previewWidth = Math.max(1, Math.min(maxWidth - padding * 2, (maxHeight - footerHeight - padding * 3) * ratio));
-        var previewHeight = Math.max(1, previewWidth / ratio);
-        var cardWidth = previewWidth + padding * 2;
-        var cardHeight = previewHeight + footerHeight + padding * 3;
-        var centerX = width / 2;
-        var centerY = height / 2;
-        if (root.previewPlacement === "in-place" && sourceRect) {
-            centerX = sourceRect.x + sourceRect.width / 2;
-            centerY = sourceRect.y + sourceRect.height / 2;
-        }
-        return {
-            x: Math.max(padding, Math.min(width - cardWidth - padding, centerX - cardWidth / 2)),
-            y: Math.max(padding, Math.min(height - cardHeight - padding, centerY - cardHeight / 2)),
-            width: cardWidth,
-            height: cardHeight
-        };
-    }
-
-    function moveDirectional(dx, dy, layout) {
-        if (!layout || !layout[root.selectedIndex])
-            return;
-        var current = layout[root.selectedIndex];
-        var currentX = current.x + current.width / 2;
-        var currentY = current.y + current.height / 2;
-        var bestIndex = -1;
-        var bestScore = Number.MAX_VALUE;
-        for (var index = 0; index < layout.length; index++) {
-            if (index === root.selectedIndex || !layout[index])
-                continue;
-            var candidate = layout[index];
-            var deltaX = candidate.x + candidate.width / 2 - currentX;
-            var deltaY = candidate.y + candidate.height / 2 - currentY;
-            var primary = dx !== 0 ? deltaX * dx : deltaY * dy;
-            if (primary <= 0)
-                continue;
-            var cross = dx !== 0 ? Math.abs(deltaY) : Math.abs(deltaX);
-            var score = primary + cross * cross / Math.max(1, primary) * 2;
-            if (score < bestScore) {
-                bestScore = score;
-                bestIndex = index;
-            }
-        }
-        if (bestIndex >= 0)
-            root.selectedIndex = bestIndex;
-    }
-
-    function togglePreview() {
-        if (root.previewIndex >= 0) {
-            root.previewIndex = -1;
-            return;
-        }
-        var target = root.hoveredIndex >= 0 ? root.hoveredIndex : root.selectedIndex;
-        if (target >= 0 && target < root.filteredToplevels.length) {
-            root.selectedIndex = target;
-            root.previewIndex = target;
-        }
-    }
-
     function iconFor(appId) {
         var wanted = normalized(appId);
         var entries = DesktopEntries.applications ? DesktopEntries.applications.values : [];
@@ -479,25 +205,17 @@ Item {
         return Quickshell.iconPath(wanted || "application-x-executable", true);
     }
 
-    function handleKey(event, layout) {
-        if (event.key === Qt.Key_Escape) {
-            if (root.previewIndex >= 0)
-                root.previewIndex = -1;
-            else
-                root.dismiss();
-        } else if (event.key === Qt.Key_Space || event.text === " ") {
-            root.togglePreview();
-        }
-        else if (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))
-            root.togglePreviewPlacement();
+    function handleKey(event, columns) {
+        if (event.key === Qt.Key_Escape)
+            root.dismiss();
         else if (event.key === Qt.Key_Left)
-            root.moveDirectional(-1, 0, layout);
+            root.moveSelection(-1);
         else if (event.key === Qt.Key_Right)
-            root.moveDirectional(1, 0, layout);
+            root.moveSelection(1);
         else if (event.key === Qt.Key_Up)
-            root.moveDirectional(0, -1, layout);
+            root.moveRow(-1, columns);
         else if (event.key === Qt.Key_Down)
-            root.moveDirectional(0, 1, layout);
+            root.moveRow(1, columns);
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             root.activate(root.filteredToplevels[root.selectedIndex]);
         else if (Util.editsFilter(event, root.filterText))
@@ -515,8 +233,6 @@ Item {
             root.modelRevision++;
             if (root.selectedIndex >= root.filteredToplevels.length)
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length)
-                root.previewIndex = -1;
             root.refreshClients();
         }
     }
@@ -525,18 +241,6 @@ Item {
         target: ToplevelManager
         function onActiveToplevelChanged() {
             root.modelRevision++;
-        }
-    }
-
-    Timer {
-        id: dismissTimer
-        property bool notifyShell: false
-        interval: 190
-        onTriggered: {
-            root.surfaceMounted = false;
-            if (notifyShell && root.shell && typeof root.shell.hide === "function")
-                root.shell.hide(root.pluginId);
-            notifyShell = false;
         }
     }
 
@@ -553,7 +257,7 @@ Item {
 
     Process {
         id: clientQuery
-        command: [root.pluginDir + "/list-clients"]
+        command: [Quickshell.env("HOME") + "/.config/omarchy/plugins/birdseye.window-overview/list-clients"]
         onStarted: root.beginClientSnapshot()
         stdout: SplitParser {
             onRead: function (line) {
@@ -566,9 +270,9 @@ Item {
     }
 
     IpcHandler {
-        target: "expose"
+        target: "birdseye"
         function open(): string {
-            root.toggle();
+            root.open("{}");
             return "ok";
         }
         function close(): string {
@@ -579,17 +283,11 @@ Item {
             root.toggle();
             return "ok";
         }
-        function previewPlacement(mode: string): string {
-            if (mode !== "in-place" && mode !== "centered")
-                return "expected in-place or centered";
-            root.setPreviewPlacement(mode);
-            return mode;
-        }
     }
 
     Variants {
         id: surfaceInstances
-        model: root.surfaceMounted ? Quickshell.screens : []
+        model: root.opened ? Quickshell.screens : []
 
         PanelWindow {
             id: overviewWindow
@@ -604,7 +302,7 @@ Item {
             }
             color: "transparent"
             exclusionMode: ExclusionMode.Ignore
-            WlrLayershell.namespace: "expose-window-overview"
+            WlrLayershell.namespace: "birdseye-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
             readonly property bool acceptsKeyboard: {
                 var active = ToplevelManager.activeToplevel;
@@ -612,7 +310,7 @@ Item {
                     return Quickshell.screens.length > 0 && Quickshell.screens[0].name === modelData.name;
                 return active.screens[0].name === modelData.name;
             }
-            WlrLayershell.keyboardFocus: root.opened && acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             property alias keyboardItem: keyCatcher
             readonly property int screenMonitorId: {
                 for (var i = 0; i < Quickshell.screens.length; i++)
@@ -620,6 +318,10 @@ Item {
                         return i;
                 return -1;
             }
+            readonly property int columns: Math.max(1, Math.ceil(Math.sqrt(Math.max(1, root.filteredToplevels.length) * width / Math.max(1, height) * 0.72)))
+            readonly property int rows: Math.max(1, Math.ceil(Math.max(1, root.filteredToplevels.length) / columns))
+            readonly property real cardWidth: Math.min(Style.space(430), (width - Style.spacing.panelPadding * 2 - Style.spacing.lg * (columns - 1)) / columns)
+            readonly property real cardHeight: Math.min(Style.space(300), (height - Style.space(112) - Style.spacing.lg * (rows - 1)) / rows)
 
             Rectangle {
                 anchors.fill: parent
@@ -636,41 +338,15 @@ Item {
                 id: keyCatcher
                 anchors.fill: parent
                 focus: overviewWindow.acceptsKeyboard
-                enabled: root.opened
-                opacity: root.opened ? 1 : 0
-                scale: root.opened ? 1 : 0.96
-                transformOrigin: Item.Center
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 190
-                        easing.type: Easing.OutQuart
-                    }
-                }
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 190
-                        easing.type: Easing.OutQuart
-                    }
-                }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
-                    root.handleKey(event, overviewArea.windowLayout);
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        if (root.previewIndex >= 0)
-                            root.previewIndex = -1;
-                        else
-                            root.dismiss();
-                    }
+                    root.handleKey(event, overviewWindow.columns);
                 }
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: Style.spacing.sm
-                    spacing: Style.spacing.md
+                    anchors.margins: Style.spacing.panelPadding
+                    spacing: Style.spacing.xl
 
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
@@ -715,19 +391,19 @@ Item {
                     }
 
                     Item {
-                        id: overviewArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        readonly property var windowLayout: {
-                            var revision = root.modelRevision + root.clientsRevision;
-                            var active = ToplevelManager.activeToplevel;
-                            return root.computeWindowLayout(width, height, Style.space(64), Style.spacing.sm, Style.space(40));
-                        }
 
-                        Repeater {
-                            model: root.filteredToplevels
+                        Grid {
+                            id: windowGrid
+                            anchors.centerIn: parent
+                            columns: overviewWindow.columns
+                            spacing: Style.spacing.lg
 
-                            delegate: Rectangle {
+                            Repeater {
+                                model: root.filteredToplevels
+
+                                delegate: Rectangle {
                                     id: card
                                     required property var modelData
                                     required property int index
@@ -735,51 +411,29 @@ Item {
                                     property bool closeArmed: false
                                     readonly property bool selected: index === root.selectedIndex
                                     readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
-                                    readonly property bool previewed: index === root.previewIndex
-                                    readonly property var packedRect: overviewArea.windowLayout[index] || Qt.rect(0, 0, 1, 1)
-                                    readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, Style.space(40))
-                                    readonly property var layoutRect: previewed ? previewRect : packedRect
-                                    x: layoutRect.x
-                                    y: layoutRect.y
-                                    width: layoutRect.width
-                                    height: layoutRect.height
-                                    z: previewed ? 10 : 0
+                                    width: overviewWindow.cardWidth
+                                    height: overviewWindow.cardHeight
                                     radius: Style.cornerRadius
-                                    color: Color.menu.background
+                                    color: selected ? Color.menu.selectedBackground : Color.menu.background
                                     border.color: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
-                                    border.width: hovered
-                                        ? Math.max(4, Style.hoverBorderWidth * 2)
-                                        : (focusedWindow
-                                            ? Math.max(2, Style.selectedBorderWidth)
-                                            : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
-                                    opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
-                                    Behavior on x {
+                                    border.width: focusedWindow ? Math.max(2, Style.selectedBorderWidth) : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth))
+                                    scale: selected ? 1.018 : 1
+                                    opacity: 0
+                                    Component.onCompleted: opacity = 1
+                                    Behavior on scale {
                                         NumberAnimation {
-                                            duration: 190
-                                            easing.type: Easing.OutQuart
+                                            duration: 100
+                                            easing.type: Easing.OutCubic
                                         }
                                     }
-                                    Behavior on y {
-                                        NumberAnimation {
-                                            duration: 190
-                                            easing.type: Easing.OutQuart
-                                        }
-                                    }
-                                    Behavior on width {
-                                        NumberAnimation {
-                                            duration: 190
-                                            easing.type: Easing.OutQuart
-                                        }
-                                    }
-                                    Behavior on height {
-                                        NumberAnimation {
-                                            duration: 190
-                                            easing.type: Easing.OutQuart
+                                    Behavior on color {
+                                        ColorAnimation {
+                                            duration: 100
                                         }
                                     }
                                     Behavior on opacity {
                                         NumberAnimation {
-                                            duration: 130
+                                            duration: 140
                                         }
                                     }
 
@@ -789,66 +443,34 @@ Item {
                                         onTriggered: card.closeArmed = false
                                     }
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        enabled: root.previewIndex < 0 || card.previewed
-                                        hoverEnabled: true
-                                        onEntered: {
-                                            card.hovered = true;
-                                            root.hoveredIndex = card.index;
-                                            root.selectedIndex = card.index;
-                                        }
-                                        onExited: {
-                                            card.hovered = false;
-                                            if (root.hoveredIndex === card.index)
-                                                root.hoveredIndex = -1;
-                                        }
-                                        onClicked: root.activate(card.modelData)
-                                    }
-
                                     ColumnLayout {
                                         anchors.fill: parent
                                         anchors.margins: Style.spacing.sm
                                         spacing: Style.spacing.sm
 
-                                        Item {
+                                        Rectangle {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
+                                            radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
+                                            color: Color.background
+                                            clip: true
 
-                                            Rectangle {
+                                            Text {
                                                 anchors.centerIn: parent
-                                                readonly property real windowAspectRatio: root.aspectRatioFor(card.modelData)
-                                                width: Math.min(parent.width, parent.height * windowAspectRatio)
-                                                height: Math.min(parent.height, parent.width / windowAspectRatio)
-                                                radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-                                                color: Color.background
-                                                clip: true
+                                                text: "Live preview unavailable"
+                                                textFormat: Text.PlainText
+                                                color: Color.menu.text
+                                                opacity: 0.45
+                                                font.family: Style.font.menuFamily
+                                                font.pixelSize: Style.font.body
+                                            }
 
-                                                Text {
-                                                    anchors.centerIn: parent
-                                                    text: "Live preview unavailable"
-                                                    textFormat: Text.PlainText
-                                                    color: Color.menu.text
-                                                    opacity: 0.45
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.body
-                                                }
-
-                                                Item {
-                                                    anchors.centerIn: parent
-                                                    width: parent.width * 2
-                                                    height: parent.height * 2
-                                                    scale: 0.5
-                                                    layer.enabled: true
-                                                    layer.smooth: true
-
-                                                    ScreencopyView {
-                                                        anchors.fill: parent
-                                                        captureSource: card.modelData
-                                                        live: root.opened
-                                                        paintCursor: false
-                                                    }
-                                                }
+                                            ScreencopyView {
+                                                anchors.fill: parent
+                                                captureSource: card.modelData
+                                                live: root.opened
+                                                paintCursor: false
+                                                constraintSize: Qt.size(width, height)
                                             }
                                         }
 
@@ -916,7 +538,6 @@ Item {
                                                 }
                                                 MouseArea {
                                                     anchors.fill: parent
-                                                    enabled: root.previewIndex < 0 || card.previewed
                                                     onClicked: function (mouse) {
                                                         mouse.accepted = true;
                                                         if (card.closeArmed) {
@@ -932,8 +553,19 @@ Item {
                                         }
                                     }
 
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onEntered: {
+                                            card.hovered = true;
+                                            root.selectedIndex = card.index;
+                                        }
+                                        onExited: card.hovered = false
+                                        onClicked: root.activate(card.modelData)
+                                    }
                                 }
                             }
+                        }
 
                         Text {
                             anchors.centerIn: parent
@@ -947,38 +579,14 @@ Item {
                         }
                     }
 
-                    RowLayout {
+                    Text {
                         Layout.alignment: Qt.AlignHCenter
-                        spacing: Style.spacing.xl
-
-                        Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Enter open   Esc close   Click × twice to close"
-                            textFormat: Text.PlainText
-                            color: Color.menu.text
-                            opacity: 0.55
-                            font.family: Style.font.menuFamily
-                            font.pixelSize: Style.font.bodySmall
-                        }
-
-                        Text {
-                            id: placementControl
-                            property bool hovered: false
-                            text: "Preview: " + (root.previewPlacement === "centered" ? "centered" : "in place") + "   Ctrl+P"
-                            textFormat: Text.PlainText
-                            color: placementControl.hovered ? Color.menu.selectedText : Color.menu.text
-                            opacity: placementControl.hovered ? 1 : 0.7
-                            font.family: Style.font.menuFamily
-                            font.pixelSize: Style.font.bodySmall
-
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onEntered: placementControl.hovered = true
-                                onExited: placementControl.hovered = false
-                                onClicked: root.togglePreviewPlacement()
-                            }
-                        }
+                        text: "← ↑ ↓ → navigate   Enter open   Esc close   Click × twice to close a window"
+                        textFormat: Text.PlainText
+                        color: Color.menu.text
+                        opacity: 0.55
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.bodySmall
                     }
                 }
             }
