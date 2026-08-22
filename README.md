@@ -78,6 +78,8 @@ The plugin deliberately has no separate color settings: it reads Omarchy's curre
 
 Space previews expand in place by default. Click the preview-placement control in the overview footer or press Ctrl+P to switch to centered previews. The choice is persisted inline on the plugin's entry in `~/.config/omarchy/shell.json`.
 
+The optional top-left hot corner opens Exposé while it is closed and reverses it closed while it is open. It re-arms only after the pointer leaves the corner, avoiding close/reopen loops. Enable or disable it with the IPC commands below; the choice is persisted with the other plugin settings.
+
 External tools can toggle, open, or close the overview:
 
 ```sh
@@ -86,6 +88,8 @@ omarchy-shell expose open # Run again to close with the reverse animation
 omarchy-shell expose close
 omarchy-shell expose previewPlacement in-place
 omarchy-shell expose previewPlacement centered
+omarchy-shell expose hotCorner on
+omarchy-shell expose hotCorner off
 ```
 
 The Hyprland shortcut is user configuration and can be changed to any unused combination.

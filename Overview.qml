@@ -22,8 +22,10 @@ Item {
         return null;
     }
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
+    readonly property bool hotCornerEnabled: root.pluginEntry && root.pluginEntry.hotCornerEnabled === true
     property bool opened: false
     property bool surfaceMounted: false
+    property bool hotCornerArmed: true
     property string filterText: ""
     property int selectedIndex: 0
     property int hoveredIndex: -1
@@ -92,21 +94,61 @@ Item {
         root.opened ? root.dismiss() : root.open("{}");
     }
 
-    function setPreviewPlacement(value) {
-        var mode = value === "centered" ? "centered" : "in-place";
-        if (mode === root.previewPlacement || !root.shell || typeof root.shell.updateEntryInline !== "function")
+    function updatePluginSetting(name, value) {
+        if (!root.shell || typeof root.shell.updateEntryInline !== "function")
             return;
         var settings = {};
         var current = root.pluginEntry || {};
         for (var key in current)
             if (key !== "id")
                 settings[key] = current[key];
-        settings.previewPlacement = mode;
+        settings[name] = value;
         root.shell.updateEntryInline(root.pluginId, settings);
+    }
+
+    function setPreviewPlacement(value) {
+        var mode = value === "centered" ? "centered" : "in-place";
+        if (mode !== root.previewPlacement)
+            root.updatePluginSetting("previewPlacement", mode);
     }
 
     function togglePreviewPlacement() {
         root.setPreviewPlacement(root.previewPlacement === "centered" ? "in-place" : "centered");
+    }
+
+    function setHotCornerEnabled(enabled) {
+        var next = enabled === true;
+        if (next !== root.hotCornerEnabled)
+            root.updatePluginSetting("hotCornerEnabled", next);
+    }
+
+    function hotCornerHovered() {
+        var groups = [hotCornerInstances, surfaceInstances];
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var instances = groups[groupIndex].instances;
+            for (var index = 0; index < instances.length; index++)
+                if (instances[index] && instances[index].hotCornerHovered)
+                    return true;
+        }
+        return false;
+    }
+
+    function triggerHotCorner() {
+        if (!root.hotCornerEnabled || !root.hotCornerArmed)
+            return;
+        root.hotCornerArmed = false;
+        root.toggle();
+    }
+
+    function scheduleHotCornerRearm() {
+        hotCornerRearm.restart();
+    }
+
+    onHotCornerEnabledChanged: {
+        if (!root.hotCornerEnabled) {
+            hotCornerRearm.stop();
+            root.hotCornerArmed = true;
+        }
     }
 
     function focusKeyboardWindow() {
@@ -541,6 +583,15 @@ Item {
     }
 
     Timer {
+        id: hotCornerRearm
+        interval: 100
+        onTriggered: {
+            if (!root.hotCornerHovered())
+                root.hotCornerArmed = true;
+        }
+    }
+
+    Timer {
         // Toplevel changes refresh immediately above. This slower fallback
         // catches workspace moves, which the foreign-toplevel protocol does
         // not expose, without continuously pressuring the shell process.
@@ -585,6 +636,45 @@ Item {
             root.setPreviewPlacement(mode);
             return mode;
         }
+        function hotCorner(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setHotCornerEnabled(mode === "on");
+            return mode;
+        }
+    }
+
+    Variants {
+        id: hotCornerInstances
+        model: root.hotCornerEnabled && !root.surfaceMounted ? Quickshell.screens : []
+
+        PanelWindow {
+            required property var modelData
+            screen: modelData
+            visible: true
+            anchors {
+                top: true
+                left: true
+            }
+            implicitWidth: Style.space(12)
+            implicitHeight: Style.space(12)
+            color: "#02000000"
+            exclusionMode: ExclusionMode.Ignore
+            WlrLayershell.namespace: "expose-hot-corner"
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.exclusiveZone: -1
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            property alias hotCornerHovered: closedHotCorner.containsMouse
+
+            MouseArea {
+                id: closedHotCorner
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                onEntered: root.triggerHotCorner()
+                onExited: root.scheduleHotCornerRearm()
+            }
+        }
     }
 
     Variants {
@@ -606,6 +696,7 @@ Item {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
+            property alias hotCornerHovered: openHotCorner.containsMouse
             readonly property bool acceptsKeyboard: {
                 var active = ToplevelManager.activeToplevel;
                 if (!active || !active.screens || !active.screens.length)
@@ -981,6 +1072,22 @@ Item {
                         }
                     }
                 }
+            }
+
+            MouseArea {
+                id: openHotCorner
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                }
+                width: Style.space(12)
+                height: Style.space(12)
+                z: 100
+                enabled: root.hotCornerEnabled
+                hoverEnabled: true
+                acceptedButtons: Qt.NoButton
+                onEntered: root.triggerHotCorner()
+                onExited: root.scheduleHotCornerRearm()
             }
         }
     }
