@@ -39,6 +39,7 @@ Item {
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
+    property int previewExitIndex: -1
     property bool previewSlowMotion: false
     readonly property int previewAnimationDuration: root.previewSlowMotion ? 4000 : 190
     readonly property int previewFadeDuration: root.previewSlowMotion ? 4000 : 130
@@ -69,8 +70,7 @@ Item {
         root.filterText = "";
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
         root.hoveredIndex = -1;
-        root.previewSlowMotion = false;
-        root.previewIndex = -1;
+        root.clearPreview();
         var wasMounted = root.surfaceMounted;
         root.surfaceMounted = true;
         if (wasMounted)
@@ -93,8 +93,7 @@ Item {
 
     function startDismiss(notifyShell) {
         root.hoveredIndex = -1;
-        root.previewSlowMotion = false;
-        root.previewIndex = -1;
+        root.clearPreview();
         root.opened = false;
         dismissTimer.notifyShell = notifyShell;
         dismissTimer.restart();
@@ -128,6 +127,13 @@ Item {
 
     function togglePreviewPlacement() {
         root.setPreviewPlacement(root.previewPlacement === "centered" ? "in-place" : "centered");
+    }
+
+    function clearPreview() {
+        previewExitTimer.stop();
+        root.previewSlowMotion = false;
+        root.previewIndex = -1;
+        root.previewExitIndex = -1;
     }
 
     function setHotCornerEnabled(enabled) {
@@ -192,8 +198,7 @@ Item {
         root.filterText = value;
         root.selectedIndex = 0;
         root.hoveredIndex = -1;
-        root.previewSlowMotion = false;
-        root.previewIndex = -1;
+        root.clearPreview();
         root.modelRevision++;
     }
 
@@ -533,9 +538,13 @@ Item {
     function togglePreview(slowMotion) {
         root.previewSlowMotion = slowMotion === true;
         if (root.previewIndex >= 0) {
+            root.previewExitIndex = root.previewIndex;
             root.previewIndex = -1;
+            previewExitTimer.restart();
             return;
         }
+        previewExitTimer.stop();
+        root.previewExitIndex = -1;
         var target = root.hoveredIndex >= 0 ? root.hoveredIndex : root.selectedIndex;
         if (target >= 0 && target < root.filteredToplevels.length) {
             root.selectedIndex = target;
@@ -558,10 +567,9 @@ Item {
 
     function handleKey(event, layout) {
         if (event.key === Qt.Key_Escape) {
-            if (root.previewIndex >= 0) {
-                root.previewSlowMotion = false;
-                root.previewIndex = -1;
-            } else
+            if (root.previewIndex >= 0 || root.previewExitIndex >= 0)
+                root.clearPreview();
+            else
                 root.dismiss();
         } else if (event.key === Qt.Key_Space || event.text === " ") {
             if (!event.isAutoRepeat)
@@ -594,10 +602,8 @@ Item {
             root.modelRevision++;
             if (root.selectedIndex >= root.filteredToplevels.length)
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length) {
-                root.previewSlowMotion = false;
-                root.previewIndex = -1;
-            }
+            if (root.previewIndex >= root.filteredToplevels.length || root.previewExitIndex >= 0)
+                root.clearPreview();
             root.refreshClients();
         }
     }
@@ -606,6 +612,15 @@ Item {
         target: ToplevelManager
         function onActiveToplevelChanged() {
             root.modelRevision++;
+        }
+    }
+
+    Timer {
+        id: previewExitTimer
+        interval: root.previewAnimationDuration
+        onTriggered: {
+            root.previewExitIndex = -1;
+            root.previewSlowMotion = false;
         }
     }
 
@@ -804,10 +819,9 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: {
-                        if (root.previewIndex >= 0) {
-                            root.previewSlowMotion = false;
-                            root.previewIndex = -1;
-                        } else
+                        if (root.previewIndex >= 0 || root.previewExitIndex >= 0)
+                            root.clearPreview();
+                        else
                             root.dismiss();
                     }
                 }
@@ -881,6 +895,7 @@ Item {
                                     readonly property bool selected: index === root.selectedIndex
                                     readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
                                     readonly property bool previewed: index === root.previewIndex
+                                    readonly property bool exitingPreview: index === root.previewExitIndex
                                     readonly property var packedRect: overviewArea.windowLayout[index] || Qt.rect(0, 0, 1, 1)
                                     readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, Style.space(40))
                                     readonly property var layoutRect: previewed ? previewRect : packedRect
@@ -888,7 +903,7 @@ Item {
                                     y: layoutRect.y
                                     width: layoutRect.width
                                     height: layoutRect.height
-                                    z: previewed ? 10 : 0
+                                    z: previewed || exitingPreview ? 10 : 0
                                     radius: Style.cornerRadius
                                     color: Color.menu.background
                                     border.color: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
