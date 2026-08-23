@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "expose.window-overview",
   "name": "Exposé",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Harel Malka and kristofferR",
   "license": "MIT",
   "description": "Improved macOS Exposé for Hyprland, with Quick Look and search.",

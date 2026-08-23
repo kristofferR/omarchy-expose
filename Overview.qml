@@ -67,6 +67,7 @@ Item {
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
     readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
     readonly property int previewFadeDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130
+    readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
     property var clients: []
     property var pendingClients: []
     property bool clientSnapshotRejected: false
@@ -764,6 +765,7 @@ Item {
         var previousPreviewIndex = root.previewIndex;
         root.selectedIndex = bestIndex;
         if (previousPreviewIndex >= 0) {
+            root.previewSlowMotion = false;
             root.previewNavigationSlowMotion = slowMotion === true;
             previewExitTimer.stop();
             root.previewExitIndex = previousPreviewIndex;
@@ -1446,7 +1448,7 @@ Item {
                                     y: layoutRect.y
                                     width: layoutRect.width
                                     height: layoutRect.height
-                                    z: previewed || exitingPreview ? 10 : 0
+                                    z: previewed ? 11 : (exitingPreview ? 10 : 0)
                                     radius: integratedFooter ? Style.cornerRadius : 0
                                     color: integratedFooter ? Color.menu.background : "transparent"
                                     border.color: integratedFooter ? outlineColor : "transparent"
@@ -1455,25 +1457,25 @@ Item {
                                     Behavior on x {
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
-                                            easing.type: Easing.OutQuart
+                                            easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on y {
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
-                                            easing.type: Easing.OutQuart
+                                            easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on width {
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
-                                            easing.type: Easing.OutQuart
+                                            easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on height {
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
-                                            easing.type: Easing.OutQuart
+                                            easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on opacity {
