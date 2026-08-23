@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -976,6 +977,7 @@ Item {
                                             Layout.fillHeight: true
 
                                             Rectangle {
+                                                id: previewFrame
                                                 anchors.centerIn: parent
                                                 readonly property real windowAspectRatio: root.aspectRatioFor(card.modelData)
                                                 width: Math.min(parent.width, parent.height * windowAspectRatio)
@@ -983,6 +985,13 @@ Item {
                                                 radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
                                                 color: Color.background
                                                 clip: true
+                                                layer.enabled: true
+                                                layer.effect: MultiEffect {
+                                                    maskEnabled: true
+                                                    maskSource: previewMask
+                                                    maskThresholdMin: 0.5
+                                                    maskSpreadAtMin: 1.0
+                                                }
 
                                                 Text {
                                                     anchors.centerIn: parent
@@ -1009,6 +1018,16 @@ Item {
                                                         paintCursor: false
                                                     }
                                                 }
+                                            }
+
+                                            Rectangle {
+                                                id: previewMask
+                                                anchors.fill: previewFrame
+                                                radius: previewFrame.radius
+                                                color: "black"
+                                                visible: false
+                                                layer.enabled: true
+                                                layer.smooth: true
                                             }
                                         }
 
