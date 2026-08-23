@@ -2224,6 +2224,12 @@ Item {
                 return active.screens[0].name === modelData.name;
             }
             WlrLayershell.keyboardFocus: root.opened && acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+
+            ShortcutInhibitor {
+                window: overviewWindow
+                enabled: root.opened && overviewWindow.acceptsKeyboard
+            }
+
             property alias keyboardItem: keyCatcher
             readonly property var screenToplevels: {
                 var revision = root.modelRevision;
