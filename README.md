@@ -4,18 +4,17 @@ Exposé brings a macOS-style window overview to Omarchy, with live previews for 
 
 ![Exposé demo](assets/demo.gif)
 
-## Features
+## Beyond Mission Control
 
-- Live thumbnails for windows across all workspaces
-- A freeform layout that preserves window proportions and uses the available screen
-- Application icons, titles, and workspace names
-- Mouse and keyboard navigation
-- Type-to-filter by application or title
-- Quick Look with in-place and centered modes
-- Adjustable background blur and dimming
-- Configurable labels, hot corner, and pointer movement
-- Live updates as windows open, close, move, or change title
-- Omarchy theme integration
+Apple's [Mission Control](https://support.apple.com/guide/mac-help/view-open-windows-spaces-mission-control-mh35798/mac) spreads windows from the active desktop into one layer and keeps other Spaces in a strip. Exposé keeps that familiar overview, then removes the desktop boundary:
+
+- Windows from every workspace appear together, with their workspace names attached.
+- The freeform layout preserves window proportions and uses the available screen instead of forcing a grid.
+- Start typing to filter by application or title.
+- Quick Look enlarges a window in place or at the center without leaving the overview. Hold Shift for slow motion.
+- The layout stays put while windows change title or workspace, making it easier to build spatial memory.
+- Blur, dimming, labels, preview placement, hot corner, and pointer movement are all configurable.
+- Live thumbnails, mouse and keyboard control, and Omarchy theme integration remain native to the shell.
 
 ## Requirements
 
