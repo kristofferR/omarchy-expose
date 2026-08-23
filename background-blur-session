@@ -11,7 +11,12 @@ run_hyprctl() {
 read_option() {
   local option="$1"
   local field="$2"
-  run_hyprctl -j getoption "$option" | jq -er ".${field}"
+  run_hyprctl -j getoption "$option" |
+    jq -er --arg field "$field" '
+      if has($field) and .[$field] != null
+      then .[$field] | tostring
+      else error("missing " + $field)
+      end'
 }
 
 saved_enabled=$(run_hyprctl -j getoption "decoration:blur:enabled" | jq -er '

@@ -69,6 +69,7 @@ Item {
     property var clients: []
     property var pendingClients: []
     property bool clientSnapshotRejected: false
+    property bool clientRefreshPending: false
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
@@ -307,8 +308,12 @@ Item {
     }
 
     function refreshClients() {
-        if (!clientQuery.running)
-            clientQuery.running = true;
+        if (clientQuery.running) {
+            root.clientRefreshPending = true;
+            return;
+        }
+        root.clientRefreshPending = false;
+        clientQuery.running = true;
     }
 
     function resetSessionToplevels() {
@@ -425,7 +430,7 @@ Item {
             if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
                 root.clients = snapshot;
             }
-            if (root.pendingAspectRatioToplevels.length > 0) {
+            if (!root.clientRefreshPending && root.pendingAspectRatioToplevels.length > 0) {
                 var updatedRatios = root.sessionAspectRatios.slice();
                 for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
                     var sessionIndex = root.sessionToplevels.indexOf(root.pendingAspectRatioToplevels[pendingIndex]);
@@ -438,7 +443,7 @@ Item {
             }
         }
         root.pendingClients = [];
-        if (root.openingAfterClientRefresh) {
+        if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
             root.openingAfterClientRefresh = false;
             root.captureSessionAspectRatios();
             Qt.callLater(function () {
@@ -448,6 +453,8 @@ Item {
                 root.focusKeyboardWindow();
             });
         }
+        if (root.clientRefreshPending)
+            Qt.callLater(root.refreshClients);
     }
 
     function clientSnapshotsEqual(left, right) {

@@ -24,22 +24,22 @@ Exposé is a native Omarchy Shell overview for every open Hyprland window. It us
 
 ## Requirements
 
-- Omarchy 4.0 or newer with the native shell plugin system
+- Omarchy Quattro with the native shell plugin system
 - Quickshell with `ToplevelManager` and `ScreencopyView`
 - Hyprland with `wlr-foreign-toplevel-management` and toplevel-export screencopy support
-- `hyprctl` (included with Hyprland)
+- Bash and `hyprctl` (included with Omarchy and Hyprland)
 - `jq`
-- GNU `timeout` (included with `coreutils`)
+- GNU `sleep` and `timeout` (included with `coreutils`)
 
 ## Install
 
 From a published Git repository:
 
 ```sh
-omarchy plugin add https://github.com/kristofferR/omarchy-expose --enable
+omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 ```
 
-For local development, clone/copy this repository to a Git URL, then use `omarchy plugin add <git-url> --enable`. Omarchy intentionally installs plugins from Git after validating their manifests.
+For local development, use the same command with the URL of your fork. Omarchy clones the repository and validates its manifest before enabling the plugin.
 
 Add a Hyprland binding to `~/.config/hypr/bindings.lua`:
 
@@ -49,15 +49,22 @@ o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
 
 Choose any unused chord if `SUPER + A` is already bound. Run `hyprctl reload` afterward.
 
+## Update
+
+```sh
+omarchy plugin update expose.window-overview --yes
+```
+
 ## Remove
 
 Remove the Exposé lines from `~/.config/hypr/bindings.lua`, then run:
 
 ```sh
-omarchy plugin disable expose.window-overview
-omarchy plugin remove expose.window-overview
+omarchy plugin remove expose.window-overview --yes
 hyprctl reload
 ```
+
+Removal unloads the plugin before deleting its Git checkout. Exposé does not install packages, services, hooks, or files outside its plugin directory and its entry in `~/.config/omarchy/shell.json`.
 
 ## Keyboard controls
 
@@ -119,6 +126,20 @@ omarchy-shell expose moveCursorToWindow off
 ```
 
 The Hyprland shortcut is user configuration and can be changed to any unused combination.
+
+## Security and system changes
+
+Like every Omarchy shell plugin, Exposé runs unsandboxed inside the long-running shell with the current user's permissions. Review the repository before installing it.
+
+- The bundled helpers use Bash, `hyprctl`, `jq`, `sleep`, and `timeout`. Exposé does not use `sudo` or `pkexec`, access the network, install packages, create services, or run remote builds.
+- Exposé reads Hyprland's window metadata and activates the window selected by the user.
+- Background blur temporarily changes the live Hyprland blur settings while Exposé is visible and restores the previous values when it closes or its helper exits.
+- The only persistent writes are explicit settings changes made in Exposé's Settings panel. They update this plugin's existing entry in `~/.config/omarchy/shell.json`.
+- `keepLoaded` keeps the overlay and hot corner inside the existing Omarchy shell process. Exposé does not start another Quickshell instance or a background service.
+
+## Preview assets
+
+`preview.png` is the privacy-reviewed static marketplace image. `assets/demo.gif` is the animated README demo. Both were captured for this repository and contain no personal data. They include Retro 82 and Last Horizon theme artwork distributed with the MIT-licensed Omarchy package; the Exposé icon and interface capture are distributed under this repository's MIT license.
 
 ## Troubleshooting
 
