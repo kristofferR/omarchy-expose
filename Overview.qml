@@ -1220,7 +1220,10 @@ Item {
     IpcHandler {
         target: "expose"
         function open(): string {
-            root.toggle();
+            // Must not be root.toggle(): that makes "open" a duplicate of
+            // "toggle", so calling open on an already-open overview closes it.
+            // Mirrors close(), which correctly calls dismiss().
+            root.open("{}");
             return "ok";
         }
         function close(): string {
