@@ -144,7 +144,7 @@ Item {
     }
 
     function toggle() {
-        root.opened ? root.dismiss() : root.open("{}");
+        (root.opened || root.openingAfterClientRefresh) ? root.dismiss() : root.open("{}");
     }
 
     function updatePluginSetting(name, value) {
@@ -1859,9 +1859,10 @@ Item {
 
                     Rectangle {
                         id: settingsDialog
+                        readonly property bool narrow: width < Style.space(760)
                         anchors.centerIn: parent
                         width: Math.min(Style.space(920), parent.width - Style.space(80))
-                        height: Math.min(Style.space(400), parent.height - Style.space(80))
+                        height: Math.min(Style.space(narrow ? 700 : 400), parent.height - Style.space(80))
                         radius: Style.cornerRadius
                         color: Color.menu.background
                         border.color: Color.menu.border
@@ -1894,6 +1895,7 @@ Item {
                                 Text {
                                     text: "Click outside or Esc to close"
                                     textFormat: Text.PlainText
+                                    visible: !settingsDialog.narrow
                                     color: Color.menu.text
                                     opacity: 0.5
                                     font.family: Style.font.menuFamily
@@ -1910,9 +1912,9 @@ Item {
                             GridLayout {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                columns: 2
-                                columnSpacing: Style.space(48)
-                                rowSpacing: 0
+                                columns: settingsDialog.narrow ? 1 : 2
+                                columnSpacing: settingsDialog.narrow ? 0 : Style.space(48)
+                                rowSpacing: settingsDialog.narrow ? Style.space(28) : 0
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
