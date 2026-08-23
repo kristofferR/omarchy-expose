@@ -10,6 +10,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace.
+- **Multi-monitor layouts.** Mirror the full overview on every display or keep windows on their own monitor.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
 
@@ -75,6 +76,7 @@ Open **Settings** from the footer while the overview is open. Changes apply imme
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
+- Multiple displays: same overview or per-monitor windows
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off and position (disable the same corner in other hot-corner plugins to avoid overlap)
 - Move cursor to the activated window on/off
@@ -88,6 +90,7 @@ omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
 omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
+omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor
 omarchy-shell expose hotCorner on                # on | off
 omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom-left | bottom-right
 omarchy-shell expose moveCursorToWindow on       # on | off

@@ -49,6 +49,9 @@ Item {
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
     readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
+    readonly property string multiMonitorMode: root.pluginEntry && root.pluginEntry.multiMonitorMode === "per-monitor"
+        ? "per-monitor"
+        : "mirrored"
     readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
     property bool opened: false
     property bool surfaceMounted: false
@@ -76,9 +79,11 @@ Item {
     readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
     property var clients: []
     property var pendingClients: []
-    property bool pendingActiveWorkspaceSeen: false
+    property var monitorStates: []
+    property bool pendingDisplayStateSeen: false
     property int pendingActiveWorkspaceId: 0
     property string pendingActiveWorkspaceName: ""
+    property var pendingMonitorStates: []
     property bool clientSnapshotRejected: false
     property bool clientRefreshPending: false
     property int modelRevision: 0
@@ -86,28 +91,22 @@ Item {
     property var sessionAspectRatios: []
     property var pendingAspectRatioToplevels: []
     readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
-    readonly property string activeWorkspaceLabel: root.activeWorkspaceName
-        || (root.activeWorkspaceId !== 0 ? String(root.activeWorkspaceId) : "—")
-    readonly property string workspaceScopeLabel: root.workspaceScope === "current"
-        ? "Workspace " + root.activeWorkspaceLabel
-        : "All workspaces"
+    readonly property string keyboardScreenName: {
+        var active = ToplevelManager.activeToplevel;
+        if (active && active.screens && active.screens.length)
+            return String(active.screens[0].name || "");
+        return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
+    }
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
-        var needle = root.filterText.toLowerCase();
-        var scope = root.workspaceScope;
-        var result = [];
-        var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
-        for (var i = 0; i < source.length; i++) {
-            var top = source[i];
-            if (!top)
-                continue;
-            if (scope === "current" && !root.isOnActiveWorkspace(top))
-                continue;
-            var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
-            if (!needle || haystack.indexOf(needle) !== -1)
-                result.push(top);
-        }
-        return result;
+        return root.toplevelsForScreen(root.keyboardScreenName);
+    }
+
+    onMultiMonitorModeChanged: {
+        root.hoveredIndex = -1;
+        root.clearPreview();
+        root.modelRevision++;
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
     }
 
     onEffectiveBackgroundBlurChanged: {
@@ -265,6 +264,12 @@ Item {
             root.updatePluginSetting("moveCursorToWindow", next);
     }
 
+    function setMultiMonitorMode(value) {
+        var mode = value === "per-monitor" ? "per-monitor" : "mirrored";
+        if (mode !== root.multiMonitorMode)
+            root.updatePluginSetting("multiMonitorMode", mode);
+    }
+
     function requestFooterHide() {
         if (!root.showFooter)
             return;
@@ -348,19 +353,36 @@ Item {
         root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
     }
 
-    function applyActiveWorkspace(id, name) {
+    function monitorStatesEqual(left, right) {
+        if (!left || left.length !== right.length)
+            return false;
+        for (var index = 0; index < left.length; index++) {
+            var a = left[index];
+            var b = right[index];
+            if (a.id !== b.id
+                    || a.name !== b.name
+                    || a.activeWorkspace.id !== b.activeWorkspace.id
+                    || a.activeWorkspace.name !== b.activeWorkspace.name)
+                return false;
+        }
+        return true;
+    }
+
+    function applyDisplayState(id, name, monitors) {
         var nextId = Number(id) || 0;
         var nextName = String(name || "").slice(0, 128);
-        if (nextId === root.activeWorkspaceId && nextName === root.activeWorkspaceName)
+        var nextMonitors = monitors || [];
+        if (nextId === root.activeWorkspaceId
+                && nextName === root.activeWorkspaceName
+                && root.monitorStatesEqual(root.monitorStates, nextMonitors))
             return;
         root.activeWorkspaceId = nextId;
         root.activeWorkspaceName = nextName;
-        if (root.workspaceScope === "current") {
-            root.hoveredIndex = -1;
-            root.clearPreview();
-            root.modelRevision++;
-            root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
-        }
+        root.monitorStates = nextMonitors;
+        root.hoveredIndex = -1;
+        root.clearPreview();
+        root.modelRevision++;
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
     }
 
     function activate(top) {
@@ -460,9 +482,10 @@ Item {
 
     function beginClientSnapshot() {
         root.pendingClients = [];
-        root.pendingActiveWorkspaceSeen = false;
+        root.pendingDisplayStateSeen = false;
         root.pendingActiveWorkspaceId = 0;
         root.pendingActiveWorkspaceName = "";
+        root.pendingMonitorStates = [];
         root.clientSnapshotRejected = false;
     }
 
@@ -480,17 +503,49 @@ Item {
                 root.clientSnapshotRejected = true;
                 return;
             }
-            if (row.kind === "workspace") {
-                if (root.pendingActiveWorkspaceSeen
-                        || typeof row.id !== "number"
-                        || !isFinite(row.id)
-                        || typeof row.name !== "string") {
+            if (row.kind === "display-state") {
+                var activeWorkspace = row.activeWorkspace;
+                if (root.pendingDisplayStateSeen
+                        || !activeWorkspace
+                        || typeof activeWorkspace !== "object"
+                        || typeof activeWorkspace.id !== "number"
+                        || !isFinite(activeWorkspace.id)
+                        || typeof activeWorkspace.name !== "string"
+                        || !Array.isArray(row.monitors)
+                        || row.monitors.length > 32) {
                     root.clientSnapshotRejected = true;
                     return;
                 }
-                root.pendingActiveWorkspaceSeen = true;
-                root.pendingActiveWorkspaceId = Number(row.id) || 0;
-                root.pendingActiveWorkspaceName = String(row.name || "").slice(0, 128);
+                var monitors = [];
+                for (var monitorIndex = 0; monitorIndex < row.monitors.length; monitorIndex++) {
+                    var monitor = row.monitors[monitorIndex];
+                    var monitorWorkspace = monitor && monitor.activeWorkspace;
+                    if (!monitor
+                            || typeof monitor !== "object"
+                            || typeof monitor.id !== "number"
+                            || !isFinite(monitor.id)
+                            || typeof monitor.name !== "string"
+                            || !monitorWorkspace
+                            || typeof monitorWorkspace !== "object"
+                            || typeof monitorWorkspace.id !== "number"
+                            || !isFinite(monitorWorkspace.id)
+                            || typeof monitorWorkspace.name !== "string") {
+                        root.clientSnapshotRejected = true;
+                        return;
+                    }
+                    monitors.push({
+                        id: Number(monitor.id) || 0,
+                        name: String(monitor.name || "").slice(0, 128),
+                        activeWorkspace: {
+                            id: Number(monitorWorkspace.id) || 0,
+                            name: String(monitorWorkspace.name || "").slice(0, 128)
+                        }
+                    });
+                }
+                root.pendingDisplayStateSeen = true;
+                root.pendingActiveWorkspaceId = Number(activeWorkspace.id) || 0;
+                root.pendingActiveWorkspaceName = String(activeWorkspace.name || "").slice(0, 128);
+                root.pendingMonitorStates = monitors;
                 return;
             }
             if ((row.kind && row.kind !== "client")
@@ -530,20 +585,20 @@ Item {
             var comparablePrevious = root.clients.slice();
             comparableSnapshot.sort(function (a, b) { return a.address.localeCompare(b.address); });
             comparablePrevious.sort(function (a, b) { return a.address.localeCompare(b.address); });
-            var workspaceAssignmentsChanged = !root.clientWorkspaceAssignmentsEqual(comparablePrevious, comparableSnapshot);
+            var placementsChanged = !root.clientPlacementsEqual(comparablePrevious, comparableSnapshot);
             var selectedTop = root.filteredToplevels[root.selectedIndex];
             if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
                 root.clients = snapshot;
                 root.modelRevision++;
-                if (root.workspaceScope === "current" && workspaceAssignmentsChanged) {
+                if ((root.workspaceScope === "current" || root.multiMonitorMode === "per-monitor") && placementsChanged) {
                     root.hoveredIndex = -1;
                     root.clearPreview();
                     var nextSelectedIndex = root.filteredToplevels.indexOf(selectedTop);
                     root.selectedIndex = nextSelectedIndex >= 0 ? nextSelectedIndex : 0;
                 }
             }
-            if (root.pendingActiveWorkspaceSeen)
-                root.applyActiveWorkspace(root.pendingActiveWorkspaceId, root.pendingActiveWorkspaceName);
+            if (root.pendingDisplayStateSeen)
+                root.applyDisplayState(root.pendingActiveWorkspaceId, root.pendingActiveWorkspaceName, root.pendingMonitorStates);
             if (!root.clientRefreshPending && root.pendingAspectRatioToplevels.length > 0) {
                 var updatedRatios = root.sessionAspectRatios.slice();
                 for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
@@ -557,9 +612,10 @@ Item {
             }
         }
         root.pendingClients = [];
-        root.pendingActiveWorkspaceSeen = false;
+        root.pendingDisplayStateSeen = false;
         root.pendingActiveWorkspaceId = 0;
         root.pendingActiveWorkspaceName = "";
+        root.pendingMonitorStates = [];
         if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
             root.openingAfterClientRefresh = false;
             root.captureSessionAspectRatios();
@@ -595,7 +651,7 @@ Item {
         return true;
     }
 
-    function clientWorkspaceAssignmentsEqual(left, right) {
+    function clientPlacementsEqual(left, right) {
         if (!left || left.length !== right.length)
             return false;
         for (var index = 0; index < left.length; index++) {
@@ -604,7 +660,8 @@ Item {
             if (a.address !== b.address
                     || a.workspace.id !== b.workspace.id
                     || a.workspace.name !== b.workspace.name
-                    || a.pinned !== b.pinned)
+                    || a.pinned !== b.pinned
+                    || a.monitor !== b.monitor)
                 return false;
         }
         return true;
@@ -653,16 +710,82 @@ Item {
         return "Workspace " + root.workspaceName(top);
     }
 
-    function isOnActiveWorkspace(top) {
+    function monitorStateForScreen(screenName) {
+        var wanted = String(screenName || "");
+        for (var index = 0; index < root.monitorStates.length; index++) {
+            var monitor = root.monitorStates[index];
+            if (monitor && monitor.name === wanted)
+                return monitor;
+        }
+        return null;
+    }
+
+    function workspaceForScreen(screenName) {
+        if (root.multiMonitorMode === "per-monitor") {
+            var monitor = root.monitorStateForScreen(screenName);
+            if (monitor && monitor.activeWorkspace)
+                return monitor.activeWorkspace;
+        }
+        return {id: root.activeWorkspaceId, name: root.activeWorkspaceName};
+    }
+
+    function activeWorkspaceLabelForScreen(screenName) {
+        var workspace = root.workspaceForScreen(screenName);
+        return String(workspace.name || workspace.id || "—");
+    }
+
+    function workspaceScopeLabelForScreen(screenName) {
+        return root.workspaceScope === "current"
+            ? "Workspace " + root.activeWorkspaceLabelForScreen(screenName)
+            : "All workspaces";
+    }
+
+    function isOnScreen(top, screenName) {
+        if (root.multiMonitorMode !== "per-monitor")
+            return true;
+        var screens = top && top.screens ? top.screens : [];
+        if (screens.length) {
+            for (var index = 0; index < screens.length; index++)
+                if (String(screens[index].name || "") === String(screenName || ""))
+                    return true;
+            return false;
+        }
+        var monitor = root.monitorStateForScreen(screenName);
         var client = root.clientFor(top);
-        if (!client || !client.workspace)
+        if (monitor && client)
+            return Number(client.monitor) === Number(monitor.id);
+        return !monitor;
+    }
+
+    function isOnWorkspace(top, workspace) {
+        var client = root.clientFor(top);
+        if (!client || !client.workspace || !workspace)
             return false;
         if (client.pinned)
             return true;
-        if (root.activeWorkspaceId !== 0)
-            return Number(client.workspace.id) === root.activeWorkspaceId;
-        return Boolean(root.activeWorkspaceName)
-            && String(client.workspace.name || "") === root.activeWorkspaceName;
+        var workspaceId = Number(workspace.id) || 0;
+        if (workspaceId !== 0)
+            return Number(client.workspace.id) === workspaceId;
+        var workspaceName = String(workspace.name || "");
+        return Boolean(workspaceName) && String(client.workspace.name || "") === workspaceName;
+    }
+
+    function toplevelsForScreen(screenName) {
+        var needle = root.filterText.toLowerCase();
+        var currentWorkspace = root.workspaceForScreen(screenName);
+        var result = [];
+        var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
+        for (var index = 0; index < source.length; index++) {
+            var top = source[index];
+            if (!top || !root.isOnScreen(top, screenName))
+                continue;
+            if (root.workspaceScope === "current" && !root.isOnWorkspace(top, currentWorkspace))
+                continue;
+            var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
+            if (!needle || haystack.indexOf(needle) !== -1)
+                result.push(top);
+        }
+        return result;
     }
 
     function monitorFor(top) {
@@ -772,8 +895,8 @@ Item {
         return result;
     }
 
-    function computeWindowLayout(width, height, gap, padding, footerHeight, viewportRatioHint) {
-        var count = root.filteredToplevels.length;
+    function computeWindowLayout(toplevels, width, height, gap, padding, footerHeight, viewportRatioHint) {
+        var count = toplevels.length;
         if (!count || width <= 0 || height <= 0)
             return [];
 
@@ -782,7 +905,7 @@ Item {
         var availableHeight = Math.max(1, height - edgeInset * 2);
         var entries = [];
         for (var index = 0; index < count; index++) {
-            var ratio = root.aspectRatioFor(root.filteredToplevels[index]);
+            var ratio = root.aspectRatioFor(toplevels[index]);
             var adaptiveWeight = Math.max(0.72, Math.min(1.28, Math.sqrt(ratio / 1.6)));
             entries.push({
                 index: index,
@@ -1155,6 +1278,12 @@ Item {
             root.setMoveCursorToWindow(mode === "on");
             return mode;
         }
+        function multiMonitorMode(mode: string): string {
+            if (mode !== "mirrored" && mode !== "per-monitor")
+                return "expected mirrored or per-monitor";
+            root.setMultiMonitorMode(mode);
+            return mode;
+        }
     }
 
     component SettingSlider: Item {
@@ -1337,6 +1466,105 @@ Item {
         }
     }
 
+    component DisplayModeChoices: RowLayout {
+        id: displayModeChoices
+        property string value: "mirrored"
+        signal chosen(string nextValue)
+        readonly property var options: [
+            {
+                label: "Same overview",
+                description: "Show every window on every display",
+                value: "mirrored"
+            },
+            {
+                label: "Per monitor",
+                description: "Keep windows on their own display",
+                value: "per-monitor"
+            }
+        ]
+        spacing: 0
+        activeFocusOnTab: true
+
+        function chooseOffset(offset) {
+            var current = displayModeChoices.value === "per-monitor" ? 1 : 0;
+            var next = (current + offset + displayModeChoices.options.length) % displayModeChoices.options.length;
+            displayModeChoices.chosen(String(displayModeChoices.options[next].value));
+        }
+
+        Keys.onPressed: function (event) {
+            if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
+                displayModeChoices.chooseOffset(-1);
+            else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
+                displayModeChoices.chooseOffset(1);
+            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                displayModeChoices.chooseOffset(0);
+            else
+                return;
+            event.accepted = true;
+        }
+
+        Repeater {
+            model: displayModeChoices.options
+
+            delegate: Rectangle {
+                id: displayModeChoice
+                required property var modelData
+                readonly property bool selected: String(modelData.value) === displayModeChoices.value
+                Layout.fillWidth: true
+                Layout.preferredHeight: Style.space(64)
+                color: "transparent"
+                border.color: displayModeChoices.activeFocus && selected ? Color.accent : Color.menu.border
+                border.width: Math.max(1, Style.normalBorderWidth)
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Style.spacing.md
+                    spacing: Style.spacing.xs
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(displayModeChoice.modelData.label)
+                        textFormat: Text.PlainText
+                        color: Color.menu.text
+                        opacity: displayModeChoice.selected ? 1 : 0.6
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.body
+                        font.bold: displayModeChoice.selected
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: String(displayModeChoice.modelData.description)
+                        textFormat: Text.PlainText
+                        color: Color.menu.text
+                        opacity: 0.45
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.caption
+                        wrapMode: Text.Wrap
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: Math.max(2, Style.focusBorderWidth)
+                    visible: displayModeChoice.selected
+                    color: Color.accent
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        displayModeChoices.forceActiveFocus();
+                        displayModeChoices.chosen(String(displayModeChoice.modelData.value));
+                    }
+                }
+            }
+        }
+    }
+
     component SettingToggle: Item {
         id: settingToggle
         property bool checked: false
@@ -1499,12 +1727,12 @@ Item {
             }
             WlrLayershell.keyboardFocus: root.opened && acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             property alias keyboardItem: keyCatcher
-            readonly property int screenMonitorId: {
-                for (var i = 0; i < Quickshell.screens.length; i++)
-                    if (Quickshell.screens[i] === modelData)
-                        return i;
-                return -1;
+            readonly property var screenToplevels: {
+                var revision = root.modelRevision;
+                return root.toplevelsForScreen(String(modelData.name || ""));
             }
+            readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
+            readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
             Region {
                 id: backgroundBlurRegion
@@ -1595,7 +1823,7 @@ Item {
                                 elide: Text.ElideRight
                             }
                             Text {
-                                text: root.filteredToplevels.length + " windows"
+                                text: overviewWindow.screenToplevels.length + " windows"
                                 textFormat: Text.PlainText
                                 color: Color.menu.text
                                 opacity: 0.55
@@ -1612,8 +1840,8 @@ Item {
                             Text {
                                 Layout.maximumWidth: Style.space(176)
                                 text: searchBar.width < Style.space(640)
-                                    ? (root.workspaceScope === "all" ? "All" : "WS " + root.activeWorkspaceLabel)
-                                    : root.workspaceScopeLabel
+                                    ? (root.workspaceScope === "all" ? "All" : "WS " + overviewWindow.screenWorkspaceLabel)
+                                    : overviewWindow.screenScopeLabel
                                 textFormat: Text.PlainText
                                 color: Color.accent
                                 font.family: Style.font.menuFamily
@@ -1651,21 +1879,21 @@ Item {
                             var screenRatio = overviewWindow.screen && overviewWindow.screen.height > 0
                                 ? overviewWindow.screen.width / overviewWindow.screen.height
                                 : 0;
-                            return root.computeWindowLayout(width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
+                            return root.computeWindowLayout(overviewWindow.screenToplevels, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
                         }
 
                         Repeater {
-                            model: root.filteredToplevels
+                            model: overviewWindow.screenToplevels
 
                             delegate: Rectangle {
                                     id: card
                                     required property var modelData
                                     required property int index
                                     property bool hovered: false
-                                    readonly property bool selected: index === root.selectedIndex
+                                    readonly property bool selected: overviewWindow.acceptsKeyboard && index === root.selectedIndex
                                     readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
-                                    readonly property bool previewed: index === root.previewIndex
-                                    readonly property bool exitingPreview: index === root.previewExitIndex
+                                    readonly property bool previewed: overviewWindow.acceptsKeyboard && index === root.previewIndex
+                                    readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && index === root.previewExitIndex
                                     readonly property bool floatingFooter: root.windowFooterStyle === "floating"
                                     readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
                                     readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
@@ -1735,12 +1963,14 @@ Item {
                                         }
                                         onEntered: {
                                             card.hovered = true;
-                                            root.hoveredIndex = card.index;
-                                            root.selectedIndex = card.index;
+                                            if (overviewWindow.acceptsKeyboard) {
+                                                root.hoveredIndex = card.index;
+                                                root.selectedIndex = card.index;
+                                            }
                                         }
                                         onExited: {
                                             card.hovered = false;
-                                            if (root.hoveredIndex === card.index)
+                                            if (overviewWindow.acceptsKeyboard && root.hoveredIndex === card.index)
                                                 root.hoveredIndex = -1;
                                         }
                                         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
@@ -2055,11 +2285,11 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
-                            visible: root.filteredToplevels.length === 0
+                            visible: overviewWindow.screenToplevels.length === 0
                             text: root.filterText
                                 ? "No matching windows"
                                 : (root.workspaceScope === "current"
-                                    ? "No windows on Workspace " + root.activeWorkspaceLabel
+                                    ? "No windows on Workspace " + overviewWindow.screenWorkspaceLabel
                                     : "No open windows")
                             textFormat: Text.PlainText
                             color: Color.menu.text
@@ -2128,7 +2358,7 @@ Item {
                         readonly property bool narrow: width < Style.space(760)
                         anchors.centerIn: parent
                         width: Math.min(Style.space(920), parent.width - Style.space(80))
-                        height: Math.min(Style.space(narrow ? 700 : 400), parent.height - Style.space(80))
+                        height: Math.min(Style.space(narrow ? 800 : 500), parent.height - Style.space(80))
                         radius: Style.cornerRadius
                         color: Color.menu.background
                         border.color: Color.menu.border
@@ -2376,6 +2606,24 @@ Item {
                                             checked: root.moveCursorToWindow
                                             onToggled: function (checked) { root.setMoveCursorToWindow(checked); }
                                         }
+                                    }
+
+                                    Item { Layout.preferredHeight: Style.spacing.md }
+
+                                    Text {
+                                        text: "Multiple displays"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.55
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.capitalization: Font.AllUppercase
+                                    }
+
+                                    DisplayModeChoices {
+                                        Layout.fillWidth: true
+                                        value: root.multiMonitorMode
+                                        onChosen: function (value) { root.setMultiMonitorMode(value); }
                                     }
 
                                     Item { Layout.preferredHeight: Style.spacing.md }
