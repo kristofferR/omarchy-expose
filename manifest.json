@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Harel Malka and kristofferR",
   "license": "MIT",
-  "description": "Improved macOS Exposé for Hyprland, with all-workspace search and Quick Look.",
+  "description": "Improved macOS Exposé for Hyprland, with Quick Look and all-workspace search.",
   "icon": "assets/icon.svg",
   "preview": "preview.png",
   "kinds": ["overlay"],
