@@ -27,7 +27,7 @@ Everything else (Quickshell with `ToplevelManager`/`ScreencopyView`, Hyprland wi
 omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 ```
 
-Bind a key in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
+That's it: the top-left hot corner works right away. Optionally, bind a key in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
 o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
