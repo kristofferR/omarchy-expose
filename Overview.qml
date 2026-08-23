@@ -756,8 +756,17 @@ Item {
                 bestIndex = index;
             }
         }
-        if (bestIndex >= 0)
-            root.selectedIndex = bestIndex;
+        if (bestIndex < 0)
+            return;
+
+        var previousPreviewIndex = root.previewIndex;
+        root.selectedIndex = bestIndex;
+        if (previousPreviewIndex >= 0) {
+            previewExitTimer.stop();
+            root.previewExitIndex = previousPreviewIndex;
+            root.previewIndex = bestIndex;
+            previewExitTimer.restart();
+        }
     }
 
     function togglePreview(slowMotion) {
@@ -851,7 +860,8 @@ Item {
         interval: root.previewAnimationDuration
         onTriggered: {
             root.previewExitIndex = -1;
-            root.previewSlowMotion = false;
+            if (root.previewIndex < 0)
+                root.previewSlowMotion = false;
         }
     }
 
