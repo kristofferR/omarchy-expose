@@ -58,14 +58,15 @@ Item {
     property int previewIndex: -1
     property int previewExitIndex: -1
     property bool previewSlowMotion: false
+    property bool previewNavigationSlowMotion: false
     property bool openingAfterClientRefresh: false
     property bool settingsOpen: false
     property real backgroundBlurPreview: -1
     property real backgroundDimPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
-    readonly property int previewAnimationDuration: root.previewSlowMotion ? 4000 : 190
-    readonly property int previewFadeDuration: root.previewSlowMotion ? 4000 : 130
+    readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
+    readonly property int previewFadeDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130
     property var clients: []
     property var pendingClients: []
     property bool clientSnapshotRejected: false
@@ -219,6 +220,7 @@ Item {
     function clearPreview() {
         previewExitTimer.stop();
         root.previewSlowMotion = false;
+        root.previewNavigationSlowMotion = false;
         root.previewIndex = -1;
         root.previewExitIndex = -1;
     }
@@ -732,7 +734,7 @@ Item {
         };
     }
 
-    function moveDirectional(dx, dy, layout) {
+    function moveDirectional(dx, dy, layout, slowMotion) {
         if (!layout || !layout[root.selectedIndex])
             return;
         var current = layout[root.selectedIndex];
@@ -762,6 +764,7 @@ Item {
         var previousPreviewIndex = root.previewIndex;
         root.selectedIndex = bestIndex;
         if (previousPreviewIndex >= 0) {
+            root.previewNavigationSlowMotion = slowMotion === true;
             previewExitTimer.stop();
             root.previewExitIndex = previousPreviewIndex;
             root.previewIndex = bestIndex;
@@ -770,6 +773,7 @@ Item {
     }
 
     function togglePreview(slowMotion) {
+        root.previewNavigationSlowMotion = false;
         root.previewSlowMotion = slowMotion === true;
         if (root.previewIndex >= 0) {
             root.previewExitIndex = root.previewIndex;
@@ -819,13 +823,13 @@ Item {
                 root.togglePreview(Boolean(event.modifiers & Qt.ShiftModifier));
         }
         else if (event.key === Qt.Key_Left)
-            root.moveDirectional(-1, 0, layout);
+            root.moveDirectional(-1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Right)
-            root.moveDirectional(1, 0, layout);
+            root.moveDirectional(1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Up)
-            root.moveDirectional(0, -1, layout);
+            root.moveDirectional(0, -1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Down)
-            root.moveDirectional(0, 1, layout);
+            root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             root.activate(root.filteredToplevels[root.selectedIndex]);
         else if (Util.editsFilter(event, root.filterText))
@@ -860,6 +864,7 @@ Item {
         interval: root.previewAnimationDuration
         onTriggered: {
             root.previewExitIndex = -1;
+            root.previewNavigationSlowMotion = false;
             if (root.previewIndex < 0)
                 root.previewSlowMotion = false;
         }
