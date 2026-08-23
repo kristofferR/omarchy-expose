@@ -1,26 +1,21 @@
 # Exposé
 
-Exposé is a native Omarchy Shell overview for every open Hyprland window. It uses Quickshell's foreign-toplevel and screencopy integrations for live, clickable previews without launching a separate UI process.
+Exposé brings a macOS-style window overview to Omarchy, with live previews for every Hyprland workspace.
 
 ![Exposé demo](assets/demo.gif)
-
-> The plugin manifest includes a privacy-safe static preview of the same interface.
 
 ## Features
 
 - Live thumbnails for windows across all workspaces
-- Adaptive, collision-free Exposé composition that uses the full available screen
+- A freeform layout that preserves window proportions and uses the available screen
 - Application icons, titles, and workspace names
-- Pointer hover and keyboard-selection highlighting
-- Type-to-filter by application ID or title
-- Arrow-key navigation and Enter activation
-- Space-bar Quick Look with in-place and centered preview placement
-- Live compositor-backed background blur and adjustable dimming
-- Centered settings editor for every Exposé option
+- Mouse and keyboard navigation
+- Type-to-filter by application or title
+- Quick Look with in-place and centered modes
+- Adjustable background blur and dimming
+- Configurable labels, hot corner, and pointer movement
 - Live updates as windows open, close, move, or change title
-- Native Omarchy colors, spacing, typography, and rounded corners
-- Theme-aware fallback when a screencopy frame is unavailable
-- `expose toggle` shell IPC endpoint
+- Omarchy theme integration
 
 ## Requirements
 
@@ -33,13 +28,11 @@ Exposé is a native Omarchy Shell overview for every open Hyprland window. It us
 
 ## Install
 
-From a published Git repository:
-
 ```sh
 omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 ```
 
-For local development, use the same command with the URL of your fork. Omarchy clones the repository and validates its manifest before enabling the plugin.
+For local development, replace the URL with your fork.
 
 Add a Hyprland binding to `~/.config/hypr/bindings.lua`:
 
@@ -64,7 +57,7 @@ omarchy plugin remove expose.window-overview --yes
 hyprctl reload
 ```
 
-Removal unloads the plugin before deleting its Git checkout. Exposé does not install packages, services, hooks, or files outside its plugin directory and its entry in `~/.config/omarchy/shell.json`.
+Exposé adds no packages, services, hooks, or files outside its plugin directory and its entry in `~/.config/omarchy/shell.json`.
 
 ## Keyboard controls
 
@@ -84,21 +77,17 @@ Mouse users can click a card to activate it.
 
 ## Configuration
 
-The plugin reads Omarchy's current `Color` and `Style` tokens. Window previews keep their real aspect ratios and adapt their relative scale before spreading across the available screen area. Window ordering and aspect ratios stay fixed while Exposé is open, so metadata updates do not reshuffle the composition.
+Exposé follows the active Omarchy theme. Preview positions stay fixed while the overview is open, so title and workspace updates do not reshuffle the layout.
 
-Open **Settings** from the footer to edit background blur and dimming, hot-corner behavior, preview placement, window labels, and pointer movement. Changes apply immediately and persist inline on the plugin's entry in `~/.config/omarchy/shell.json`.
+Open **Settings** from the footer to change blur, dimming, hot-corner behavior, preview placement, labels, and pointer movement. Changes apply immediately.
 
-Background blur is rendered by Hyprland behind Exposé, so videos and other desktop content remain live without recursive screen capture. The chosen blur strength is applied only while Exposé is visible, then the previous compositor blur setting is restored.
+Hyprland renders the background blur, keeping videos and other desktop content live. Exposé restores the previous blur setting when it closes.
 
-Space previews expand in place by default. Preview placement can be set to in-place or centered.
+The top-left hot corner is enabled by default. It toggles Exposé after the pointer enters the corner and re-arms once the pointer leaves. Disable the same corner in other hot-corner plugins to avoid overlap.
 
-Window identity can float below the preview, sit in an integrated rail, overlay the image, or use a centered Exposé-style label. Floating identity is the default.
+Window activation moves the pointer to the chosen window by default. This can be disabled without changing Hyprland's global cursor setting.
 
-The hot corner is enabled at the top left by default. It opens Exposé when it is closed and closes Exposé when it is open. It re-arms only after the pointer leaves the corner, avoiding close/reopen loops. Choose any screen corner and enable or disable it in Settings or with the IPC commands below. Disable the matching corner in any other hot-corner plugin to avoid overlapping input surfaces.
-
-Window activation moves the pointer to the chosen window by default, matching Hyprland's normal focus behavior. This can be disabled per Exposé activation without changing the global Hyprland cursor setting.
-
-External tools can toggle, open, or close the overview:
+### IPC
 
 ```sh
 omarchy-shell expose toggle
@@ -125,21 +114,18 @@ omarchy-shell expose moveCursorToWindow on
 omarchy-shell expose moveCursorToWindow off
 ```
 
-The Hyprland shortcut is user configuration and can be changed to any unused combination.
-
 ## Security and system changes
 
-Like every Omarchy shell plugin, Exposé runs unsandboxed inside the long-running shell with the current user's permissions. Review the repository before installing it.
+Exposé runs unsandboxed inside Omarchy Shell with the current user's permissions.
 
-- The bundled helpers use Bash, `hyprctl`, `jq`, `sleep`, and `timeout`. Exposé does not use `sudo` or `pkexec`, access the network, install packages, create services, or run remote builds.
-- Exposé reads Hyprland's window metadata and activates the window selected by the user.
-- Background blur temporarily changes the live Hyprland blur settings while Exposé is visible and restores the previous values when it closes or its helper exits.
-- The only persistent writes are explicit settings changes made in Exposé's Settings panel. They update this plugin's existing entry in `~/.config/omarchy/shell.json`.
-- `keepLoaded` keeps the overlay and hot corner inside the existing Omarchy shell process. Exposé does not start another Quickshell instance or a background service.
+- Its helpers use Bash, `hyprctl`, `jq`, `sleep`, and `timeout`.
+- It reads Hyprland window metadata, activates selected windows, and temporarily changes Hyprland's blur setting while open.
+- Settings writes update only the plugin's entry in `~/.config/omarchy/shell.json`.
+- It does not use privilege escalation or the network, install packages, create services, or run remote builds.
 
 ## Preview assets
 
-`preview.png` is the privacy-reviewed static marketplace image. `assets/demo.gif` is the animated README demo. Both were captured for this repository and contain no personal data. They include Retro 82 and Last Horizon theme artwork distributed with the MIT-licensed Omarchy package; the Exposé icon and interface capture are distributed under this repository's MIT license.
+`preview.png` and `assets/demo.gif` were captured for this project. The Retro 82 and Last Horizon theme artwork is distributed with Omarchy under the MIT license. Other plugin assets use this repository's MIT license.
 
 ## Troubleshooting
 
