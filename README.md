@@ -29,6 +29,7 @@ Exposé is a native Omarchy Shell overview for every open Hyprland window. It us
 - Hyprland with `wlr-foreign-toplevel-management` and toplevel-export screencopy support
 - `hyprctl` (included with Hyprland)
 - `jq`
+- GNU `timeout` (included with `coreutils`)
 
 ## Install
 
@@ -66,7 +67,7 @@ hyprctl reload
 | Space | Enlarge or restore the hovered or selected window preview |
 | Shift+Space | Enlarge or restore the preview in exaggerated slow motion |
 | Enter | Activate the selected window |
-| Escape | Restore an enlarged preview, then close the overview |
+| Escape | Restore an enlarged preview; press again to close the overview |
 | Letters, numbers, and punctuation | Filter by title or application |
 | Backspace | Remove a filter character |
 | Ctrl+Backspace | Remove a filter word |

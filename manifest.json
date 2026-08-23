@@ -3,7 +3,7 @@
   "id": "expose.window-overview",
   "name": "Exposé",
   "version": "1.0.0",
-  "author": "kristofferR",
+  "author": "Harel Malka and kristofferR",
   "license": "MIT",
   "description": "A fast, Exposé-style, theme-aware overview of every open window and workspace.",
   "icon": "assets/icon.svg",

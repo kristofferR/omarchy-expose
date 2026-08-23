@@ -72,6 +72,7 @@ Item {
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
+    property var pendingAspectRatioToplevels: []
     readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
@@ -190,6 +191,8 @@ Item {
     }
 
     function openSettings() {
+        if (!root.surfaceMounted)
+            root.open("{}");
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         root.settingsOpen = true;
@@ -314,6 +317,7 @@ Item {
             if (root.allToplevels[index])
                 next.push(root.allToplevels[index]);
         root.sessionToplevels = next;
+        root.pendingAspectRatioToplevels = [];
         root.captureSessionAspectRatios();
         root.modelRevision++;
     }
@@ -328,6 +332,12 @@ Item {
 
         var next = [];
         var nextRatios = [];
+        var pendingRatios = [];
+        for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
+            var pendingTop = root.pendingAspectRatioToplevels[pendingIndex];
+            if (current.indexOf(pendingTop) !== -1)
+                pendingRatios.push(pendingTop);
+        }
         for (var oldIndex = 0; oldIndex < root.sessionToplevels.length; oldIndex++) {
             var existing = root.sessionToplevels[oldIndex];
             if (current.indexOf(existing) === -1)
@@ -341,6 +351,7 @@ Item {
                 continue;
             next.push(candidate);
             nextRatios.push(root.liveAspectRatioFor(candidate));
+            pendingRatios.push(candidate);
         }
 
         var changed = next.length !== root.sessionToplevels.length;
@@ -350,6 +361,7 @@ Item {
             return false;
         root.sessionToplevels = next;
         root.sessionAspectRatios = nextRatios;
+        root.pendingAspectRatioToplevels = pendingRatios;
         root.modelRevision++;
         return true;
     }
@@ -403,7 +415,8 @@ Item {
     }
 
     function finishClientSnapshot(exitCode, exitStatus) {
-        if (exitCode === 0 && exitStatus === 0 && !root.clientSnapshotRejected) {
+        var snapshotAccepted = exitCode === 0 && exitStatus === 0 && !root.clientSnapshotRejected;
+        if (snapshotAccepted) {
             var snapshot = root.pendingClients.slice();
             var comparableSnapshot = snapshot.slice();
             var comparablePrevious = root.clients.slice();
@@ -411,6 +424,17 @@ Item {
             comparablePrevious.sort(function (a, b) { return a.address.localeCompare(b.address); });
             if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
                 root.clients = snapshot;
+            }
+            if (root.pendingAspectRatioToplevels.length > 0) {
+                var updatedRatios = root.sessionAspectRatios.slice();
+                for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
+                    var sessionIndex = root.sessionToplevels.indexOf(root.pendingAspectRatioToplevels[pendingIndex]);
+                    if (sessionIndex >= 0)
+                        updatedRatios[sessionIndex] = root.liveAspectRatioFor(root.pendingAspectRatioToplevels[pendingIndex]);
+                }
+                root.pendingAspectRatioToplevels = [];
+                root.sessionAspectRatios = updatedRatios;
+                root.modelRevision++;
             }
         }
         root.pendingClients = [];
@@ -596,7 +620,7 @@ Item {
         return result;
     }
 
-    function computeWindowLayout(width, height, gap, padding, footerHeight) {
+    function computeWindowLayout(width, height, gap, padding, footerHeight, viewportRatioHint) {
         var count = root.filteredToplevels.length;
         if (!count || width <= 0 || height <= 0)
             return [];
@@ -633,7 +657,8 @@ Item {
 
         var best = null;
         var bestScale = -1;
-        var maxRows = Math.min(count, 4);
+        var minimumCardHeight = footerHeight + padding * 2 + footerSpacing + 1;
+        var maxRows = Math.max(1, Math.min(count, Math.floor((availableHeight + gap) / (minimumCardHeight + gap))));
         var totalNaturalWidth = 0;
         var totalNaturalHeight = 0;
         for (var naturalIndex = 0; naturalIndex < entries.length; naturalIndex++) {
@@ -641,7 +666,9 @@ Item {
             totalNaturalHeight += Math.sqrt(entries[naturalIndex].weight / entries[naturalIndex].ratio);
         }
         var averageNaturalHeight = totalNaturalHeight / entries.length;
-        var viewportRatio = availableWidth / availableHeight;
+        var viewportRatio = Number(viewportRatioHint);
+        if (!isFinite(viewportRatio) || viewportRatio <= 0)
+            viewportRatio = availableWidth / availableHeight;
         var balancedRows = Math.round(Math.sqrt(totalNaturalWidth / Math.max(0.01, viewportRatio * averageNaturalHeight)));
         var minimumRows = Math.max(1, Math.min(maxRows, balancedRows));
         for (var rowCount = minimumRows; rowCount <= maxRows; rowCount++) {
@@ -802,7 +829,8 @@ Item {
                 root.modelRevision++;
             if (root.selectedIndex >= root.filteredToplevels.length)
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length || root.previewExitIndex >= 0)
+            if ((membershipChanged && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+                    || root.previewIndex >= root.filteredToplevels.length)
                 root.clearPreview();
             root.refreshClients();
         }
@@ -1355,7 +1383,10 @@ Item {
                         Layout.fillHeight: true
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
-                            return root.computeWindowLayout(width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight);
+                            var screenRatio = overviewWindow.screen && overviewWindow.screen.height > 0
+                                ? overviewWindow.screen.width / overviewWindow.screen.height
+                                : 0;
+                            return root.computeWindowLayout(width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
                         }
 
                         Repeater {
