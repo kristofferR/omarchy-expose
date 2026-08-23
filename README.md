@@ -1,16 +1,16 @@
 # Exposé
 
-Exposé brings a macOS-style window overview to Omarchy, with live previews for every Hyprland workspace.
+Improved macOS Exposé for Hyprland, with Quick Look and search.
 
 ![Exposé demo](assets/demo.gif)
 
-## Beyond Mission Control
+## Improvements over macOS Exposé
 
-Apple's [Mission Control](https://support.apple.com/guide/mac-help/view-open-windows-spaces-mission-control-mh35798/mac) spreads windows from the active desktop into one layer and keeps other Spaces in a strip. Exposé keeps that familiar overview, then removes the desktop boundary:
+macOS Exposé, now called [Mission Control](https://support.apple.com/guide/mac-help/view-open-windows-spaces-mission-control-mh35798/mac), spreads windows from the active desktop into one layer and keeps other Spaces in a strip. This version removes the desktop boundary:
 
 - Windows from every workspace appear together, with their workspace names attached.
 - The freeform layout preserves window proportions and uses the available screen instead of forcing a grid.
-- Start typing to filter by application or title.
+- Start typing to search by application or title.
 - Quick Look enlarges a window in place or at the center without leaving the overview. Hold Shift for slow motion.
 - The layout stays put while windows change title or workspace, making it easier to build spatial memory.
 - Blur, dimming, labels, preview placement, hot corner, and pointer movement are all configurable.
@@ -67,10 +67,10 @@ Exposé adds no packages, services, hooks, or files outside its plugin directory
 | Shift+Space | Enlarge or restore the preview in exaggerated slow motion |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close the overview |
-| Letters, numbers, and punctuation | Filter by title or application |
-| Backspace | Remove a filter character |
-| Ctrl+Backspace | Remove a filter word |
-| Ctrl+U | Clear the filter |
+| Letters, numbers, and punctuation | Search by title or application |
+| Backspace | Remove a search character |
+| Ctrl+Backspace | Remove a search word |
+| Ctrl+U | Clear the search |
 
 Mouse users can click a card to activate it.
 
