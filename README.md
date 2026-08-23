@@ -1,15 +1,15 @@
-# Exposé
+# Exposé for Omarchy
 
-macOS-style Exposé for Hyprland: one key shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to jump.
+macOS-style Exposé for Omarchy: one key or a hot corner shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to jump.
 
 ![Exposé demo](assets/demo.gif)
 
 ## Highlights
 
-- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The blurred desktop behind the grid stays live too, rendered by Hyprland itself.
+- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
-- **Native.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
+- **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
 
 Everything is tunable from the built-in Settings panel and over IPC, and changes apply instantly.
@@ -19,7 +19,7 @@ Everything is tunable from the built-in Settings panel and over IPC, and changes
 - Omarchy Quattro with the native shell plugin system
 - `jq`
 
-Everything else (Quickshell with `ToplevelManager`/`ScreencopyView`, Hyprland with toplevel-export screencopy, Bash, coreutils) ships with Omarchy.
+The underlying Quickshell, Hyprland, Bash, and coreutils support ships with Omarchy, so no separate compositor setup is needed.
 
 ## Install
 
