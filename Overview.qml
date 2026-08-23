@@ -28,6 +28,52 @@ Item {
         var style = String((root.pluginEntry && root.pluginEntry.windowFooterStyle) || "floating");
         return root.windowFooterStyles.indexOf(style) !== -1 ? style : "floating";
     }
+    readonly property var animationStyles: ["original", "fade", "zoom", "slide"]
+    readonly property string animationStyle: {
+        var style = String((root.pluginEntry && root.pluginEntry.animationStyle) || "original");
+        return root.animationStyles.indexOf(style) !== -1 ? style : "original";
+    }
+    readonly property var defaultAnimationDurations: ({ original: 190, fade: 400, zoom: 320, slide: 320 })
+    readonly property var animationTimings: {
+        var configuredTimings = root.pluginEntry && root.pluginEntry.animationTimings
+            && typeof root.pluginEntry.animationTimings === "object"
+            ? root.pluginEntry.animationTimings
+            : null;
+        var configuredDurations = root.pluginEntry && root.pluginEntry.animationDurations
+            && typeof root.pluginEntry.animationDurations === "object"
+            ? root.pluginEntry.animationDurations
+            : null;
+        var configured = configuredTimings || configuredDurations || {};
+        var legacyRaw = root.pluginEntry ? root.pluginEntry.animationDuration : undefined;
+        var legacy = legacyRaw === null || legacyRaw === undefined ? NaN : Number(legacyRaw);
+        function timingFor(style) {
+            var raw = configured[style];
+            var isObject = raw !== null && raw !== undefined && typeof raw === "object";
+            var scalar = raw === null || raw === undefined ? NaN : Number(raw);
+            var separate = isObject && raw.separate === true;
+            var inValue = isObject ? Number(raw["in"]) : scalar;
+            var outValue = isObject ? Number(raw["out"]) : scalar;
+            if (!isFinite(inValue) && isFinite(legacy))
+                inValue = legacy;
+            if (!isFinite(outValue) && isFinite(legacy))
+                outValue = legacy;
+            if (!isFinite(inValue))
+                inValue = root.defaultAnimationDurations[style];
+            if (!isFinite(outValue))
+                outValue = inValue;
+            return {
+                "in": root.clampAnimationDuration(inValue),
+                "out": root.clampAnimationDuration(outValue),
+                separate: separate
+            };
+        }
+        return {
+            original: timingFor("original"),
+            fade: timingFor("fade"),
+            zoom: timingFor("zoom"),
+            slide: timingFor("slide")
+        };
+    }
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
     readonly property int backgroundBlur: {
         var raw = root.pluginEntry ? root.pluginEntry.backgroundBlur : undefined;
@@ -70,6 +116,9 @@ Item {
     property bool settingsOpen: false
     property bool footerHideConfirmationOpen: false
     property bool footerHideAcknowledged: false
+    property string animationDurationPreviewStyle: ""
+    property real animationInDurationPreview: -1
+    property real animationOutDurationPreview: -1
     property real backgroundBlurPreview: -1
     property real backgroundDimPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
@@ -86,6 +135,12 @@ Item {
     property var pendingMonitorStates: []
     property bool clientSnapshotRejected: false
     property bool clientRefreshPending: false
+    property bool openingClientRefreshComplete: false
+    property bool backgroundBlurPrimed: false
+    property bool backgroundBlurFailed: false
+    property bool dismissNotifyShell: false
+    property real motionProgress: 0
+    property real motionTarget: 0
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
@@ -109,53 +164,69 @@ Item {
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
     }
 
+    onMotionProgressChanged: root.scheduleBackgroundBlurUpdate()
+
     onEffectiveBackgroundBlurChanged: {
-        if (!root.opened)
+        if (!root.surfaceMounted)
             return;
-        if (!backgroundBlurSession.running && root.effectiveBackgroundBlur > 0)
+        if (!backgroundBlurSession.running && root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+            root.backgroundBlurPrimed = false;
             backgroundBlurSession.running = true;
-        else if (backgroundBlurSession.running && !backgroundBlurUpdate.running)
-            backgroundBlurUpdate.start();
+        } else {
+            root.scheduleBackgroundBlurUpdate();
+        }
     }
 
     function open(payload) {
-        dismissTimer.stop();
-        dismissTimer.notifyShell = false;
         root.closeSettings();
         root.filterText = "";
         root.workspaceScope = "all";
-        var wasMounted = root.surfaceMounted;
-        if (!wasMounted)
-            root.resetSessionToplevels();
-        root.surfaceMounted = true;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
-        root.hoveredIndex = -1;
-        root.clearPreview();
-        if (wasMounted) {
+        root.dismissNotifyShell = false;
+        if (root.surfaceMounted) {
             root.opened = true;
+            root.animateMotionTo(1);
             root.refreshClients();
             Qt.callLater(root.focusKeyboardWindow);
             return;
         }
+        if (root.openingAfterClientRefresh)
+            return;
+        overviewMotionAnimation.stop();
+        root.motionTarget = 0;
+        root.motionProgress = 0;
+        root.resetSessionToplevels();
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.hoveredIndex = -1;
+        root.clearPreview();
         root.openingAfterClientRefresh = true;
+        root.openingClientRefreshComplete = false;
+        root.backgroundBlurPrimed = false;
+        root.backgroundBlurFailed = false;
         root.refreshClients();
     }
 
     function close() {
-        if (root.surfaceMounted)
-            root.startDismiss(false);
-        else
-            root.opened = false;
+        root.startDismiss(false);
     }
 
     function startDismiss(notifyShell) {
         root.openingAfterClientRefresh = false;
+        root.openingClientRefreshComplete = false;
         root.closeSettings();
         root.hoveredIndex = -1;
         root.clearPreview();
         root.opened = false;
-        dismissTimer.notifyShell = notifyShell;
-        dismissTimer.restart();
+        root.dismissNotifyShell = root.dismissNotifyShell || notifyShell;
+        if (root.surfaceMounted) {
+            root.animateMotionTo(0);
+            return;
+        }
+        overviewMotionAnimation.stop();
+        root.motionTarget = 0;
+        root.motionProgress = 0;
+        root.backgroundBlurPrimed = false;
+        backgroundBlurSession.running = false;
+        root.finishDismiss();
     }
 
     function dismiss() {
@@ -164,6 +235,92 @@ Item {
 
     function toggle() {
         (root.opened || root.openingAfterClientRefresh) ? root.dismiss() : root.open("{}");
+    }
+
+    function requestedBackgroundBlur() {
+        if (root.effectiveBackgroundBlur <= 0 || root.motionProgress <= 0)
+            return 0;
+        return Math.max(1, Math.round(root.effectiveBackgroundBlur * root.motionProgress));
+    }
+
+    function scheduleBackgroundBlurUpdate() {
+        if (backgroundBlurSession.running && !backgroundBlurUpdate.running)
+            backgroundBlurUpdate.start();
+    }
+
+    function prepareOpenSurface() {
+        if (!root.openingAfterClientRefresh || !root.openingClientRefreshComplete)
+            return;
+        if (root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+            if (!backgroundBlurSession.running) {
+                root.backgroundBlurPrimed = false;
+                backgroundBlurSession.running = true;
+                return;
+            }
+            if (!root.backgroundBlurPrimed)
+                return;
+        }
+        root.surfaceMounted = true;
+        Qt.callLater(function () {
+            if (!root.surfaceMounted || !root.openingAfterClientRefresh)
+                return;
+            root.openingAfterClientRefresh = false;
+            root.openingClientRefreshComplete = false;
+            root.opened = true;
+            root.animateMotionTo(1);
+            root.focusKeyboardWindow();
+        });
+    }
+
+    function animateMotionTo(target) {
+        var next = target >= 0.5 ? 1 : 0;
+        overviewMotionAnimation.stop();
+        root.motionTarget = next;
+        var distance = Math.abs(next - root.motionProgress);
+        if (distance < 0.001) {
+            root.motionProgress = next;
+            root.completeMotion();
+            return;
+        }
+        overviewMotionAnimation.from = root.motionProgress;
+        overviewMotionAnimation.to = next;
+        var configuredDuration = next > root.motionProgress
+            ? root.animationInDurationFor(root.animationStyle)
+            : root.animationOutDurationFor(root.animationStyle);
+        overviewMotionAnimation.duration = Math.max(1, Math.round(configuredDuration * distance));
+        overviewMotionAnimation.easing.type = root.animationStyle === "original"
+            ? Easing.OutQuart
+            : (next > root.motionProgress ? Easing.OutCubic : Easing.InCubic);
+        overviewMotionAnimation.start();
+    }
+
+    function previewAnimation() {
+        if (!root.surfaceMounted)
+            return;
+        overviewMotionAnimation.stop();
+        root.motionTarget = 1;
+        root.motionProgress = 0;
+        root.animateMotionTo(1);
+    }
+
+    function completeMotion() {
+        root.motionProgress = root.motionTarget;
+        root.scheduleBackgroundBlurUpdate();
+        if (root.motionTarget > 0) {
+            Qt.callLater(root.focusKeyboardWindow);
+            return;
+        }
+        root.surfaceMounted = false;
+        root.backgroundBlurPrimed = false;
+        backgroundBlurSession.running = false;
+        root.finishDismiss();
+    }
+
+    function finishDismiss() {
+        var notifyShell = root.dismissNotifyShell;
+        root.dismissNotifyShell = false;
+        if (notifyShell && root.shell && typeof root.shell.hide === "function")
+            root.shell.hide(root.pluginId);
     }
 
     function updatePluginSetting(name, value) {
@@ -190,6 +347,93 @@ Item {
             root.updatePluginSetting("windowFooterStyle", style);
     }
 
+    function setAnimationStyle(value) {
+        var style = root.animationStyles.indexOf(value) !== -1 ? value : "original";
+        if (style !== root.animationStyle)
+            root.updatePluginSetting("animationStyle", style);
+        return style;
+    }
+
+    function clampAnimationDuration(value) {
+        var numeric = Number(value);
+        if (!isFinite(numeric))
+            return 320;
+        var clamped = Math.max(100, Math.min(800, numeric));
+        return Math.round(clamped / 10) * 10;
+    }
+
+    function animationTimingFor(style) {
+        var mode = root.animationStyles.indexOf(style) !== -1 ? style : "original";
+        return root.animationTimings[mode];
+    }
+
+    function animationInDurationFor(style) {
+        if (root.animationInDurationPreview >= 0 && root.animationDurationPreviewStyle === style)
+            return root.animationInDurationPreview;
+        return Number(root.animationTimingFor(style)["in"]);
+    }
+
+    function animationOutDurationFor(style) {
+        if (root.animationOutDurationPreview >= 0 && root.animationDurationPreviewStyle === style)
+            return root.animationOutDurationPreview;
+        return Number(root.animationTimingFor(style)["out"]);
+    }
+
+    function setAnimationTiming(style, inValue, outValue, separate) {
+        var mode = root.animationStyles.indexOf(style) !== -1 ? style : "original";
+        var nextIn = root.clampAnimationDuration(inValue);
+        var nextOut = root.clampAnimationDuration(outValue);
+        var nextSeparate = separate === true;
+        var current = root.animationTimingFor(mode);
+        if (nextIn !== Number(current["in"])
+                || nextOut !== Number(current["out"])
+                || nextSeparate !== (current.separate === true)) {
+            var timings = {};
+            for (var index = 0; index < root.animationStyles.length; index++) {
+                var animationMode = root.animationStyles[index];
+                var timing = root.animationTimingFor(animationMode);
+                timings[animationMode] = animationMode === mode
+                    ? {"in": nextIn, "out": nextOut, separate: nextSeparate}
+                    : {"in": Number(timing["in"]), "out": Number(timing["out"]), separate: timing.separate === true};
+            }
+            root.updatePluginSetting("animationTimings", timings);
+        }
+        return {"in": nextIn, "out": nextOut, separate: nextSeparate};
+    }
+
+    function setAnimationDuration(style, value) {
+        var next = root.clampAnimationDuration(value);
+        root.setAnimationTiming(style, next, next, false);
+        return next;
+    }
+
+    function setAnimationDurationIn(style, value) {
+        var timing = root.animationTimingFor(style);
+        var next = root.clampAnimationDuration(value);
+        root.setAnimationTiming(style, next, timing["out"], true);
+        return next;
+    }
+
+    function setAnimationDurationOut(style, value) {
+        var timing = root.animationTimingFor(style);
+        var next = root.clampAnimationDuration(value);
+        root.setAnimationTiming(style, timing["in"], next, true);
+        return next;
+    }
+
+    function setAnimationTimingSeparate(style, separate) {
+        var timing = root.animationTimingFor(style);
+        return separate
+            ? root.setAnimationTiming(style, timing["in"], timing["out"], true)
+            : root.setAnimationTiming(style, timing["in"], timing["in"], false);
+    }
+
+    function clearAnimationTimingPreview() {
+        root.animationDurationPreviewStyle = "";
+        root.animationInDurationPreview = -1;
+        root.animationOutDurationPreview = -1;
+    }
+
     function setBackgroundBlur(value) {
         var numeric = Number(value);
         if (!isFinite(numeric))
@@ -214,6 +458,7 @@ Item {
         if (!root.surfaceMounted)
             root.open("{}");
         root.closeFooterHideConfirmation();
+        root.clearAnimationTimingPreview();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         root.settingsOpen = true;
@@ -223,6 +468,7 @@ Item {
         var restoreKeyboardFocus = root.settingsOpen && root.opened;
         root.closeFooterHideConfirmation();
         root.settingsOpen = false;
+        root.clearAnimationTimingPreview();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         if (restoreKeyboardFocus)
@@ -230,11 +476,6 @@ Item {
                 if (root.opened)
                     root.focusKeyboardWindow();
             });
-    }
-
-    onOpenedChanged: {
-        if (root.opened && root.effectiveBackgroundBlur > 0 && !backgroundBlurSession.running)
-            backgroundBlurSession.running = true;
     }
 
     function clearPreview() {
@@ -617,14 +858,9 @@ Item {
         root.pendingActiveWorkspaceName = "";
         root.pendingMonitorStates = [];
         if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
-            root.openingAfterClientRefresh = false;
             root.captureSessionAspectRatios();
-            Qt.callLater(function () {
-                if (!root.surfaceMounted)
-                    return;
-                root.opened = true;
-                root.focusKeyboardWindow();
-            });
+            root.openingClientRefreshComplete = true;
+            root.prepareOpenSurface();
         }
         if (root.clientRefreshPending)
             Qt.callLater(root.refreshClients);
@@ -1151,25 +1387,19 @@ Item {
         }
     }
 
-    Timer {
-        id: dismissTimer
-        property bool notifyShell: false
-        interval: 190
-        onTriggered: {
-            root.surfaceMounted = false;
-            backgroundBlurSession.running = false;
-            if (notifyShell && root.shell && typeof root.shell.hide === "function")
-                root.shell.hide(root.pluginId);
-            notifyShell = false;
-        }
+    NumberAnimation {
+        id: overviewMotionAnimation
+        target: root
+        property: "motionProgress"
+        onFinished: root.completeMotion()
     }
 
     Timer {
         id: backgroundBlurUpdate
-        interval: 80
+        interval: 16
         onTriggered: {
             if (backgroundBlurSession.running)
-                backgroundBlurSession.write(String(Math.round(root.effectiveBackgroundBlur)) + "\n");
+                backgroundBlurSession.write(String(root.requestedBackgroundBlur()) + "\n");
         }
     }
 
@@ -1212,8 +1442,33 @@ Item {
         command: [root.pluginDir + "/background-blur-session"]
         stdinEnabled: true
         onStarted: {
-            if (!backgroundBlurUpdate.running)
-                backgroundBlurUpdate.start();
+            var initialBlur = root.openingAfterClientRefresh && root.effectiveBackgroundBlur > 0
+                ? 1
+                : root.requestedBackgroundBlur();
+            backgroundBlurSession.write(String(initialBlur) + "\n");
+        }
+        stdout: SplitParser {
+            onRead: function (line) {
+                var applied = Number(line);
+                if (!isFinite(applied))
+                    return;
+                if (applied < 0) {
+                    root.backgroundBlurFailed = true;
+                    root.prepareOpenSurface();
+                    return;
+                }
+                if (root.openingAfterClientRefresh) {
+                    root.backgroundBlurPrimed = true;
+                    root.prepareOpenSurface();
+                }
+            }
+        }
+        onExited: function (exitCode, exitStatus) {
+            root.backgroundBlurPrimed = false;
+            if (root.openingAfterClientRefresh) {
+                root.backgroundBlurFailed = true;
+                root.prepareOpenSurface();
+            }
         }
     }
 
@@ -1245,6 +1500,26 @@ Item {
                 return "expected floating, integrated, overlay, or centered";
             root.setWindowFooterStyle(style);
             return style;
+        }
+        function animationStyle(style: string): string {
+            if (root.animationStyles.indexOf(style) === -1)
+                return "expected original, fade, zoom, or slide";
+            return root.setAnimationStyle(style);
+        }
+        function animationDuration(style: string, value: real): string {
+            if (root.animationStyles.indexOf(style) === -1)
+                return "expected original, fade, zoom, or slide";
+            return String(root.setAnimationDuration(style, value));
+        }
+        function animationDurationIn(style: string, value: real): string {
+            if (root.animationStyles.indexOf(style) === -1)
+                return "expected original, fade, zoom, or slide";
+            return String(root.setAnimationDurationIn(style, value));
+        }
+        function animationDurationOut(style: string, value: real): string {
+            if (root.animationStyles.indexOf(style) === -1)
+                return "expected original, fade, zoom, or slide";
+            return String(root.setAnimationDurationOut(style, value));
         }
         function backgroundBlur(value: real): string {
             return String(root.setBackgroundBlur(value));
@@ -1306,7 +1581,11 @@ Item {
         function valueAt(position) {
             var availableWidth = Math.max(1, sliderTrackArea.width - sliderHandle.width);
             var normalized = Math.max(0, Math.min(1, (position - sliderHandle.width / 2) / availableWidth));
-            return settingSlider.from + normalized * (settingSlider.to - settingSlider.from);
+            var raw = settingSlider.from + normalized * (settingSlider.to - settingSlider.from);
+            if (settingSlider.stepSize <= 0)
+                return raw;
+            var stepped = settingSlider.from + Math.round((raw - settingSlider.from) / settingSlider.stepSize) * settingSlider.stepSize;
+            return Math.max(settingSlider.from, Math.min(settingSlider.to, stepped));
         }
 
         function commitKeyboardValue(nextValue) {
@@ -1720,7 +1999,11 @@ Item {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
-            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0 ? backgroundBlurRegion : null
+            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0
+                    && root.motionProgress > 0
+                    && !root.backgroundBlurFailed
+                ? backgroundBlurRegion
+                : null
             property alias hotCornerHovered: openHotCorner.containsMouse
             readonly property bool acceptsKeyboard: {
                 var active = ToplevelManager.activeToplevel;
@@ -1745,12 +2028,7 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 color: "black"
-                opacity: root.opened ? root.effectiveBackgroundDim / 100 : 0
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 130
-                    }
-                }
+                opacity: root.motionProgress * root.effectiveBackgroundDim / 100
             }
 
             Item {
@@ -1758,20 +2036,19 @@ Item {
                 anchors.fill: parent
                 focus: overviewWindow.acceptsKeyboard
                 enabled: root.opened
-                opacity: root.opened ? 1 : 0
-                scale: root.opened ? 1 : 0.96
+                opacity: root.motionProgress
+                scale: root.animationStyle === "zoom"
+                    ? 0.82 + 0.18 * root.motionProgress
+                    : (root.animationStyle === "slide"
+                        ? 0.97 + 0.03 * root.motionProgress
+                        : (root.animationStyle === "original"
+                            ? 0.96 + 0.04 * root.motionProgress
+                            : 1))
                 transformOrigin: Item.Center
-                Behavior on opacity {
-                    NumberAnimation {
-                        duration: 190
-                        easing.type: Easing.OutQuart
-                    }
-                }
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 190
-                        easing.type: Easing.OutQuart
-                    }
+                transform: Translate {
+                    x: root.animationStyle === "slide"
+                        ? -overviewWindow.width * 0.11 * (1 - root.motionProgress)
+                        : 0
                 }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
@@ -1913,10 +2190,13 @@ Item {
                                     readonly property var packedRect: overviewArea.windowLayout[index] || Qt.rect(0, 0, 1, 1)
                                     readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, root.windowFooterHeight)
                                     readonly property var layoutRect: previewed ? previewRect : packedRect
-                                    x: layoutRect.x
-                                    y: layoutRect.y
-                                    width: layoutRect.width
-                                    height: layoutRect.height
+                                    readonly property real originalMotionProgress: root.animationStyle === "original" && root.motionTarget > 0
+                                        ? root.motionProgress
+                                        : 1
+                                    x: layoutRect.x * originalMotionProgress
+                                    y: layoutRect.y * originalMotionProgress
+                                    width: layoutRect.width * originalMotionProgress
+                                    height: layoutRect.height * originalMotionProgress
                                     z: previewed ? 11 : (exitingPreview ? 10 : 0)
                                     radius: integratedFooter ? Style.cornerRadius : 0
                                     color: integratedFooter ? Color.menu.background : "transparent"
@@ -1924,30 +2204,35 @@ Item {
                                     border.width: integratedFooter ? outlineWidth : 0
                                     opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
                                     Behavior on x {
+                                        enabled: root.motionProgress >= 0.999
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
                                             easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on y {
+                                        enabled: root.motionProgress >= 0.999
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
                                             easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on width {
+                                        enabled: root.motionProgress >= 0.999
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
                                             easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on height {
+                                        enabled: root.motionProgress >= 0.999
                                         NumberAnimation {
                                             duration: root.previewAnimationDuration
                                             easing.type: root.previewAnimationEasing
                                         }
                                     }
                                     Behavior on opacity {
+                                        enabled: root.motionProgress >= 0.999
                                         NumberAnimation {
                                             duration: root.previewFadeDuration
                                         }
@@ -1955,7 +2240,7 @@ Item {
 
                                     MouseArea {
                                         anchors.fill: parent
-                                        enabled: root.previewIndex < 0 || card.previewed
+                                        enabled: !root.settingsOpen && (root.previewIndex < 0 || card.previewed)
                                         hoverEnabled: true
                                         onEnabledChanged: {
                                             if (!enabled) {
@@ -2325,6 +2610,7 @@ Item {
                             opacity: settingsControl.hovered ? 1 : 0.7
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.bodySmall
+                            font.bold: true
 
                             MouseArea {
                                 anchors.fill: parent
@@ -2361,7 +2647,7 @@ Item {
                         readonly property bool narrow: width < Style.space(760)
                         anchors.centerIn: parent
                         width: Math.min(Style.space(920), parent.width - Style.space(80))
-                        height: Math.min(Style.space(narrow ? 800 : 500), parent.height - Style.space(80))
+                        height: Math.min(Style.space(narrow ? 1000 : 640), parent.height - Style.space(80))
                         radius: Style.cornerRadius
                         color: Color.menu.background
                         border.color: Color.menu.border
@@ -2419,6 +2705,164 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     spacing: Style.spacing.lg
+
+                                    Text {
+                                        text: "Animation"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.55
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.capitalization: Font.AllUppercase
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Style.spacing.lg
+
+                                        SettingChoices {
+                                            value: root.animationStyle
+                                            options: [
+                                                { label: "Original", value: "original" },
+                                                { label: "Fade", value: "fade" },
+                                                { label: "Zoom", value: "zoom" },
+                                                { label: "Slide", value: "slide" }
+                                            ]
+                                            onChosen: function (value) {
+                                                root.clearAnimationTimingPreview();
+                                                root.setAnimationStyle(value);
+                                            }
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        DialogButton {
+                                            label: "Animate"
+                                            onClicked: root.previewAnimation()
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: !root.animationTimingFor(root.animationStyle).separate
+
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Speed"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+
+                                        SettingSlider {
+                                            Layout.fillWidth: true
+                                            from: 100
+                                            to: 800
+                                            stepSize: 10
+                                            value: root.animationInDurationFor(root.animationStyle)
+                                            suffix: " ms"
+                                            onEdited: function (value) {
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationInDurationPreview = value;
+                                                root.animationOutDurationPreview = value;
+                                            }
+                                            onCommitted: function (value) {
+                                                var next = root.setAnimationDuration(root.animationStyle, value);
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationInDurationPreview = next;
+                                                root.animationOutDurationPreview = next;
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: root.animationTimingFor(root.animationStyle).separate
+
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "In"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+
+                                        SettingSlider {
+                                            Layout.fillWidth: true
+                                            from: 100
+                                            to: 800
+                                            stepSize: 10
+                                            value: root.animationInDurationFor(root.animationStyle)
+                                            suffix: " ms"
+                                            onEdited: function (value) {
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationInDurationPreview = value;
+                                            }
+                                            onCommitted: function (value) {
+                                                var next = root.setAnimationDurationIn(root.animationStyle, value);
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationInDurationPreview = next;
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        visible: root.animationTimingFor(root.animationStyle).separate
+
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Out"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+
+                                        SettingSlider {
+                                            Layout.fillWidth: true
+                                            from: 100
+                                            to: 800
+                                            stepSize: 10
+                                            value: root.animationOutDurationFor(root.animationStyle)
+                                            suffix: " ms"
+                                            onEdited: function (value) {
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationOutDurationPreview = value;
+                                            }
+                                            onCommitted: function (value) {
+                                                var next = root.setAnimationDurationOut(root.animationStyle, value);
+                                                root.animationDurationPreviewStyle = root.animationStyle;
+                                                root.animationOutDurationPreview = next;
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+
+                                        Text {
+                                            text: "Same speed in and out"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        SettingToggle {
+                                            checked: !root.animationTimingFor(root.animationStyle).separate
+                                            onToggled: function (checked) {
+                                                root.clearAnimationTimingPreview();
+                                                root.setAnimationTimingSeparate(root.animationStyle, !checked);
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.preferredHeight: Style.spacing.md }
 
                                     Text {
                                         text: "Background"
@@ -2654,21 +3098,13 @@ Item {
                                         Item { Layout.fillWidth: true }
                                         SettingToggle {
                                             id: bottomTextToggle
-                                            visible: root.showFooter
-                                            checked: true
+                                            checked: root.showFooter
                                             onToggled: function (checked) {
-                                                if (!checked)
+                                                if (checked)
+                                                    root.updatePluginSetting("showFooter", true);
+                                                else
                                                     root.requestFooterHide();
                                             }
-                                        }
-                                        Text {
-                                            visible: !root.showFooter
-                                            text: "Hidden in config"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            opacity: 0.45
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.caption
                                         }
                                     }
 
@@ -2740,7 +3176,7 @@ Item {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "This also hides the Settings link. You will not be able to restore it from Exposé."
+                                    text: "This also hides the Settings link. You can turn it back on while this panel remains open."
                                     textFormat: Text.PlainText
                                     wrapMode: Text.WordWrap
                                     color: Color.menu.text
@@ -2759,7 +3195,7 @@ Item {
                                         id: recoveryText
                                         anchors.fill: parent
                                         anchors.margins: Style.space(12)
-                                        text: "To restore it, edit ~/.config/omarchy/shell.json and set showFooter to true in the expose.window-overview plugin entry."
+                                        text: "After closing Settings, restore it in ~/.config/omarchy/shell.json by setting showFooter to true in the expose.window-overview plugin entry."
                                         textFormat: Text.PlainText
                                         wrapMode: Text.WordWrap
                                         color: Color.menu.text
@@ -2813,7 +3249,7 @@ Item {
                                         Text {
                                             id: acknowledgementText
                                             Layout.fillWidth: true
-                                            text: "I understand that I will need to edit the config file to restore it."
+                                            text: "I understand that closing Settings while it is hidden requires editing the config."
                                             textFormat: Text.PlainText
                                             wrapMode: Text.WordWrap
                                             color: Color.menu.text
