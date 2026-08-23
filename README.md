@@ -32,10 +32,10 @@ omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 That's it: the top-left hot corner works right away. Optionally, bind a key in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
-o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
+o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle", { dont_inhibit = true })
 ```
 
-Any unused chord works. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
+Any unused chord works. Keep `dont_inhibit` enabled so the same chord can close Exposé while its modal shortcut inhibitor is active. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
 
 ### Update
 
