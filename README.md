@@ -62,7 +62,6 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Shift+Space | Quick Look in slow motion |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
-| Backspace / Ctrl+Backspace / Ctrl+U | Delete a search character / word / everything |
 
 Clicking a card activates it. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
