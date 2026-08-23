@@ -825,12 +825,15 @@ Item {
         target: ToplevelManager.toplevels
         function onValuesChanged() {
             var membershipChanged = root.syncSessionToplevels();
-            if (!membershipChanged && root.filterText.length > 0)
+            var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
+            if ((membershipChanged || filteredMembershipMayChange)
+                    && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+                root.clearPreview();
+            if (filteredMembershipMayChange)
                 root.modelRevision++;
             if (root.selectedIndex >= root.filteredToplevels.length)
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if ((membershipChanged && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
-                    || root.previewIndex >= root.filteredToplevels.length)
+            if (root.previewIndex >= root.filteredToplevels.length)
                 root.clearPreview();
             root.refreshClients();
         }
