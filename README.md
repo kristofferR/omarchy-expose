@@ -123,10 +123,6 @@ Exposé runs unsandboxed inside Omarchy Shell with the current user's permission
 - Settings writes update only the plugin's entry in `~/.config/omarchy/shell.json`.
 - It does not use privilege escalation or the network, install packages, create services, or run remote builds.
 
-## Preview assets
-
-`preview.png` and `assets/demo.gif` were captured for this project. The Retro 82 and Last Horizon theme artwork is distributed with Omarchy under the MIT license. Other plugin assets use this repository's MIT license.
-
 ## Troubleshooting
 
 - **No thumbnails:** verify that Hyprland exposes toplevel-export support and that no screen-capture policy blocks Quickshell. Cards remain usable with fallback labels.
