@@ -74,7 +74,12 @@ while IFS= read -r candidate; do
   [[ -n $requested_size ]] || continue
   if (( requested_size < 1 )); then
     retry_saved_blur || echo "expose: could not restore the previous Hyprland blur settings" >&2
+    printf '0\n'
     continue
   fi
-  run_hyprctl eval "hl.config({ decoration = { blur = { enabled = true, size = ${requested_size} } } })" >/dev/null || true
+  if run_hyprctl eval "hl.config({ decoration = { blur = { enabled = true, size = ${requested_size} } } })" >/dev/null; then
+    printf '%s\n' "$requested_size"
+  else
+    printf '%s\n' -1
+  fi
 done

@@ -75,6 +75,8 @@ With **Same overview**, every display shows the same grid. With **Per monitor**,
 
 Open **Settings** from the footer while the overview is open. Changes apply immediately:
 
+- Opening animation: Original (default), Fade, Zoom, or Slide
+- Animation speed saved per mode, linked for in/out by default or expandable to separate timings
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
@@ -88,6 +90,10 @@ Every reversible setting is also scriptable:
 ```sh
 omarchy-shell expose toggle                      # also: open, close
 omarchy-shell expose settings toggle             # also: open, close
+omarchy-shell expose animationStyle original     # original | fade | zoom | slide
+omarchy-shell expose animationDuration original 190    # linked in/out, 100-800 ms
+omarchy-shell expose animationDurationIn original 190  # separate opening speed
+omarchy-shell expose animationDurationOut original 190 # separate closing speed
 omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
@@ -98,7 +104,7 @@ omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom
 omarchy-shell expose moveCursorToWindow on       # on | off
 ```
 
-After hiding the bottom text, restore it by editing `~/.config/omarchy/shell.json` and setting `"showFooter": true` in the `expose.window-overview` plugin entry.
+After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, edit `~/.config/omarchy/shell.json` and set `"showFooter": true` in the `expose.window-overview` plugin entry.
 
 ## Security and system changes
 
