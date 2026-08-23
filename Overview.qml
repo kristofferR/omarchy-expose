@@ -2707,6 +2707,119 @@ Item {
                                     spacing: Style.spacing.lg
 
                                     Text {
+                                        text: "Background"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.55
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.capitalization: Font.AllUppercase
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Blur"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        SettingSlider {
+                                            id: backgroundBlurSlider
+                                            Layout.fillWidth: true
+                                            from: 0
+                                            to: 20
+                                            value: root.effectiveBackgroundBlur
+                                            suffix: " px"
+                                            onEdited: function (value) { root.backgroundBlurPreview = value; }
+                                            onCommitted: function (value) {
+                                                root.backgroundBlurPreview = Math.round(value);
+                                                root.setBackgroundBlur(value);
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Dim"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        SettingSlider {
+                                            Layout.fillWidth: true
+                                            from: 0
+                                            to: 90
+                                            value: root.effectiveBackgroundDim
+                                            suffix: "%"
+                                            onEdited: function (value) { root.backgroundDimPreview = value; }
+                                            onCommitted: function (value) {
+                                                root.backgroundDimPreview = Math.round(value);
+                                                root.setBackgroundDim(value);
+                                            }
+                                        }
+                                    }
+
+                                    Item { Layout.preferredHeight: Style.spacing.md }
+
+                                    Text {
+                                        text: "Hot corner"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.55
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.capitalization: Font.AllUppercase
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Enabled"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        SettingToggle {
+                                            checked: root.hotCornerEnabled
+                                            onToggled: function (checked) { root.setHotCornerEnabled(checked); }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Position"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        SettingChoices {
+                                            value: root.hotCornerPosition
+                                            options: [
+                                                { label: "TL", value: "top-left" },
+                                                { label: "TR", value: "top-right" },
+                                                { label: "BL", value: "bottom-left" },
+                                                { label: "BR", value: "bottom-right" }
+                                            ]
+                                            onChosen: function (value) { root.setHotCornerPosition(value); }
+                                        }
+                                    }
+
+                                    Item { Layout.fillHeight: true }
+
+                                    Text {
                                         text: "Animation"
                                         textFormat: Text.PlainText
                                         color: Color.menu.text
@@ -2861,121 +2974,6 @@ Item {
                                             }
                                         }
                                     }
-
-                                    Item { Layout.preferredHeight: Style.spacing.md }
-
-                                    Text {
-                                        text: "Background"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Blur"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        SettingSlider {
-                                            id: backgroundBlurSlider
-                                            Layout.fillWidth: true
-                                            from: 0
-                                            to: 20
-                                            value: root.effectiveBackgroundBlur
-                                            suffix: " px"
-                                            onEdited: function (value) { root.backgroundBlurPreview = value; }
-                                            onCommitted: function (value) {
-                                                root.backgroundBlurPreview = Math.round(value);
-                                                root.setBackgroundBlur(value);
-                                            }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Dim"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        SettingSlider {
-                                            Layout.fillWidth: true
-                                            from: 0
-                                            to: 90
-                                            value: root.effectiveBackgroundDim
-                                            suffix: "%"
-                                            onEdited: function (value) { root.backgroundDimPreview = value; }
-                                            onCommitted: function (value) {
-                                                root.backgroundDimPreview = Math.round(value);
-                                                root.setBackgroundDim(value);
-                                            }
-                                        }
-                                    }
-
-                                    Item { Layout.preferredHeight: Style.spacing.md }
-
-                                    Text {
-                                        text: "Hot corner"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Enabled"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingToggle {
-                                            checked: root.hotCornerEnabled
-                                            onToggled: function (checked) { root.setHotCornerEnabled(checked); }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Position"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingChoices {
-                                            value: root.hotCornerPosition
-                                            options: [
-                                                { label: "TL", value: "top-left" },
-                                                { label: "TR", value: "top-right" },
-                                                { label: "BL", value: "bottom-left" },
-                                                { label: "BR", value: "bottom-right" }
-                                            ]
-                                            onChosen: function (value) { root.setHotCornerPosition(value); }
-                                        }
-                                    }
-
-                                    Item { Layout.fillHeight: true }
                                 }
 
                                 ColumnLayout {
