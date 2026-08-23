@@ -1,0 +1,80 @@
+#!/bin/bash
+set -euo pipefail
+
+command -v jq >/dev/null || { echo "expose: jq is required" >&2; exit 1; }
+command -v timeout >/dev/null || { echo "expose: GNU timeout is required" >&2; exit 1; }
+
+run_hyprctl() {
+  timeout --signal=TERM --kill-after=1 2 hyprctl "$@"
+}
+
+read_option() {
+  local option="$1"
+  local field="$2"
+  run_hyprctl -j getoption "$option" |
+    jq -er --arg field "$field" '
+      if has($field) and .[$field] != null
+      then .[$field] | tostring
+      else error("missing " + $field)
+      end'
+}
+
+saved_enabled=$(run_hyprctl -j getoption "decoration:blur:enabled" | jq -er '
+  if has("bool") then .bool
+  elif has("int") then .int != 0
+  else error("missing bool or int value")
+  end | tostring')
+saved_size=$(read_option "decoration:blur:size" "int")
+restored=false
+
+apply_saved_blur() {
+  run_hyprctl eval "hl.config({ decoration = { blur = { enabled = ${saved_enabled}, size = ${saved_size} } } })" >/dev/null 2>&1
+}
+
+retry_saved_blur() {
+  local attempt
+  for attempt in 1 2 3; do
+    if apply_saved_blur; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+restore_blur() {
+  if [[ $restored == true ]]; then
+    return
+  fi
+  if retry_saved_blur; then
+    restored=true
+  else
+    echo "expose: could not restore the previous Hyprland blur settings" >&2
+  fi
+}
+
+trap restore_blur EXIT
+trap 'exit 0' HUP INT TERM
+
+while IFS= read -r candidate; do
+  requested_size=""
+  while true; do
+    if [[ $candidate =~ ^[0-9]+$ ]]; then
+      if [[ $candidate =~ ^0*([0-9]{1,2})$ ]]; then
+        requested_size=$((10#${BASH_REMATCH[1]}))
+      else
+        requested_size=20
+      fi
+      if (( requested_size > 20 )); then
+        requested_size=20
+      fi
+    fi
+    IFS= read -r -t 0.02 candidate || break
+  done
+
+  [[ -n $requested_size ]] || continue
+  if (( requested_size < 1 )); then
+    retry_saved_blur || echo "expose: could not restore the previous Hyprland blur settings" >&2
+    continue
+  fi
+  run_hyprctl eval "hl.config({ decoration = { blur = { enabled = true, size = ${requested_size} } } })" >/dev/null || true
+done
