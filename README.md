@@ -9,6 +9,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
+- **Workspace scope.** Press Tab to switch between every window and windows on the current workspace.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
 
@@ -60,6 +61,7 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Any character | Search by title or application |
 | Space | Quick Look the hovered or selected preview (enlarge or restore) |
 | Shift+Space | Quick Look in slow motion |
+| Tab | Toggle all windows or the current workspace |
 | Shift+Q | Close the selected window |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
