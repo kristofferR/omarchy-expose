@@ -72,10 +72,11 @@ Open **Settings** from the footer while the overview is open. Changes apply imme
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
+- Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off and position (disable the same corner in other hot-corner plugins to avoid overlap)
 - Move cursor to the activated window on/off
 
-Every setting is also scriptable:
+Every reversible setting is also scriptable:
 
 ```sh
 omarchy-shell expose toggle                      # also: open, close
@@ -88,6 +89,8 @@ omarchy-shell expose hotCorner on                # on | off
 omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom-left | bottom-right
 omarchy-shell expose moveCursorToWindow on       # on | off
 ```
+
+After hiding the bottom text, restore it by editing `~/.config/omarchy/shell.json` and setting `"showFooter": true` in the `expose.window-overview` plugin entry.
 
 ## Security and system changes
 

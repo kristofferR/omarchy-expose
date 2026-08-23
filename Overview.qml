@@ -49,6 +49,7 @@ Item {
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
     readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
+    readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -61,6 +62,8 @@ Item {
     property bool previewNavigationSlowMotion: false
     property bool openingAfterClientRefresh: false
     property bool settingsOpen: false
+    property bool footerHideConfirmationOpen: false
+    property bool footerHideAcknowledged: false
     property real backgroundBlurPreview: -1
     property real backgroundDimPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
@@ -196,6 +199,7 @@ Item {
     function openSettings() {
         if (!root.surfaceMounted)
             root.open("{}");
+        root.closeFooterHideConfirmation();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         root.settingsOpen = true;
@@ -203,6 +207,7 @@ Item {
 
     function closeSettings() {
         var restoreKeyboardFocus = root.settingsOpen && root.opened;
+        root.closeFooterHideConfirmation();
         root.settingsOpen = false;
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
@@ -243,6 +248,25 @@ Item {
         var next = enabled === true;
         if (next !== root.moveCursorToWindow)
             root.updatePluginSetting("moveCursorToWindow", next);
+    }
+
+    function requestFooterHide() {
+        if (!root.showFooter)
+            return;
+        root.footerHideAcknowledged = false;
+        root.footerHideConfirmationOpen = true;
+    }
+
+    function closeFooterHideConfirmation() {
+        root.footerHideConfirmationOpen = false;
+        root.footerHideAcknowledged = false;
+    }
+
+    function confirmFooterHide() {
+        if (!root.footerHideConfirmationOpen || !root.footerHideAcknowledged || !root.showFooter)
+            return;
+        root.updatePluginSetting("showFooter", false);
+        root.closeFooterHideConfirmation();
     }
 
     function hotCornerHovered() {
@@ -808,7 +832,10 @@ Item {
     function handleKey(event, layout) {
         if (root.settingsOpen) {
             if (event.key === Qt.Key_Escape) {
-                root.closeSettings();
+                if (root.footerHideConfirmationOpen)
+                    root.closeFooterHideConfirmation();
+                else
+                    root.closeSettings();
                 event.accepted = true;
             } else {
                 event.accepted = false;
@@ -1232,6 +1259,50 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onPressed: settingToggle.forceActiveFocus()
             onClicked: settingToggle.toggled(!settingToggle.checked)
+        }
+    }
+
+    component DialogButton: Rectangle {
+        id: dialogButton
+        property string label: ""
+        property bool destructive: false
+        property bool hovered: false
+        signal clicked()
+        implicitWidth: buttonLabel.implicitWidth + Style.space(28)
+        implicitHeight: Style.space(36)
+        activeFocusOnTab: true
+        color: "transparent"
+        border.color: enabled && (activeFocus || hovered || destructive) ? Color.accent : Color.menu.border
+        border.width: activeFocus ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)
+        opacity: enabled ? 1 : 0.38
+
+        Keys.onPressed: function (event) {
+            if (!enabled || (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter))
+                return;
+            dialogButton.clicked();
+            event.accepted = true;
+        }
+
+        Text {
+            id: buttonLabel
+            anchors.centerIn: parent
+            text: dialogButton.label
+            textFormat: Text.PlainText
+            color: Color.menu.text
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: dialogButton.destructive
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            enabled: dialogButton.enabled
+            hoverEnabled: true
+            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onEntered: dialogButton.hovered = true
+            onExited: dialogButton.hovered = false
+            onPressed: dialogButton.forceActiveFocus()
+            onClicked: dialogButton.clicked()
         }
     }
 
@@ -1824,6 +1895,7 @@ Item {
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
+                        visible: root.showFooter
 
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Shift+Space slow motion   Enter open   Esc close"
@@ -2129,7 +2201,225 @@ Item {
                                         }
                                     }
 
+                                    Item { Layout.preferredHeight: Style.spacing.md }
+
+                                    Text {
+                                        text: "Bottom text"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.55
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.capitalization: Font.AllUppercase
+                                    }
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.preferredWidth: Style.space(112)
+                                            text: "Visible"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        SettingToggle {
+                                            id: bottomTextToggle
+                                            visible: root.showFooter
+                                            checked: true
+                                            onToggled: function (checked) {
+                                                if (!checked)
+                                                    root.requestFooterHide();
+                                            }
+                                        }
+                                        Text {
+                                            visible: !root.showFooter
+                                            text: "Hidden in config"
+                                            textFormat: Text.PlainText
+                                            color: Color.menu.text
+                                            opacity: 0.45
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.caption
+                                        }
+                                    }
+
                                     Item { Layout.fillHeight: true }
+                                }
+                            }
+                        }
+                    }
+
+                    Item {
+                        id: footerHideConfirmationLayer
+                        anchors.fill: parent
+                        visible: root.footerHideConfirmationOpen
+                        z: 10
+                        onVisibleChanged: {
+                            if (visible && overviewWindow.acceptsKeyboard)
+                                Qt.callLater(function () {
+                                    if (footerHideConfirmationLayer.visible)
+                                        footerHideAcknowledgement.forceActiveFocus();
+                                });
+                            else if (!visible && root.settingsOpen && overviewWindow.acceptsKeyboard)
+                                Qt.callLater(function () {
+                                    if (settingsLayer.visible && !footerHideConfirmationLayer.visible)
+                                        backgroundBlurSlider.forceActiveFocus();
+                                });
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: root.closeFooterHideConfirmation()
+                        }
+
+                        Rectangle {
+                            anchors.fill: parent
+                            color: "black"
+                            opacity: 0.72
+                        }
+
+                        Rectangle {
+                            id: footerHideDialog
+                            anchors.centerIn: parent
+                            width: Math.min(Style.space(560), parent.width - Style.space(80))
+                            height: Math.min(parent.height - Style.space(80), footerHideContent.implicitHeight + Style.space(56))
+                            radius: Style.cornerRadius
+                            color: Color.menu.background
+                            border.color: Color.menu.border
+                            border.width: Math.max(1, Style.normalBorderWidth)
+
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: function (mouse) { mouse.accepted = true; }
+                            }
+
+                            ColumnLayout {
+                                id: footerHideContent
+                                anchors.fill: parent
+                                anchors.margins: Style.space(28)
+                                spacing: Style.spacing.lg
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "Hide bottom text?"
+                                    textFormat: Text.PlainText
+                                    color: Color.menu.text
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.heading
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: "This also hides the Settings link. You will not be able to restore it from Exposé."
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.WordWrap
+                                    color: Color.menu.text
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.body
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: recoveryText.implicitHeight + Style.space(24)
+                                    color: Color.background
+                                    border.color: Color.menu.border
+                                    border.width: Math.max(1, Style.normalBorderWidth)
+
+                                    Text {
+                                        id: recoveryText
+                                        anchors.fill: parent
+                                        anchors.margins: Style.space(12)
+                                        text: "To restore it, edit ~/.config/omarchy/shell.json and set showFooter to true in the expose.window-overview plugin entry."
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.WordWrap
+                                        color: Color.menu.text
+                                        opacity: 0.72
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                    }
+                                }
+
+                                Item {
+                                    id: footerHideAcknowledgement
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: Math.max(Style.space(40), acknowledgementText.implicitHeight)
+                                    activeFocusOnTab: true
+
+                                    Keys.onPressed: function (event) {
+                                        if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                                            return;
+                                        root.footerHideAcknowledged = !root.footerHideAcknowledged;
+                                        event.accepted = true;
+                                    }
+
+                                    RowLayout {
+                                        id: acknowledgementRow
+                                        anchors.fill: parent
+                                        spacing: Style.spacing.md
+
+                                        Rectangle {
+                                            Layout.preferredWidth: Style.space(18)
+                                            Layout.preferredHeight: Style.space(18)
+                                            color: root.footerHideAcknowledged ? Color.accent : "transparent"
+                                            border.color: footerHideAcknowledgement.activeFocus || root.footerHideAcknowledged
+                                                ? Color.accent
+                                                : Color.menu.border
+                                            border.width: footerHideAcknowledgement.activeFocus
+                                                ? Math.max(2, Style.focusBorderWidth)
+                                                : Math.max(1, Style.normalBorderWidth)
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                visible: root.footerHideAcknowledged
+                                                text: "✓"
+                                                textFormat: Text.PlainText
+                                                color: Color.background
+                                                font.family: Style.font.menuFamily
+                                                font.pixelSize: Style.font.caption
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        Text {
+                                            id: acknowledgementText
+                                            Layout.fillWidth: true
+                                            text: "I understand that I will need to edit the config file to restore it."
+                                            textFormat: Text.PlainText
+                                            wrapMode: Text.WordWrap
+                                            color: Color.menu.text
+                                            font.family: Style.font.menuFamily
+                                            font.pixelSize: Style.font.bodySmall
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onPressed: footerHideAcknowledgement.forceActiveFocus()
+                                        onClicked: root.footerHideAcknowledged = !root.footerHideAcknowledged
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Style.spacing.sm
+                                    spacing: Style.spacing.md
+
+                                    Item { Layout.fillWidth: true }
+
+                                    DialogButton {
+                                        label: "Cancel"
+                                        onClicked: root.closeFooterHideConfirmation()
+                                    }
+
+                                    DialogButton {
+                                        label: "Hide bottom text"
+                                        destructive: true
+                                        enabled: root.footerHideAcknowledged
+                                        onClicked: root.confirmFooterHide()
+                                    }
                                 }
                             }
                         }
