@@ -2,16 +2,16 @@
 
 Exposé is a native Omarchy Shell overview for every open Hyprland window. It uses Quickshell's foreign-toplevel and screencopy integrations for live, clickable previews without launching a separate UI process.
 
-![Exposé overview](preview.png)
+![Exposé demo](assets/demo.gif)
 
-> The marketplace image uses privacy-safe demo windows while matching the current interface.
+> The plugin manifest includes a privacy-safe static preview of the same interface.
 
 ## Features
 
 - Live thumbnails for windows across all workspaces
 - Adaptive, collision-free Exposé composition that uses the full available screen
 - Application icons, titles, and workspace names
-- Focus and keyboard-selection highlighting
+- Pointer hover and keyboard-selection highlighting
 - Type-to-filter by application ID or title
 - Arrow-key navigation and Enter activation
 - Space-bar Quick Look with in-place and centered preview placement
