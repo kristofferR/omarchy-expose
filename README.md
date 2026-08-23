@@ -60,10 +60,11 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Any character | Search by title or application |
 | Space | Quick Look the hovered or selected preview (enlarge or restore) |
 | Shift+Space | Quick Look in slow motion |
+| Shift+Q | Close the selected window |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
 
-Clicking a card activates it. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
+Clicking a card activates it; middle-clicking closes it. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
 ## Settings
 
@@ -97,7 +98,7 @@ After hiding the bottom text, restore it by editing `~/.config/omarchy/shell.jso
 Exposé runs unsandboxed inside Omarchy Shell with your user's permissions.
 
 - Its helpers are plain Bash calling `hyprctl`, `jq`, `sleep`, and `timeout`.
-- It reads Hyprland window metadata, activates the windows you select, and temporarily raises Hyprland's blur while open, restoring the previous value on close.
+- It reads Hyprland window metadata, activates or closes the windows you select, and temporarily raises Hyprland's blur while open, restoring the previous value on close.
 - Settings writes touch only the plugin's entry in `~/.config/omarchy/shell.json`.
 - No network, no privilege escalation, no package installs, no services.
 
