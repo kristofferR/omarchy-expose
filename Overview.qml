@@ -4,6 +4,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import qs.Commons
 
 Item {
@@ -119,6 +120,7 @@ Item {
     }
 
     function open(payload) {
+        root.swipedWorkspace = "";
         dismissTimer.stop();
         dismissTimer.notifyShell = false;
         root.closeSettings();
@@ -400,6 +402,7 @@ Item {
             String(top.title || ""),
             root.moveCursorToWindow ? "true" : "false"
         ]);
+        root.swipedWorkspace = "";
         root.dismiss();
     }
 
@@ -1122,6 +1125,42 @@ Item {
         event.accepted = true;
     }
 
+    // A three-finger workspace swipe still reaches the compositor while the
+    // overview is open, and it does switch — but Hyprland restores focus to the
+    // last focused toplevel when the layer surface unmaps, which drags the
+    // workspace back to where it started. The swipe looks like it worked and
+    // then silently undoes itself. Remember where it left off and re-apply it
+    // once the surface is gone, the way activate-window waits out the same
+    // unmap before taking focus.
+    property string swipedWorkspace: ""
+
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (!root.opened || !event)
+                return;
+            if (String(event.name) !== "workspace")
+                return;
+            var name = String(event.data || "").trim();
+            // Only plain workspace names, since this is handed to a shell.
+            if (/^[A-Za-z0-9_:-]{1,64}$/.test(name))
+                root.swipedWorkspace = name;
+        }
+    }
+
+    Timer {
+        id: swipedWorkspaceRestore
+        interval: 60
+        onTriggered: {
+            var target = root.swipedWorkspace;
+            root.swipedWorkspace = "";
+            if (!target)
+                return;
+            Quickshell.execDetached(["hyprctl", "eval",
+                "hl.dispatch(hl.dsp.focus({ workspace = '" + target + "' }))"]);
+        }
+    }
+
     Connections {
         target: ToplevelManager.toplevels
         function onValuesChanged() {
@@ -1158,6 +1197,8 @@ Item {
         onTriggered: {
             root.surfaceMounted = false;
             backgroundBlurSession.running = false;
+            if (root.swipedWorkspace)
+                swipedWorkspaceRestore.restart();
             if (notifyShell && root.shell && typeof root.shell.hide === "function")
                 root.shell.hide(root.pluginId);
             notifyShell = false;
