@@ -54,6 +54,9 @@ Item {
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
     property string filterText: ""
+    property string workspaceScope: "all"
+    property int activeWorkspaceId: 0
+    property string activeWorkspaceName: ""
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
@@ -73,6 +76,9 @@ Item {
     readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
     property var clients: []
     property var pendingClients: []
+    property bool pendingActiveWorkspaceSeen: false
+    property int pendingActiveWorkspaceId: 0
+    property string pendingActiveWorkspaceName: ""
     property bool clientSnapshotRejected: false
     property bool clientRefreshPending: false
     property int modelRevision: 0
@@ -80,14 +86,22 @@ Item {
     property var sessionAspectRatios: []
     property var pendingAspectRatioToplevels: []
     readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
+    readonly property string activeWorkspaceLabel: root.activeWorkspaceName
+        || (root.activeWorkspaceId !== 0 ? String(root.activeWorkspaceId) : "—")
+    readonly property string workspaceScopeLabel: root.workspaceScope === "current"
+        ? "Workspace " + root.activeWorkspaceLabel
+        : "All workspaces"
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
         var needle = root.filterText.toLowerCase();
+        var scope = root.workspaceScope;
         var result = [];
         var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
         for (var i = 0; i < source.length; i++) {
             var top = source[i];
             if (!top)
+                continue;
+            if (scope === "current" && !root.isOnActiveWorkspace(top))
                 continue;
             var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
             if (!needle || haystack.indexOf(needle) !== -1)
@@ -110,6 +124,7 @@ Item {
         dismissTimer.notifyShell = false;
         root.closeSettings();
         root.filterText = "";
+        root.workspaceScope = "all";
         var wasMounted = root.surfaceMounted;
         if (!wasMounted)
             root.resetSessionToplevels();
@@ -316,6 +331,38 @@ Item {
         root.modelRevision++;
     }
 
+    function setWorkspaceScope(value) {
+        var next = value === "current" ? "current" : "all";
+        if (next === "current" && root.activeWorkspaceId === 0 && !root.activeWorkspaceName)
+            return;
+        if (next === root.workspaceScope)
+            return;
+        root.workspaceScope = next;
+        root.hoveredIndex = -1;
+        root.clearPreview();
+        root.modelRevision++;
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+    }
+
+    function toggleWorkspaceScope() {
+        root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
+    }
+
+    function applyActiveWorkspace(id, name) {
+        var nextId = Number(id) || 0;
+        var nextName = String(name || "").slice(0, 128);
+        if (nextId === root.activeWorkspaceId && nextName === root.activeWorkspaceName)
+            return;
+        root.activeWorkspaceId = nextId;
+        root.activeWorkspaceName = nextName;
+        if (root.workspaceScope === "current") {
+            root.hoveredIndex = -1;
+            root.clearPreview();
+            root.modelRevision++;
+            root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        }
+    }
+
     function activate(top) {
         if (!top)
             return;
@@ -413,6 +460,9 @@ Item {
 
     function beginClientSnapshot() {
         root.pendingClients = [];
+        root.pendingActiveWorkspaceSeen = false;
+        root.pendingActiveWorkspaceId = 0;
+        root.pendingActiveWorkspaceName = "";
         root.clientSnapshotRejected = false;
     }
 
@@ -420,13 +470,32 @@ Item {
         var line = String(rawLine || "");
         if (line.length === 0)
             return;
-        if (line.length > 16384 || root.pendingClients.length >= 256) {
+        if (line.length > 16384) {
             root.clientSnapshotRejected = true;
             return;
         }
         try {
             var row = JSON.parse(line);
-            if (!row || typeof row !== "object" || typeof row.address !== "string") {
+            if (!row || typeof row !== "object") {
+                root.clientSnapshotRejected = true;
+                return;
+            }
+            if (row.kind === "workspace") {
+                if (root.pendingActiveWorkspaceSeen
+                        || typeof row.id !== "number"
+                        || !isFinite(row.id)
+                        || typeof row.name !== "string") {
+                    root.clientSnapshotRejected = true;
+                    return;
+                }
+                root.pendingActiveWorkspaceSeen = true;
+                root.pendingActiveWorkspaceId = Number(row.id) || 0;
+                root.pendingActiveWorkspaceName = String(row.name || "").slice(0, 128);
+                return;
+            }
+            if ((row.kind && row.kind !== "client")
+                    || typeof row.address !== "string"
+                    || root.pendingClients.length >= 256) {
                 root.clientSnapshotRejected = true;
                 return;
             }
@@ -441,6 +510,7 @@ Item {
                     id: Number(workspace.id) || 0,
                     name: String(workspace.name || "").slice(0, 128)
                 },
+                pinned: row.pinned === true,
                 monitor: Number(row.monitor) || 0,
                 size: [
                     Math.max(0, Math.min(32768, Number(size[0]) || 0)),
@@ -460,9 +530,20 @@ Item {
             var comparablePrevious = root.clients.slice();
             comparableSnapshot.sort(function (a, b) { return a.address.localeCompare(b.address); });
             comparablePrevious.sort(function (a, b) { return a.address.localeCompare(b.address); });
+            var workspaceAssignmentsChanged = !root.clientWorkspaceAssignmentsEqual(comparablePrevious, comparableSnapshot);
+            var selectedTop = root.filteredToplevels[root.selectedIndex];
             if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
                 root.clients = snapshot;
+                root.modelRevision++;
+                if (root.workspaceScope === "current" && workspaceAssignmentsChanged) {
+                    root.hoveredIndex = -1;
+                    root.clearPreview();
+                    var nextSelectedIndex = root.filteredToplevels.indexOf(selectedTop);
+                    root.selectedIndex = nextSelectedIndex >= 0 ? nextSelectedIndex : 0;
+                }
             }
+            if (root.pendingActiveWorkspaceSeen)
+                root.applyActiveWorkspace(root.pendingActiveWorkspaceId, root.pendingActiveWorkspaceName);
             if (!root.clientRefreshPending && root.pendingAspectRatioToplevels.length > 0) {
                 var updatedRatios = root.sessionAspectRatios.slice();
                 for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
@@ -476,6 +557,9 @@ Item {
             }
         }
         root.pendingClients = [];
+        root.pendingActiveWorkspaceSeen = false;
+        root.pendingActiveWorkspaceId = 0;
+        root.pendingActiveWorkspaceName = "";
         if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
             root.openingAfterClientRefresh = false;
             root.captureSessionAspectRatios();
@@ -502,9 +586,25 @@ Item {
                     || a.title !== b.title
                     || a.workspace.id !== b.workspace.id
                     || a.workspace.name !== b.workspace.name
+                    || a.pinned !== b.pinned
                     || a.monitor !== b.monitor
                     || a.size[0] !== b.size[0]
                     || a.size[1] !== b.size[1])
+                return false;
+        }
+        return true;
+    }
+
+    function clientWorkspaceAssignmentsEqual(left, right) {
+        if (!left || left.length !== right.length)
+            return false;
+        for (var index = 0; index < left.length; index++) {
+            var a = left[index];
+            var b = right[index];
+            if (a.address !== b.address
+                    || a.workspace.id !== b.workspace.id
+                    || a.workspace.name !== b.workspace.name
+                    || a.pinned !== b.pinned)
                 return false;
         }
         return true;
@@ -551,6 +651,18 @@ Item {
 
     function workspaceLabel(top) {
         return "Workspace " + root.workspaceName(top);
+    }
+
+    function isOnActiveWorkspace(top) {
+        var client = root.clientFor(top);
+        if (!client || !client.workspace)
+            return false;
+        if (client.pinned)
+            return true;
+        if (root.activeWorkspaceId !== 0)
+            return Number(client.workspace.id) === root.activeWorkspaceId;
+        return Boolean(root.activeWorkspaceName)
+            && String(client.workspace.name || "") === root.activeWorkspaceName;
     }
 
     function monitorFor(top) {
@@ -856,6 +968,11 @@ Item {
         } else if (event.key === Qt.Key_Space || event.text === " ") {
             if (!event.isAutoRepeat)
                 root.togglePreview(Boolean(event.modifiers & Qt.ShiftModifier));
+        }
+        else if (event.key === Qt.Key_Tab
+                && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+            if (!event.isAutoRepeat)
+                root.toggleWorkspaceScope();
         }
         else if (event.key === Qt.Key_Left)
             root.moveDirectional(-1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
@@ -1446,8 +1563,9 @@ Item {
                     spacing: Style.spacing.md
 
                     Rectangle {
+                        id: searchBar
                         Layout.alignment: Qt.AlignHCenter
-                        Layout.preferredWidth: Math.min(Style.space(560), overviewWindow.width - Style.space(48))
+                        Layout.preferredWidth: Math.min(Style.space(760), overviewWindow.width - Style.space(48))
                         Layout.preferredHeight: Style.space(48)
                         radius: Style.cornerRadius
                         color: Color.menu.background
@@ -1483,6 +1601,43 @@ Item {
                                 opacity: 0.55
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.bodySmall
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: Math.max(1, Style.normalBorderWidth)
+                                Layout.preferredHeight: Style.space(24)
+                                color: Color.menu.border
+                            }
+
+                            Text {
+                                Layout.maximumWidth: Style.space(176)
+                                text: searchBar.width < Style.space(640)
+                                    ? (root.workspaceScope === "all" ? "All" : "WS " + root.activeWorkspaceLabel)
+                                    : root.workspaceScopeLabel
+                                textFormat: Text.PlainText
+                                color: Color.accent
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.bodySmall
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: Style.space(34)
+                                Layout.preferredHeight: Style.space(24)
+                                radius: Math.max(2, Style.cornerRadius - Style.spacing.sm)
+                                color: "transparent"
+                                border.color: Color.menu.border
+                                border.width: Math.max(1, Style.normalBorderWidth)
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Tab"
+                                    textFormat: Text.PlainText
+                                    color: Color.menu.text
+                                    font.family: Style.font.menuFamily
+                                    font.pixelSize: Style.font.caption
+                                }
                             }
                         }
                     }
@@ -1901,7 +2056,11 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             visible: root.filteredToplevels.length === 0
-                            text: root.filterText ? "No matching windows" : "No open windows"
+                            text: root.filterText
+                                ? "No matching windows"
+                                : (root.workspaceScope === "current"
+                                    ? "No windows on Workspace " + root.activeWorkspaceLabel
+                                    : "No open windows")
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.7
@@ -1916,7 +2075,7 @@ Item {
                         visible: root.showFooter
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Shift+Q close   Enter open   Esc close"
+                            text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.55
