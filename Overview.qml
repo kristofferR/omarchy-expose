@@ -334,6 +334,12 @@ Item {
         root.dismiss();
     }
 
+    function requestClose(top) {
+        if (!top || typeof top.close !== "function")
+            return;
+        top.close();
+    }
+
     function refreshClients() {
         if (clientQuery.running) {
             root.clientRefreshPending = true;
@@ -861,6 +867,12 @@ Item {
             root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             root.activate(root.filteredToplevels[root.selectedIndex]);
+        else if (event.key === Qt.Key_Q
+                && Boolean(event.modifiers & Qt.ShiftModifier)
+                && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+            if (!event.isAutoRepeat)
+                root.requestClose(root.filteredToplevels[root.selectedIndex]);
+        }
         else if (Util.editsFilter(event, root.filterText))
             root.setFilter(Util.editedFilter(event, root.filterText));
         else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && !(event.modifiers & (Qt.AltModifier | Qt.MetaModifier)))
@@ -1576,7 +1588,13 @@ Item {
                                             if (root.hoveredIndex === card.index)
                                                 root.hoveredIndex = -1;
                                         }
-                                        onClicked: root.activate(card.modelData)
+                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                        onClicked: function (mouse) {
+                                            if (mouse.button === Qt.MiddleButton)
+                                                root.requestClose(card.modelData);
+                                            else
+                                                root.activate(card.modelData);
+                                        }
                                     }
 
                                     ColumnLayout {
@@ -1898,7 +1916,7 @@ Item {
                         visible: root.showFooter
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Shift+Space slow motion   Enter open   Esc close"
+                            text: "← ↑ ↓ → navigate   Space preview   Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.55
