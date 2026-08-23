@@ -2,16 +2,31 @@
 set -euo pipefail
 
 # Keep failures and hostile compositor metadata inside this short-lived helper,
-# not the long-running Omarchy shell. Output is an optional workspace record
+# not the long-running Omarchy shell. Output is an optional display-state record
 # followed by at most 256 bounded client records as NDJSON.
 ulimit -v 131072
 
-if ! timeout --signal=TERM --kill-after=1 2 hyprctl -j activeworkspace | jq -c '
+if ! timeout --signal=TERM --kill-after=1 2 hyprctl -j monitors | jq -c '
   def bounded($n): if type == "string" then .[0:$n] else "" end;
-  {
-    kind: "workspace",
-    id: (if (.id | type) == "number" then .id else 0 end),
-    name: (.name | bounded(128))
+  def workspace:
+    if type == "object" then {
+      id: (if (.id | type) == "number" then .id else 0 end),
+      name: (.name | bounded(128))
+    } else {id: 0, name: ""} end;
+  (if type == "array" then . else [] end) as $allMonitors
+  | ($allMonitors | map(select(.focused == true)) | first // $allMonitors[0] // {}) as $focused
+  | ($allMonitors[0:32]) as $monitors
+  | {
+    kind: "display-state",
+    activeWorkspace: ($focused.activeWorkspace | workspace),
+    monitors: [
+      $monitors[]
+      | {
+          id: (if (.id | type) == "number" then .id else 0 end),
+          name: (.name | bounded(128)),
+          activeWorkspace: (.activeWorkspace | workspace)
+        }
+    ]
   }
 '; then
   :
