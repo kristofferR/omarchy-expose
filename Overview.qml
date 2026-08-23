@@ -114,6 +114,7 @@ Item {
     property bool previewNavigationSlowMotion: false
     property bool openingAfterClientRefresh: false
     property bool settingsOpen: false
+    property int settingsCategoryIndex: 0
     property bool footerHideConfirmationOpen: false
     property bool footerHideAcknowledged: false
     property string animationDurationPreviewStyle: ""
@@ -461,7 +462,12 @@ Item {
         root.clearAnimationTimingPreview();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
+        root.settingsCategoryIndex = 0;
         root.settingsOpen = true;
+        Qt.callLater(function () {
+            if (root.settingsOpen)
+                root.focusSettingsCategory();
+        });
     }
 
     function closeSettings() {
@@ -567,6 +573,43 @@ Item {
                 return;
             }
         }
+    }
+
+    function focusSettingsCategory() {
+        for (var i = 0; i < surfaceInstances.instances.length; i++) {
+            var surface = surfaceInstances.instances[i];
+            if (surface && surface.acceptsKeyboard) {
+                surface.focusSettingsCategory();
+                return;
+            }
+        }
+    }
+
+    function focusSettingsItem(item) {
+        if (!item || !item.visible || !item.enabled)
+            return false;
+        item.forceActiveFocus();
+        return true;
+    }
+
+    function handleSettingsTab(event) {
+        if (!root.settingsOpen
+                || (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Backtab))
+            return false;
+        var forward = event.key !== Qt.Key_Backtab
+            && !(event.modifiers & Qt.ShiftModifier);
+        for (var index = 0; index < surfaceInstances.instances.length; index++) {
+            var surface = surfaceInstances.instances[index];
+            if (!surface || !surface.acceptsKeyboard)
+                continue;
+            if (root.footerHideConfirmationOpen)
+                surface.moveFooterConfirmationFocus(forward);
+            else
+                surface.moveSettingsFocus(forward);
+            event.accepted = true;
+            return true;
+        }
+        return false;
     }
 
     function setFilter(value) {
@@ -1595,6 +1638,8 @@ Item {
         }
 
         Keys.onPressed: function (event) {
+            if (root.handleSettingsTab(event))
+                return;
             if (event.key === Qt.Key_Left || event.key === Qt.Key_Down)
                 settingSlider.commitKeyboardValue(settingSlider.value - settingSlider.stepSize);
             else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up)
@@ -1603,8 +1648,10 @@ Item {
                 settingSlider.commitKeyboardValue(settingSlider.from);
             else if (event.key === Qt.Key_End)
                 settingSlider.commitKeyboardValue(settingSlider.to);
-            else
+            else {
+                event.accepted = false;
                 return;
+            }
             event.accepted = true;
         }
 
@@ -1667,9 +1714,10 @@ Item {
                 horizontalAlignment: Text.AlignRight
                 text: Math.round(settingSlider.value) + settingSlider.suffix
                 textFormat: Text.PlainText
-                color: Color.menu.text
+                color: settingSlider.activeFocus ? Color.accent : Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.caption
+                font.bold: settingSlider.activeFocus
             }
         }
     }
@@ -1694,14 +1742,18 @@ Item {
         }
 
         Keys.onPressed: function (event) {
+            if (root.handleSettingsTab(event))
+                return;
             if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
                 settingChoices.chooseOffset(-1);
             else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
                 settingChoices.chooseOffset(1);
             else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                 settingChoices.chooseOffset(0);
-            else
+            else {
+                event.accepted = false;
                 return;
+            }
             event.accepted = true;
         }
 
@@ -1720,7 +1772,7 @@ Item {
                     anchors.centerIn: parent
                     text: String(choice.modelData.label)
                     textFormat: Text.PlainText
-                    color: Color.menu.text
+                    color: choice.selected && settingChoices.activeFocus ? Color.accent : Color.menu.text
                     opacity: choice.selected ? 1 : 0.45
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.caption
@@ -1774,14 +1826,18 @@ Item {
         }
 
         Keys.onPressed: function (event) {
+            if (root.handleSettingsTab(event))
+                return;
             if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
                 displayModeChoices.chooseOffset(-1);
             else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
                 displayModeChoices.chooseOffset(1);
             else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                 displayModeChoices.chooseOffset(0);
-            else
+            else {
+                event.accepted = false;
                 return;
+            }
             event.accepted = true;
         }
 
@@ -1847,6 +1903,114 @@ Item {
         }
     }
 
+    component SettingsCategoryButton: Item {
+        id: categoryButton
+        property int categoryIndex: 0
+        property string label: ""
+        property bool selected: false
+        property bool horizontal: false
+        property bool hovered: false
+        signal chosen(int nextIndex)
+        implicitWidth: Style.space(horizontal ? 140 : 200)
+        implicitHeight: Style.space(horizontal ? 52 : 48)
+        activeFocusOnTab: selected
+
+        function choose(nextIndex) {
+            categoryButton.chosen(Math.max(0, Math.min(3, nextIndex)));
+        }
+
+        Keys.onPressed: function (event) {
+            if (root.handleSettingsTab(event))
+                return;
+            if (event.key === Qt.Key_Up || event.key === Qt.Key_Left)
+                categoryButton.choose((categoryButton.categoryIndex + 3) % 4);
+            else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right)
+                categoryButton.choose((categoryButton.categoryIndex + 1) % 4);
+            else if (event.key === Qt.Key_Home)
+                categoryButton.choose(0);
+            else if (event.key === Qt.Key_End)
+                categoryButton.choose(3);
+            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                categoryButton.choose(categoryButton.categoryIndex);
+            else {
+                event.accepted = false;
+                return;
+            }
+            event.accepted = true;
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            color: Color.accent
+            opacity: categoryButton.selected ? 0.07 : (categoryButton.hovered ? 0.035 : 0)
+        }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            width: categoryButton.horizontal ? parent.width : Math.max(2, Style.focusBorderWidth)
+            height: categoryButton.horizontal ? Math.max(2, Style.focusBorderWidth) : parent.height
+            visible: categoryButton.selected
+            color: Color.accent
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: Style.space(categoryButton.horizontal ? 8 : 18)
+            anchors.rightMargin: Style.space(categoryButton.horizontal ? 8 : 18)
+            spacing: Style.spacing.md
+
+            Text {
+                Layout.preferredWidth: Style.space(18)
+                text: String(categoryButton.categoryIndex + 1)
+                textFormat: Text.PlainText
+                horizontalAlignment: Text.AlignHCenter
+                color: categoryButton.selected ? Color.accent : Color.menu.text
+                opacity: categoryButton.selected || categoryButton.hovered ? 1 : 0.45
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.caption
+                font.bold: categoryButton.selected
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: categoryButton.label
+                textFormat: Text.PlainText
+                horizontalAlignment: Text.AlignLeft
+                color: Color.menu.text
+                opacity: categoryButton.selected || categoryButton.hovered ? 1 : 0.55
+                font.family: Style.font.menuFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: categoryButton.selected
+                elide: Text.ElideRight
+            }
+
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: Style.space(2)
+            color: "transparent"
+            border.color: categoryButton.activeFocus ? Color.accent : "transparent"
+            border.width: categoryButton.activeFocus ? Math.max(2, Style.focusBorderWidth) : 0
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onEntered: categoryButton.hovered = true
+            onExited: categoryButton.hovered = false
+            onPressed: categoryButton.forceActiveFocus()
+            onClicked: categoryButton.choose(categoryButton.categoryIndex)
+        }
+    }
+
+    component SettingsDivider: Rectangle {
+        implicitHeight: Math.max(1, Style.normalBorderWidth)
+        color: Color.menu.border
+    }
+
     component SettingToggle: Item {
         id: settingToggle
         property bool checked: false
@@ -1856,8 +2020,12 @@ Item {
         activeFocusOnTab: true
 
         Keys.onPressed: function (event) {
-            if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+            if (root.handleSettingsTab(event))
                 return;
+            if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
+                event.accepted = false;
+                return;
+            }
             settingToggle.toggled(!settingToggle.checked);
             event.accepted = true;
         }
@@ -1893,6 +2061,15 @@ Item {
             }
         }
 
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -Style.space(4)
+            visible: settingToggle.activeFocus
+            color: "transparent"
+            border.color: Color.accent
+            border.width: Math.max(2, Style.focusBorderWidth)
+        }
+
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
@@ -1916,8 +2093,12 @@ Item {
         opacity: enabled ? 1 : 0.38
 
         Keys.onPressed: function (event) {
-            if (!enabled || (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter))
+            if (root.handleSettingsTab(event))
                 return;
+            if (!enabled || (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)) {
+                event.accepted = false;
+                return;
+            }
             dialogButton.clicked();
             event.accepted = true;
         }
@@ -2020,6 +2201,93 @@ Item {
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
+            function focusSettingsCategory() {
+                var categoryButton = settingsCategoryRepeater.itemAt(root.settingsCategoryIndex);
+                if (categoryButton)
+                    categoryButton.forceActiveFocus();
+            }
+
+            function availableFocusItems(candidates) {
+                var items = [];
+                for (var index = 0; index < candidates.length; index++) {
+                    var candidate = candidates[index];
+                    if (candidate && candidate.visible && candidate.enabled)
+                        items.push(candidate);
+                }
+                return items;
+            }
+
+            function settingsFocusItems() {
+                var categoryButton = settingsCategoryRepeater.itemAt(root.settingsCategoryIndex);
+                if (root.settingsCategoryIndex === 0)
+                    return overviewWindow.availableFocusItems([
+                        categoryButton,
+                        backgroundBlurSlider,
+                        backgroundDimSlider,
+                        bottomTextToggle
+                    ]);
+                if (root.settingsCategoryIndex === 1)
+                    return overviewWindow.availableFocusItems([
+                        categoryButton,
+                        hotCornerToggle,
+                        hotCornerPositionChoices
+                    ]);
+                if (root.settingsCategoryIndex === 2)
+                    return overviewWindow.availableFocusItems([
+                        categoryButton,
+                        previewPlacementChoices,
+                        windowFooterChoices,
+                        movePointerToggle,
+                        displayModeChoicesControl
+                    ]);
+                return overviewWindow.availableFocusItems([
+                    categoryButton,
+                    animationStyleChoices,
+                    animationSpeedSlider,
+                    animationInSlider,
+                    animationOutSlider,
+                    animationSameSpeedToggle,
+                    motionAnimateButton
+                ]);
+            }
+
+            function footerConfirmationFocusItems() {
+                return overviewWindow.availableFocusItems([
+                    footerHideAcknowledgement,
+                    footerHideCancelButton,
+                    footerHideConfirmButton
+                ]);
+            }
+
+            function moveFocus(items, forward, forwardFallbackIndex) {
+                if (!items.length)
+                    return;
+                var focusedIndex = -1;
+                for (var index = 0; index < items.length; index++) {
+                    if (items[index].activeFocus) {
+                        focusedIndex = index;
+                        break;
+                    }
+                }
+                var nextIndex = focusedIndex < 0
+                    ? (forward ? Math.min(forwardFallbackIndex, items.length - 1) : items.length - 1)
+                    : (focusedIndex + (forward ? 1 : items.length - 1)) % items.length;
+                root.focusSettingsItem(items[nextIndex]);
+            }
+
+            function moveSettingsFocus(forward) {
+                overviewWindow.moveFocus(overviewWindow.settingsFocusItems(), forward, 1);
+            }
+
+            function moveFooterConfirmationFocus(forward) {
+                overviewWindow.moveFocus(overviewWindow.footerConfirmationFocusItems(), forward, 0);
+            }
+
+            onAcceptsKeyboardChanged: {
+                if (acceptsKeyboard && root.settingsOpen)
+                    Qt.callLater(overviewWindow.focusSettingsCategory);
+            }
+
             Region {
                 id: backgroundBlurRegion
                 item: overviewWindow.contentItem
@@ -2052,6 +2320,17 @@ Item {
                 }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
+                    if (root.settingsOpen
+                            && !root.footerHideConfirmationOpen
+                            && event.key >= Qt.Key_1
+                            && event.key <= Qt.Key_4) {
+                        root.settingsCategoryIndex = event.key - Qt.Key_1;
+                        Qt.callLater(overviewWindow.focusSettingsCategory);
+                        event.accepted = true;
+                        return;
+                    }
+                    if (root.handleSettingsTab(event))
+                        return;
                     root.handleKey(event, overviewArea.windowLayout);
                 }
 
@@ -2631,10 +2910,7 @@ Item {
                     z: 200
                     onVisibleChanged: {
                         if (visible && overviewWindow.acceptsKeyboard)
-                            Qt.callLater(function () {
-                                if (settingsLayer.visible)
-                                    backgroundBlurSlider.forceActiveFocus();
-                            });
+                            Qt.callLater(overviewWindow.focusSettingsCategory);
                     }
 
                     MouseArea {
@@ -2647,11 +2923,12 @@ Item {
                         readonly property bool narrow: width < Style.space(760)
                         anchors.centerIn: parent
                         width: Math.min(Style.space(920), parent.width - Style.space(80))
-                        height: Math.min(Style.space(narrow ? 1000 : 640), parent.height - Style.space(80))
+                        height: Math.min(Style.space(narrow ? 720 : 640), parent.height - Style.space(80))
                         radius: Style.cornerRadius
                         color: Color.menu.background
                         border.color: Color.menu.border
                         border.width: Math.max(1, Style.normalBorderWidth)
+                        enabled: !root.footerHideConfirmationOpen
 
                         MouseArea {
                             anchors.fill: parent
@@ -2660,458 +2937,695 @@ Item {
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Style.space(28)
-                            spacing: Style.spacing.xl
+                            spacing: 0
 
-                            RowLayout {
+                            Item {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: Style.space(66)
 
-                                Text {
-                                    text: "Exposé settings"
-                                    textFormat: Text.PlainText
-                                    color: Color.menu.text
-                                    font.family: Style.font.menuFamily
-                                    font.pixelSize: Style.font.heading
-                                    font.bold: true
-                                }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Style.space(24)
+                                    anchors.rightMargin: Style.space(24)
+                                    spacing: Style.spacing.lg
 
-                                Item { Layout.fillWidth: true }
+                                    Text {
+                                        text: "Exposé settings"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.heading
+                                        font.bold: true
+                                    }
 
-                                Text {
-                                    text: "Click outside or Esc to close"
-                                    textFormat: Text.PlainText
-                                    visible: !settingsDialog.narrow
-                                    color: Color.menu.text
-                                    opacity: 0.5
-                                    font.family: Style.font.menuFamily
-                                    font.pixelSize: Style.font.caption
+                                    Item { Layout.fillWidth: true }
+
+                                    Text {
+                                        text: "Esc close"
+                                        textFormat: Text.PlainText
+                                        color: Color.menu.text
+                                        opacity: 0.5
+                                        font.family: Style.font.menuFamily
+                                        font.pixelSize: Style.font.caption
+                                    }
                                 }
                             }
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: Math.max(1, Style.normalBorderWidth)
-                                color: Color.menu.border
-                            }
+                            SettingsDivider { Layout.fillWidth: true }
 
                             GridLayout {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 columns: settingsDialog.narrow ? 1 : 2
-                                columnSpacing: settingsDialog.narrow ? 0 : Style.space(48)
-                                rowSpacing: settingsDialog.narrow ? Style.space(28) : 0
+                                columnSpacing: 0
+                                rowSpacing: 0
 
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    spacing: Style.spacing.lg
+                                Item {
+                                    Layout.fillWidth: settingsDialog.narrow
+                                    Layout.fillHeight: !settingsDialog.narrow
+                                    Layout.preferredWidth: settingsDialog.narrow ? 0 : Style.space(218)
+                                    Layout.preferredHeight: settingsDialog.narrow ? Style.space(54) : 0
 
-                                    Text {
-                                        text: "Background"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
+                                    GridLayout {
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        columns: settingsDialog.narrow ? 4 : 1
+                                        columnSpacing: 0
+                                        rowSpacing: 0
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Blur"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        SettingSlider {
-                                            id: backgroundBlurSlider
-                                            Layout.fillWidth: true
-                                            from: 0
-                                            to: 20
-                                            value: root.effectiveBackgroundBlur
-                                            suffix: " px"
-                                            onEdited: function (value) { root.backgroundBlurPreview = value; }
-                                            onCommitted: function (value) {
-                                                root.backgroundBlurPreview = Math.round(value);
-                                                root.setBackgroundBlur(value);
-                                            }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Dim"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        SettingSlider {
-                                            Layout.fillWidth: true
-                                            from: 0
-                                            to: 90
-                                            value: root.effectiveBackgroundDim
-                                            suffix: "%"
-                                            onEdited: function (value) { root.backgroundDimPreview = value; }
-                                            onCommitted: function (value) {
-                                                root.backgroundDimPreview = Math.round(value);
-                                                root.setBackgroundDim(value);
-                                            }
-                                        }
-                                    }
-
-                                    Item { Layout.preferredHeight: Style.spacing.md }
-
-                                    Text {
-                                        text: "Hot corner"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Enabled"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingToggle {
-                                            checked: root.hotCornerEnabled
-                                            onToggled: function (checked) { root.setHotCornerEnabled(checked); }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Position"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingChoices {
-                                            value: root.hotCornerPosition
-                                            options: [
-                                                { label: "TL", value: "top-left" },
-                                                { label: "TR", value: "top-right" },
-                                                { label: "BL", value: "bottom-left" },
-                                                { label: "BR", value: "bottom-right" }
+                                        Repeater {
+                                            id: settingsCategoryRepeater
+                                            model: [
+                                                "Appearance",
+                                                "Hot corner",
+                                                "Windows",
+                                                "Motion"
                                             ]
-                                            onChosen: function (value) { root.setHotCornerPosition(value); }
-                                        }
-                                    }
 
-                                    Item { Layout.fillHeight: true }
-
-                                    Text {
-                                        text: "Animation"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: Style.spacing.lg
-
-                                        SettingChoices {
-                                            value: root.animationStyle
-                                            options: [
-                                                { label: "Original", value: "original" },
-                                                { label: "Fade", value: "fade" },
-                                                { label: "Zoom", value: "zoom" },
-                                                { label: "Slide", value: "slide" }
-                                            ]
-                                            onChosen: function (value) {
-                                                root.clearAnimationTimingPreview();
-                                                root.setAnimationStyle(value);
-                                            }
-                                        }
-
-                                        Item { Layout.fillWidth: true }
-
-                                        DialogButton {
-                                            label: "Animate"
-                                            onClicked: root.previewAnimation()
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        visible: !root.animationTimingFor(root.animationStyle).separate
-
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Speed"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-
-                                        SettingSlider {
-                                            Layout.fillWidth: true
-                                            from: 100
-                                            to: 800
-                                            stepSize: 10
-                                            value: root.animationInDurationFor(root.animationStyle)
-                                            suffix: " ms"
-                                            onEdited: function (value) {
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationInDurationPreview = value;
-                                                root.animationOutDurationPreview = value;
-                                            }
-                                            onCommitted: function (value) {
-                                                var next = root.setAnimationDuration(root.animationStyle, value);
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationInDurationPreview = next;
-                                                root.animationOutDurationPreview = next;
+                                            delegate: SettingsCategoryButton {
+                                                required property int index
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(settingsDialog.narrow ? 52 : 48)
+                                                categoryIndex: index
+                                                label: String(modelData)
+                                                selected: root.settingsCategoryIndex === index
+                                                horizontal: settingsDialog.narrow
+                                                onChosen: function (nextIndex) {
+                                                    root.settingsCategoryIndex = nextIndex;
+                                                    var nextButton = settingsCategoryRepeater.itemAt(nextIndex);
+                                                    if (nextButton)
+                                                        nextButton.forceActiveFocus();
+                                                }
                                             }
                                         }
                                     }
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        visible: root.animationTimingFor(root.animationStyle).separate
-
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "In"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-
-                                        SettingSlider {
-                                            Layout.fillWidth: true
-                                            from: 100
-                                            to: 800
-                                            stepSize: 10
-                                            value: root.animationInDurationFor(root.animationStyle)
-                                            suffix: " ms"
-                                            onEdited: function (value) {
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationInDurationPreview = value;
-                                            }
-                                            onCommitted: function (value) {
-                                                var next = root.setAnimationDurationIn(root.animationStyle, value);
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationInDurationPreview = next;
-                                            }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        visible: root.animationTimingFor(root.animationStyle).separate
-
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Out"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-
-                                        SettingSlider {
-                                            Layout.fillWidth: true
-                                            from: 100
-                                            to: 800
-                                            stepSize: 10
-                                            value: root.animationOutDurationFor(root.animationStyle)
-                                            suffix: " ms"
-                                            onEdited: function (value) {
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationOutDurationPreview = value;
-                                            }
-                                            onCommitted: function (value) {
-                                                var next = root.setAnimationDurationOut(root.animationStyle, value);
-                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                root.animationOutDurationPreview = next;
-                                            }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-
-                                        Text {
-                                            text: "Same speed in and out"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-
-                                        Item { Layout.fillWidth: true }
-
-                                        SettingToggle {
-                                            checked: !root.animationTimingFor(root.animationStyle).separate
-                                            onToggled: function (checked) {
-                                                root.clearAnimationTimingPreview();
-                                                root.setAnimationTimingSeparate(root.animationStyle, !checked);
-                                            }
-                                        }
+                                    Rectangle {
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        width: settingsDialog.narrow ? parent.width : Math.max(1, Style.normalBorderWidth)
+                                        height: settingsDialog.narrow ? Math.max(1, Style.normalBorderWidth) : parent.height
+                                        color: Color.menu.border
                                     }
                                 }
 
-                                ColumnLayout {
+                                Item {
+                                    id: settingsCategoryContent
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
+                                    clip: true
+
+                                    Item {
+                                        anchors.fill: parent
+                                        anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
+                                        visible: root.settingsCategoryIndex === 0
+                                        enabled: visible
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            spacing: Style.spacing.md
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: Style.spacing.xs
+
+                                                Text {
+                                                    text: "Appearance"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.accent
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    font.bold: true
+                                                    font.capitalization: Font.AllUppercase
+                                                }
+
+                                                Text {
+                                                    text: "Backdrop and footer"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.heading
+                                                    font.bold: true
+                                                }
+                                            }
+
+                                            Item { Layout.preferredHeight: Style.spacing.sm }
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Blur"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                SettingSlider {
+                                                    id: backgroundBlurSlider
+                                                    Layout.fillWidth: true
+                                                    from: 0
+                                                    to: 20
+                                                    value: root.effectiveBackgroundBlur
+                                                    suffix: " px"
+                                                    onEdited: function (value) { root.backgroundBlurPreview = value; }
+                                                    onCommitted: function (value) {
+                                                        root.backgroundBlurPreview = Math.round(value);
+                                                        root.setBackgroundBlur(value);
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Dim"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                SettingSlider {
+                                                    id: backgroundDimSlider
+                                                    Layout.fillWidth: true
+                                                    from: 0
+                                                    to: 90
+                                                    value: root.effectiveBackgroundDim
+                                                    suffix: "%"
+                                                    onEdited: function (value) { root.backgroundDimPreview = value; }
+                                                    onCommitted: function (value) {
+                                                        root.backgroundDimPreview = Math.round(value);
+                                                        root.setBackgroundDim(value);
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    text: "Bottom text"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingToggle {
+                                                    id: bottomTextToggle
+                                                    checked: root.showFooter
+                                                    onToggled: function (checked) {
+                                                        if (checked)
+                                                            root.updatePluginSetting("showFooter", true);
+                                                        else
+                                                            root.requestFooterHide();
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+                                            Item { Layout.fillHeight: true }
+                                        }
+                                    }
+
+                                    Item {
+                                        anchors.fill: parent
+                                        anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
+                                        visible: root.settingsCategoryIndex === 1
+                                        enabled: visible
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            spacing: Style.spacing.md
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: Style.spacing.xs
+
+                                                Text {
+                                                    text: "Hot corner"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.accent
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    font.bold: true
+                                                    font.capitalization: Font.AllUppercase
+                                                }
+
+                                                Text {
+                                                    text: "Overview activation"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.heading
+                                                    font.bold: true
+                                                }
+                                            }
+
+                                            Item { Layout.preferredHeight: Style.spacing.sm }
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    text: "Enabled"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingToggle {
+                                                    id: hotCornerToggle
+                                                    checked: root.hotCornerEnabled
+                                                    onToggled: function (checked) { root.setHotCornerEnabled(checked); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Position"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: hotCornerPositionChoices
+                                                    value: root.hotCornerPosition
+                                                    options: [
+                                                        { label: "TL", value: "top-left" },
+                                                        { label: "TR", value: "top-right" },
+                                                        { label: "BL", value: "bottom-left" },
+                                                        { label: "BR", value: "bottom-right" }
+                                                    ]
+                                                    onChosen: function (value) { root.setHotCornerPosition(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+                                            Item { Layout.fillHeight: true }
+                                        }
+                                    }
+
+                                    Item {
+                                        anchors.fill: parent
+                                        anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
+                                        visible: root.settingsCategoryIndex === 2
+                                        enabled: visible
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            spacing: Style.spacing.md
+
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: Style.spacing.xs
+
+                                                Text {
+                                                    text: "Windows"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.accent
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    font.bold: true
+                                                    font.capitalization: Font.AllUppercase
+                                                }
+
+                                                Text {
+                                                    text: "Window behavior"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.heading
+                                                    font.bold: true
+                                                }
+                                            }
+
+                                            Item { Layout.preferredHeight: Style.spacing.sm }
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Preview"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: previewPlacementChoices
+                                                    value: root.previewPlacement
+                                                    options: [
+                                                        { label: "In place", value: "in-place" },
+                                                        { label: "Centered", value: "centered" }
+                                                    ]
+                                                    onChosen: function (value) { root.setPreviewPlacement(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Labels"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: windowFooterChoices
+                                                    value: root.windowFooterStyle
+                                                    spacing: Style.spacing.md
+                                                    options: [
+                                                        { label: "Floating", value: "floating" },
+                                                        { label: "Rail", value: "integrated" },
+                                                        { label: "Overlay", value: "overlay" },
+                                                        { label: "Centered", value: "centered" }
+                                                    ]
+                                                    onChosen: function (value) { root.setWindowFooterStyle(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    text: "Move pointer"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingToggle {
+                                                    id: movePointerToggle
+                                                    checked: root.moveCursorToWindow
+                                                    onToggled: function (checked) { root.setMoveCursorToWindow(checked); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(76)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Displays"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                DisplayModeChoices {
+                                                    id: displayModeChoicesControl
+                                                    Layout.fillWidth: true
+                                                    value: root.multiMonitorMode
+                                                    onChosen: function (value) { root.setMultiMonitorMode(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+                                            Item { Layout.fillHeight: true }
+                                        }
+                                    }
+
+                                    Item {
+                                        anchors.fill: parent
+                                        anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
+                                        visible: root.settingsCategoryIndex === 3
+                                        enabled: visible
+
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            spacing: Style.spacing.md
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: Style.spacing.lg
+
+                                                ColumnLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: Style.spacing.xs
+
+                                                    Text {
+                                                        text: "Motion"
+                                                        textFormat: Text.PlainText
+                                                        color: Color.accent
+                                                        font.family: Style.font.menuFamily
+                                                        font.pixelSize: Style.font.caption
+                                                        font.bold: true
+                                                        font.capitalization: Font.AllUppercase
+                                                    }
+
+                                                    Text {
+                                                        text: "Overview transition"
+                                                        textFormat: Text.PlainText
+                                                        color: Color.menu.text
+                                                        font.family: Style.font.menuFamily
+                                                        font.pixelSize: Style.font.heading
+                                                        font.bold: true
+                                                    }
+                                                }
+
+                                                DialogButton {
+                                                    id: motionAnimateButton
+                                                    label: "Animate"
+                                                    onClicked: root.previewAnimation()
+                                                }
+                                            }
+
+                                            Item { Layout.preferredHeight: Style.spacing.sm }
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Style"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: animationStyleChoices
+                                                    value: root.animationStyle
+                                                    options: [
+                                                        { label: "Original", value: "original" },
+                                                        { label: "Fade", value: "fade" },
+                                                        { label: "Zoom", value: "zoom" },
+                                                        { label: "Slide", value: "slide" }
+                                                    ]
+                                                    onChosen: function (value) {
+                                                        root.clearAnimationTimingPreview();
+                                                        root.setAnimationStyle(value);
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                visible: !root.animationTimingFor(root.animationStyle).separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Speed"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                SettingSlider {
+                                                    id: animationSpeedSlider
+                                                    Layout.fillWidth: true
+                                                    from: 100
+                                                    to: 800
+                                                    stepSize: 10
+                                                    value: root.animationInDurationFor(root.animationStyle)
+                                                    suffix: " ms"
+                                                    onEdited: function (value) {
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationInDurationPreview = value;
+                                                        root.animationOutDurationPreview = value;
+                                                    }
+                                                    onCommitted: function (value) {
+                                                        var next = root.setAnimationDuration(root.animationStyle, value);
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationInDurationPreview = next;
+                                                        root.animationOutDurationPreview = next;
+                                                    }
+                                                }
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                visible: root.animationTimingFor(root.animationStyle).separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "In"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                SettingSlider {
+                                                    id: animationInSlider
+                                                    Layout.fillWidth: true
+                                                    from: 100
+                                                    to: 800
+                                                    stepSize: 10
+                                                    value: root.animationInDurationFor(root.animationStyle)
+                                                    suffix: " ms"
+                                                    onEdited: function (value) {
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationInDurationPreview = value;
+                                                    }
+                                                    onCommitted: function (value) {
+                                                        var next = root.setAnimationDurationIn(root.animationStyle, value);
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationInDurationPreview = next;
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider {
+                                                Layout.fillWidth: true
+                                                visible: root.animationTimingFor(root.animationStyle).separate
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                visible: root.animationTimingFor(root.animationStyle).separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Out"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                SettingSlider {
+                                                    id: animationOutSlider
+                                                    Layout.fillWidth: true
+                                                    from: 100
+                                                    to: 800
+                                                    stepSize: 10
+                                                    value: root.animationOutDurationFor(root.animationStyle)
+                                                    suffix: " ms"
+                                                    onEdited: function (value) {
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationOutDurationPreview = value;
+                                                    }
+                                                    onCommitted: function (value) {
+                                                        var next = root.setAnimationDurationOut(root.animationStyle, value);
+                                                        root.animationDurationPreviewStyle = root.animationStyle;
+                                                        root.animationOutDurationPreview = next;
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                Text {
+                                                    text: "Same speed in and out"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingToggle {
+                                                    id: animationSameSpeedToggle
+                                                    checked: !root.animationTimingFor(root.animationStyle).separate
+                                                    onToggled: function (checked) {
+                                                        root.clearAnimationTimingPreview();
+                                                        root.setAnimationTimingSeparate(root.animationStyle, !checked);
+                                                    }
+                                                }
+                                            }
+
+                                            SettingsDivider { Layout.fillWidth: true }
+                                            Item { Layout.fillHeight: true }
+                                        }
+                                    }
+                                }
+                            }
+
+                            SettingsDivider { Layout.fillWidth: true }
+
+                            Item {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Style.space(44)
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Style.space(24)
+                                    anchors.rightMargin: Style.space(24)
                                     spacing: Style.spacing.lg
 
                                     Text {
-                                        text: "Windows"
+                                        text: "Changes save immediately"
                                         textFormat: Text.PlainText
                                         color: Color.menu.text
-                                        opacity: 0.55
+                                        opacity: 0.45
                                         font.family: Style.font.menuFamily
                                         font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
                                     }
 
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Preview"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingChoices {
-                                            value: root.previewPlacement
-                                            options: [
-                                                { label: "In place", value: "in-place" },
-                                                { label: "Centered", value: "centered" }
-                                            ]
-                                            onChosen: function (value) { root.setPreviewPlacement(value); }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Labels"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingChoices {
-                                            value: root.windowFooterStyle
-                                            spacing: Style.spacing.md
-                                            options: [
-                                                { label: "Floating", value: "floating" },
-                                                { label: "Rail", value: "integrated" },
-                                                { label: "Overlay", value: "overlay" },
-                                                { label: "Centered", value: "centered" }
-                                            ]
-                                            onChosen: function (value) { root.setWindowFooterStyle(value); }
-                                        }
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Move pointer"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingToggle {
-                                            checked: root.moveCursorToWindow
-                                            onToggled: function (checked) { root.setMoveCursorToWindow(checked); }
-                                        }
-                                    }
-
-                                    Item { Layout.preferredHeight: Style.spacing.md }
+                                    Item { Layout.fillWidth: true }
 
                                     Text {
-                                        text: "Multiple displays"
+                                        visible: !settingsDialog.narrow
+                                        text: "1–4 category   Tab controls"
                                         textFormat: Text.PlainText
                                         color: Color.menu.text
-                                        opacity: 0.55
+                                        opacity: 0.45
                                         font.family: Style.font.menuFamily
                                         font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
                                     }
-
-                                    DisplayModeChoices {
-                                        Layout.fillWidth: true
-                                        value: root.multiMonitorMode
-                                        onChosen: function (value) { root.setMultiMonitorMode(value); }
-                                    }
-
-                                    Item { Layout.preferredHeight: Style.spacing.md }
-
-                                    Text {
-                                        text: "Bottom text"
-                                        textFormat: Text.PlainText
-                                        color: Color.menu.text
-                                        opacity: 0.55
-                                        font.family: Style.font.menuFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.capitalization: Font.AllUppercase
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Text {
-                                            Layout.preferredWidth: Style.space(112)
-                                            text: "Visible"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        SettingToggle {
-                                            id: bottomTextToggle
-                                            checked: root.showFooter
-                                            onToggled: function (checked) {
-                                                if (checked)
-                                                    root.updatePluginSetting("showFooter", true);
-                                                else
-                                                    root.requestFooterHide();
-                                            }
-                                        }
-                                    }
-
-                                    Item { Layout.fillHeight: true }
                                 }
                             }
                         }
                     }
-
                     Item {
                         id: footerHideConfirmationLayer
                         anchors.fill: parent
@@ -3126,7 +3640,7 @@ Item {
                             else if (!visible && root.settingsOpen && overviewWindow.acceptsKeyboard)
                                 Qt.callLater(function () {
                                     if (settingsLayer.visible && !footerHideConfirmationLayer.visible)
-                                        backgroundBlurSlider.forceActiveFocus();
+                                        bottomTextToggle.forceActiveFocus();
                                 });
                         }
 
@@ -3210,8 +3724,12 @@ Item {
                                     activeFocusOnTab: true
 
                                     Keys.onPressed: function (event) {
-                                        if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)
+                                        if (root.handleSettingsTab(event))
                                             return;
+                                        if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
+                                            event.accepted = false;
+                                            return;
+                                        }
                                         root.footerHideAcknowledged = !root.footerHideAcknowledged;
                                         event.accepted = true;
                                     }
@@ -3272,11 +3790,13 @@ Item {
                                     Item { Layout.fillWidth: true }
 
                                     DialogButton {
+                                        id: footerHideCancelButton
                                         label: "Cancel"
                                         onClicked: root.closeFooterHideConfirmation()
                                     }
 
                                     DialogButton {
+                                        id: footerHideConfirmButton
                                         label: "Hide bottom text"
                                         destructive: true
                                         enabled: root.footerHideAcknowledged
