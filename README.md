@@ -1,17 +1,25 @@
 # Exposé
 
-Improved macOS Exposé for Hyprland, with Quick Look and search.
+macOS-style Exposé for Hyprland: one key shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to jump.
 
 ![Exposé demo](assets/demo.gif)
+
+## Highlights
+
+- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The blurred desktop behind the grid stays live too, rendered by Hyprland itself.
+- **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
+- **Search.** Just start typing to filter windows by title or application.
+- **Native.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
+- **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
+
+Everything is tunable from the built-in Settings panel and over IPC, and changes apply instantly.
 
 ## Requirements
 
 - Omarchy Quattro with the native shell plugin system
-- Quickshell with `ToplevelManager` and `ScreencopyView`
-- Hyprland with `wlr-foreign-toplevel-management` and toplevel-export screencopy support
-- Bash and `hyprctl` (included with Omarchy and Hyprland)
 - `jq`
-- GNU `sleep` and `timeout` (included with `coreutils`)
+
+Everything else (Quickshell with `ToplevelManager`/`ScreencopyView`, Hyprland with toplevel-export screencopy, Bash, coreutils) ships with Omarchy.
 
 ## Install
 
@@ -19,104 +27,88 @@ Improved macOS Exposé for Hyprland, with Quick Look and search.
 omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 ```
 
-For local development, replace the URL with your fork.
-
-Add a Hyprland binding to `~/.config/hypr/bindings.lua`:
+Bind a key in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
 o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
 ```
 
-Choose any unused chord if `SUPER + A` is already bound. Run `hyprctl reload` afterward.
+Any unused chord works. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
 
-## Update
+### Update
 
 ```sh
 omarchy plugin update expose.window-overview --yes
 ```
 
-## Remove
+### Remove
 
-Remove the Exposé lines from `~/.config/hypr/bindings.lua`, then run:
+Delete the Exposé binding from `~/.config/hypr/bindings.lua`, then:
 
 ```sh
 omarchy plugin remove expose.window-overview --yes
 hyprctl reload
 ```
 
-Exposé adds no packages, services, hooks, or files outside its plugin directory and its entry in `~/.config/omarchy/shell.json`.
+Removal leaves nothing behind: Exposé keeps no files outside its plugin directory and its entry in `~/.config/omarchy/shell.json`.
 
-## Keyboard controls
+## Controls
 
 | Key | Action |
 | --- | --- |
 | Arrow keys | Move selection |
-| Space | Enlarge or restore the hovered or selected window preview |
-| Shift+Space | Enlarge or restore the preview in exaggerated slow motion |
+| Any character | Search by title or application |
+| Space | Quick Look the hovered or selected preview (enlarge or restore) |
+| Shift+Space | Quick Look in slow motion |
 | Enter | Activate the selected window |
-| Escape | Restore an enlarged preview; press again to close the overview |
-| Letters, numbers, and punctuation | Search by title or application |
-| Backspace | Remove a search character |
-| Ctrl+Backspace | Remove a search word |
-| Ctrl+U | Clear the search |
+| Escape | Restore an enlarged preview; press again to close |
+| Backspace / Ctrl+Backspace / Ctrl+U | Delete a search character / word / everything |
 
-Mouse users can click a card to activate it.
+Clicking a card activates it. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
-## Configuration
+## Settings
 
-Exposé follows the active Omarchy theme. Preview positions stay fixed while the overview is open, so title and workspace updates do not reshuffle the layout.
+Open **Settings** from the footer while the overview is open. Changes apply immediately:
 
-Open **Settings** from the footer to change blur, dimming, hot-corner behavior, preview placement, labels, and pointer movement. Changes apply immediately.
+- Background blur (0–20) and dim (0–90)
+- Preview placement: in-place or centered
+- Window footer style: floating, integrated, overlay, or centered
+- Hot corner on/off and position (disable the same corner in other hot-corner plugins to avoid overlap)
+- Move cursor to the activated window on/off
 
-Hyprland renders the background blur, keeping videos and other desktop content live. Exposé restores the previous blur setting when it closes.
-
-The top-left hot corner is enabled by default. It toggles Exposé after the pointer enters the corner and re-arms once the pointer leaves. Disable the same corner in other hot-corner plugins to avoid overlap.
-
-Window activation moves the pointer to the chosen window by default. This can be disabled without changing Hyprland's global cursor setting.
-
-### IPC
+Every setting is also scriptable:
 
 ```sh
-omarchy-shell expose toggle
-omarchy-shell expose open # Run again to close with the reverse animation
-omarchy-shell expose close
-omarchy-shell expose settings open
-omarchy-shell expose settings close
-omarchy-shell expose settings toggle
-omarchy-shell expose backgroundBlur 4
-omarchy-shell expose backgroundDim 6
-omarchy-shell expose previewPlacement in-place
-omarchy-shell expose previewPlacement centered
-omarchy-shell expose windowFooterStyle floating
-omarchy-shell expose windowFooterStyle integrated
-omarchy-shell expose windowFooterStyle overlay
-omarchy-shell expose windowFooterStyle centered
-omarchy-shell expose hotCorner on
-omarchy-shell expose hotCorner off
-omarchy-shell expose hotCornerPosition top-left
-omarchy-shell expose hotCornerPosition top-right
-omarchy-shell expose hotCornerPosition bottom-left
-omarchy-shell expose hotCornerPosition bottom-right
-omarchy-shell expose moveCursorToWindow on
-omarchy-shell expose moveCursorToWindow off
+omarchy-shell expose toggle                      # also: open, close
+omarchy-shell expose settings toggle             # also: open, close
+omarchy-shell expose backgroundBlur 4            # 0-20
+omarchy-shell expose backgroundDim 6             # 0-90
+omarchy-shell expose previewPlacement in-place   # in-place | centered
+omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
+omarchy-shell expose hotCorner on                # on | off
+omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom-left | bottom-right
+omarchy-shell expose moveCursorToWindow on       # on | off
 ```
 
 ## Security and system changes
 
-Exposé runs unsandboxed inside Omarchy Shell with the current user's permissions.
+Exposé runs unsandboxed inside Omarchy Shell with your user's permissions.
 
-- Its helpers use Bash, `hyprctl`, `jq`, `sleep`, and `timeout`.
-- It reads Hyprland window metadata, activates selected windows, and temporarily changes Hyprland's blur setting while open.
-- Settings writes update only the plugin's entry in `~/.config/omarchy/shell.json`.
-- It does not use privilege escalation or the network, install packages, create services, or run remote builds.
+- Its helpers are plain Bash calling `hyprctl`, `jq`, `sleep`, and `timeout`.
+- It reads Hyprland window metadata, activates the windows you select, and temporarily raises Hyprland's blur while open, restoring the previous value on close.
+- Settings writes touch only the plugin's entry in `~/.config/omarchy/shell.json`.
+- No network, no privilege escalation, no package installs, no services.
 
 ## Troubleshooting
 
-- **No thumbnails:** verify that Hyprland exposes toplevel-export support and that no screen-capture policy blocks Quickshell. Cards remain usable with fallback labels.
-- **Workspace says “—”:** Exposé matches foreign-toplevel objects to `hyprctl clients -j`. Very short-lived windows or multiple identical title/class pairs can briefly be ambiguous.
-- **Plugin is not listed:** run `omarchy plugin validate .`, then `omarchy-shell shell rescanPlugins`.
-- **Shortcut does nothing:** run `hyprctl reload`, inspect `hyprctl configerrors`, and test `omarchy-shell expose toggle` directly.
-- **Standalone Super:** Hyprland modifier-only bindings are not reliably distinguishable from the start of normal Super shortcuts in current configurations. A chord such as Super+Tab avoids delayed or accidental activation.
+- **No thumbnails:** verify Hyprland exposes toplevel-export support and no screen-capture policy blocks Quickshell. Cards stay usable with fallback labels.
+- **Workspace says “—”:** Exposé matches foreign-toplevel objects to `hyprctl clients -j`; very short-lived windows or identical title/class pairs can briefly be ambiguous.
+- **Plugin not listed:** run `omarchy plugin validate .`, then `omarchy-shell shell rescanPlugins`.
+- **Shortcut does nothing:** run `hyprctl reload`, check `hyprctl configerrors`, and test `omarchy-shell expose toggle` directly.
+
+## Credits
+
+Based on [Bird's Eye](https://github.com/harel/omarchy-birdseye) by Harel Malka.
 
 ## License
 
