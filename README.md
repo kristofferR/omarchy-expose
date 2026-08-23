@@ -1,6 +1,6 @@
 # Exposé for Omarchy
 
-macOS-style Exposé for Omarchy: one key or a hot corner shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to jump.
+macOS-style Exposé for Omarchy: one key or a hot corner shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to launch.
 
 ![Exposé demo](assets/demo.gif)
 
