@@ -77,6 +77,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 
 - Opening animation: Original (default), Fade, Zoom, or Slide
 - Animation speed saved per mode, linked for in/out by default or expandable to separate timings
+- Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
@@ -94,6 +95,9 @@ omarchy-shell expose animationStyle original     # original | fade | zoom | slid
 omarchy-shell expose animationDuration original 190    # linked in/out, 100-800 ms
 omarchy-shell expose animationDurationIn original 190  # separate opening speed
 omarchy-shell expose animationDurationOut original 190 # separate closing speed
+omarchy-shell expose slideDirection left         # left | right | up | down, both halves
+omarchy-shell expose slideDirectionIn left       # separate opening side, also splits slide timing
+omarchy-shell expose slideDirectionOut right     # separate closing side, also splits slide timing
 omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
