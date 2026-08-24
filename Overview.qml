@@ -2661,11 +2661,12 @@ Item {
                                         required property var modelData
                                         // Position in the filtered list; -1 hides the card.
                                         readonly property int slot: overviewWindow.screenToplevels.indexOf(modelData)
+                                        readonly property bool inLayout: slot >= 0
                                         property bool hovered: false
-                                        readonly property bool selected: overviewWindow.acceptsKeyboard && slot === root.selectedIndex
+                                        readonly property bool selected: overviewWindow.acceptsKeyboard && inLayout && slot === root.selectedIndex
                                         readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
-                                        readonly property bool previewed: overviewWindow.acceptsKeyboard && slot === root.previewIndex
-                                        readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && slot === root.previewExitIndex
+                                        readonly property bool previewed: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewIndex
+                                        readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewExitIndex
                                         readonly property bool floatingFooter: root.windowFooterStyle === "floating"
                                         readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
                                         readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
@@ -2680,10 +2681,21 @@ Item {
                                             : (focusedWindow
                                                 ? Math.max(2, Style.selectedBorderWidth)
                                                 : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
-                                        readonly property var packedRect: overviewArea.windowLayout[slot] || Qt.rect(0, 0, 1, 1)
+                                        // An excluded card keeps its last rectangle, so it neither
+                                        // animates toward the origin nor flies back in from it.
+                                        readonly property var packedRectSource: inLayout ? overviewArea.windowLayout[slot] : null
+                                        property var packedRect: Qt.rect(0, 0, 1, 1)
+                                        onPackedRectSourceChanged: {
+                                            if (packedRectSource)
+                                                packedRect = packedRectSource;
+                                        }
+                                        Component.onCompleted: {
+                                            if (packedRectSource)
+                                                packedRect = packedRectSource;
+                                        }
                                         readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, root.windowFooterHeight)
                                         readonly property var layoutRect: previewed ? previewRect : packedRect
-                                        visible: slot >= 0
+                                        visible: inLayout
                                         x: layoutRect.x
                                         y: layoutRect.y
                                         width: layoutRect.width
@@ -2808,7 +2820,7 @@ Item {
                                                         ScreencopyView {
                                                             anchors.fill: parent
                                                             captureSource: card.modelData
-                                                            live: root.opened && card.visible
+                                                            live: root.opened && card.inLayout
                                                             paintCursor: false
                                                         }
                                                     }
