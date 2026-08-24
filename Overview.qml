@@ -178,11 +178,80 @@ Item {
         }
     }
 
+    // Hyprland binds defined through Omarchy's Lua API expose no command, only
+    // a description. Binds described as Exposé (the README convention) are
+    // treated as the toggle chord and close the overview from inside, since the
+    // shortcut inhibitor stops the compositor from firing them itself.
+    property var toggleShortcuts: []
+    readonly property var keyNamesByQtKey: ({
+        [Qt.Key_Space]: "space", [Qt.Key_Return]: "return", [Qt.Key_Enter]: "kp_enter",
+        [Qt.Key_Tab]: "tab", [Qt.Key_Backspace]: "backspace", [Qt.Key_Delete]: "delete",
+        [Qt.Key_Insert]: "insert", [Qt.Key_Home]: "home", [Qt.Key_End]: "end",
+        [Qt.Key_PageUp]: "prior", [Qt.Key_PageDown]: "next",
+        [Qt.Key_Up]: "up", [Qt.Key_Down]: "down", [Qt.Key_Left]: "left", [Qt.Key_Right]: "right",
+        [Qt.Key_QuoteLeft]: "grave", [Qt.Key_Minus]: "minus", [Qt.Key_Equal]: "equal",
+        [Qt.Key_Comma]: "comma", [Qt.Key_Period]: "period", [Qt.Key_Slash]: "slash",
+        [Qt.Key_Semicolon]: "semicolon", [Qt.Key_Apostrophe]: "apostrophe",
+        [Qt.Key_BracketLeft]: "bracketleft", [Qt.Key_BracketRight]: "bracketright",
+        [Qt.Key_Backslash]: "backslash",
+        [Qt.Key_F1]: "f1", [Qt.Key_F2]: "f2", [Qt.Key_F3]: "f3", [Qt.Key_F4]: "f4",
+        [Qt.Key_F5]: "f5", [Qt.Key_F6]: "f6", [Qt.Key_F7]: "f7", [Qt.Key_F8]: "f8",
+        [Qt.Key_F9]: "f9", [Qt.Key_F10]: "f10", [Qt.Key_F11]: "f11", [Qt.Key_F12]: "f12"
+    })
+
+    function parseToggleShortcuts(text) {
+        var binds;
+        try {
+            binds = JSON.parse(String(text || ""));
+        } catch (e) {
+            return [];
+        }
+        if (!Array.isArray(binds))
+            return [];
+        var result = [];
+        for (var index = 0; index < binds.length; index++) {
+            var bind = binds[index];
+            if (!bind || typeof bind !== "object" || bind.mouse === true)
+                continue;
+            if (!/expos/i.test(String(bind.description || "")))
+                continue;
+            var modmask = (Number(bind.modmask) || 0) & 77;
+            var key = String(bind.key || "").toLowerCase();
+            var keycode = Number(bind.keycode) || 0;
+            // A bare printable key would also collide with search typing.
+            if (modmask === 0 && key.length === 1)
+                continue;
+            result.push({ modmask: modmask, key: key, keycode: keycode });
+        }
+        return result;
+    }
+
+    function matchesToggleShortcut(event) {
+        if (!root.toggleShortcuts.length || event.isAutoRepeat)
+            return false;
+        var modmask = (event.modifiers & Qt.ShiftModifier ? 1 : 0)
+            | (event.modifiers & Qt.ControlModifier ? 4 : 0)
+            | (event.modifiers & Qt.AltModifier ? 8 : 0)
+            | (event.modifiers & Qt.MetaModifier ? 64 : 0);
+        var text = String(event.text || "").toLowerCase();
+        var name = root.keyNamesByQtKey[event.key] || (text.length === 1 && text.charCodeAt(0) > 32 ? text : "");
+        for (var index = 0; index < root.toggleShortcuts.length; index++) {
+            var shortcut = root.toggleShortcuts[index];
+            if (shortcut.modmask !== modmask)
+                continue;
+            if (shortcut.keycode ? event.nativeScanCode === shortcut.keycode : (name && shortcut.key === name))
+                return true;
+        }
+        return false;
+    }
+
     function open(payload) {
         root.closeSettings();
         root.filterText = "";
         root.workspaceScope = "all";
         root.dismissNotifyShell = false;
+        if (!bindQuery.running)
+            bindQuery.running = true;
         if (root.surfaceMounted) {
             root.opened = true;
             root.animateMotionTo(1);
@@ -1495,6 +1564,14 @@ Item {
     }
 
     Process {
+        id: bindQuery
+        command: ["hyprctl", "binds", "-j"]
+        stdout: StdioCollector {
+            onStreamFinished: root.toggleShortcuts = root.parseToggleShortcuts(this.text)
+        }
+    }
+
+    Process {
         id: backgroundBlurSession
         command: [root.pluginDir + "/background-blur-session"]
         stdinEnabled: true
@@ -2369,6 +2446,11 @@ Item {
                 }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
+                    if (root.matchesToggleShortcut(event)) {
+                        root.dismiss();
+                        event.accepted = true;
+                        return;
+                    }
                     if (root.settingsOpen
                             && !root.footerHideConfirmationOpen
                             && event.key >= Qt.Key_1
