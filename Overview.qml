@@ -1939,9 +1939,7 @@ Item {
         signal entered()
 
         function choose(nextIndex) {
-            var next = Math.max(0, Math.min(3, nextIndex));
-            if (next !== categoryButton.categoryIndex)
-                categoryButton.chosen(next);
+            categoryButton.chosen(Math.max(0, Math.min(3, nextIndex)));
         }
 
         // The sidebar is a list: arrows along its axis pick a section, the
