@@ -37,6 +37,20 @@ o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
 
 Any unused chord works. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
 
+To keep workspace swipes from changing the desktop behind Exposé, replace your workspace gesture in `~/.config/hypr/input.lua` with:
+
+```lua
+local expose_gesture_path = os.getenv("HOME") .. "/.config/omarchy/plugins/expose.window-overview/workspace-gesture.lua"
+local expose_gesture_loader = loadfile(expose_gesture_path)
+if expose_gesture_loader then
+  expose_gesture_loader()({ fingers = 4, scale = 0.5 })
+else
+  hl.gesture({ fingers = 4, direction = "horizontal", scale = 0.5, action = "workspace" })
+end
+```
+
+Adjust `fingers` and `scale` to match your preferred gesture. Only the workspace gesture is swallowed while Exposé is open; media keys and other compositor shortcuts keep working.
+
 ### Update
 
 ```sh
