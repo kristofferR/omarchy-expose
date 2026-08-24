@@ -74,6 +74,30 @@ Item {
             slide: timingFor("slide")
         };
     }
+    readonly property var slideVectors: ({
+        left: {x: -1, y: 0},
+        right: {x: 1, y: 0},
+        up: {x: 0, y: -1},
+        down: {x: 0, y: 1}
+    })
+    // {"in", "out"}. A bare string in config is shorthand for both. The slide
+    // timing's `separate` flag decides whether "out" is honored or mirrors "in".
+    readonly property var slideDirection: {
+        var raw = root.pluginEntry ? root.pluginEntry.slideDirection : undefined;
+        var isObject = raw !== null && raw !== undefined && typeof raw === "object";
+        var inValue = root.normalizeSlideDirection(isObject ? raw["in"] : raw);
+        var outValue = root.animationTimingFor("slide").separate
+            ? root.normalizeSlideDirection(isObject ? raw["out"] : raw)
+            : inValue;
+        return {"in": inValue, "out": outValue};
+    }
+    // Latched by animateMotionTo when a transition starts from rest, so reversing
+    // mid-flight slides back out the side it came from instead of popping across.
+    property string slideMotionDirection: ""
+    readonly property var slideVector: root.slideVectors[root.slideMotionDirection] || root.slideVectors[root.slideDirection["in"]]
+    readonly property real slideOffsetFraction: root.animationStyle === "slide"
+        ? 0.11 * (1 - root.motionProgress)
+        : 0
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
     readonly property int backgroundBlur: {
         var raw = root.pluginEntry ? root.pluginEntry.backgroundBlur : undefined;
@@ -360,6 +384,8 @@ Item {
             root.completeMotion();
             return;
         }
+        if (root.motionProgress <= 0.001 || root.motionProgress >= 0.999)
+            root.slideMotionDirection = String(root.slideDirection[next > 0 ? "in" : "out"]);
         overviewMotionAnimation.from = root.motionProgress;
         overviewMotionAnimation.to = next;
         var configuredDuration = next > root.motionProgress
@@ -504,6 +530,40 @@ Item {
         return separate
             ? root.setAnimationTiming(style, timing["in"], timing["out"], true)
             : root.setAnimationTiming(style, timing["in"], timing["in"], false);
+    }
+
+    function normalizeSlideDirection(value) {
+        var direction = String(value === null || value === undefined ? "" : value);
+        return direction in root.slideVectors ? direction : "left";
+    }
+
+    function setSlideDirections(inValue, outValue) {
+        var nextIn = root.normalizeSlideDirection(inValue);
+        var nextOut = root.normalizeSlideDirection(outValue);
+        var current = root.slideDirection;
+        if (nextIn !== String(current["in"]) || nextOut !== String(current["out"]))
+            root.updatePluginSetting("slideDirection", {"in": nextIn, "out": nextOut});
+    }
+
+    function setSlideDirection(value) {
+        var next = root.normalizeSlideDirection(value);
+        root.setSlideDirections(next, next);
+        return next;
+    }
+
+    // Splitting a side also splits slide timing: one toggle governs both.
+    function setSlideDirectionIn(value) {
+        var next = root.normalizeSlideDirection(value);
+        root.setAnimationTimingSeparate("slide", true);
+        root.setSlideDirections(next, root.slideDirection["out"]);
+        return next;
+    }
+
+    function setSlideDirectionOut(value) {
+        var next = root.normalizeSlideDirection(value);
+        root.setAnimationTimingSeparate("slide", true);
+        root.setSlideDirections(root.slideDirection["in"], next);
+        return next;
     }
 
     function clearAnimationTimingPreview() {
@@ -1706,6 +1766,21 @@ Item {
                 return "expected original, fade, zoom, or slide";
             return String(root.setAnimationDurationOut(style, value));
         }
+        function slideDirection(direction: string): string {
+            if (!(direction in root.slideVectors))
+                return "expected left, right, up, or down";
+            return root.setSlideDirection(direction);
+        }
+        function slideDirectionIn(direction: string): string {
+            if (!(direction in root.slideVectors))
+                return "expected left, right, up, or down";
+            return root.setSlideDirectionIn(direction);
+        }
+        function slideDirectionOut(direction: string): string {
+            if (!(direction in root.slideVectors))
+                return "expected left, right, up, or down";
+            return root.setSlideDirectionOut(direction);
+        }
         function backgroundBlur(value: real): string {
             return String(root.setBackgroundBlur(value));
         }
@@ -2427,6 +2502,9 @@ Item {
                     categoryButton,
                     motionAnimateButton,
                     animationStyleChoices,
+                    slideDirectionChoices,
+                    slideDirectionInChoices,
+                    slideDirectionOutChoices,
                     animationSpeedSlider,
                     animationInSlider,
                     animationOutSlider,
@@ -2509,9 +2587,8 @@ Item {
                             : 1))
                 transformOrigin: Item.Center
                 transform: Translate {
-                    x: root.animationStyle === "slide"
-                        ? -overviewWindow.width * 0.11 * (1 - root.motionProgress)
-                        : 0
+                    x: overviewWindow.width * root.slideOffsetFraction * root.slideVector.x
+                    y: overviewWindow.height * root.slideOffsetFraction * root.slideVector.y
                 }
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function (event) {
@@ -3711,6 +3788,94 @@ Item {
                                             RowLayout {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: Style.space(48)
+                                                visible: root.animationStyle === "slide" && !root.animationTimingFor("slide").separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Direction"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: slideDirectionChoices
+                                                    value: String(root.slideDirection["in"])
+                                                    options: [
+                                                        { label: "Left", value: "left" },
+                                                        { label: "Right", value: "right" },
+                                                        { label: "Up", value: "up" },
+                                                        { label: "Down", value: "down" }
+                                                    ]
+                                                    onChosen: function (value) { root.setSlideDirection(value); }
+                                                }
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "In from"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: slideDirectionInChoices
+                                                    value: String(root.slideDirection["in"])
+                                                    options: [
+                                                        { label: "Left", value: "left" },
+                                                        { label: "Right", value: "right" },
+                                                        { label: "Up", value: "up" },
+                                                        { label: "Down", value: "down" }
+                                                    ]
+                                                    onChosen: function (value) { root.setSlideDirectionIn(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider {
+                                                Layout.fillWidth: true
+                                                visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
+                                                visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
+                                                Text {
+                                                    Layout.preferredWidth: Style.space(120)
+                                                    text: "Out to"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.body
+                                                }
+                                                Item { Layout.fillWidth: true }
+                                                SettingChoices {
+                                                    id: slideDirectionOutChoices
+                                                    value: String(root.slideDirection["out"])
+                                                    options: [
+                                                        { label: "Left", value: "left" },
+                                                        { label: "Right", value: "right" },
+                                                        { label: "Up", value: "up" },
+                                                        { label: "Down", value: "down" }
+                                                    ]
+                                                    onChosen: function (value) { root.setSlideDirectionOut(value); }
+                                                }
+                                            }
+
+                                            SettingsDivider {
+                                                Layout.fillWidth: true
+                                                visible: root.animationStyle === "slide"
+                                            }
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(48)
                                                 visible: !root.animationTimingFor(root.animationStyle).separate
                                                 Text {
                                                     Layout.preferredWidth: Style.space(120)
@@ -3817,7 +3982,7 @@ Item {
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: Style.space(48)
                                                 Text {
-                                                    text: "Same speed in and out"
+                                                    text: "Same in and out"
                                                     textFormat: Text.PlainText
                                                     color: Color.menu.text
                                                     font.family: Style.font.menuFamily
