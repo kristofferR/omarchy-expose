@@ -35,7 +35,7 @@ That's it: the top-left hot corner works right away. Optionally, bind a key in `
 o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle", { dont_inhibit = true })
 ```
 
-Any unused chord works. Keep `dont_inhibit` enabled so the same chord can close Exposé while its modal shortcut inhibitor is active. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
+Any unused chord works. While Exposé is open it inhibits compositor shortcuts and workspace gestures, so `dont_inhibit` lets the same chord close it again. Bindings described as "Exposé" (as above) also close it without that flag. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
 
 ### Update
 
