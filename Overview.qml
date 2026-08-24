@@ -193,11 +193,15 @@ Item {
         [Qt.Key_Comma]: "comma", [Qt.Key_Period]: "period", [Qt.Key_Slash]: "slash",
         [Qt.Key_Semicolon]: "semicolon", [Qt.Key_Apostrophe]: "apostrophe",
         [Qt.Key_BracketLeft]: "bracketleft", [Qt.Key_BracketRight]: "bracketright",
-        [Qt.Key_Backslash]: "backslash",
-        [Qt.Key_F1]: "f1", [Qt.Key_F2]: "f2", [Qt.Key_F3]: "f3", [Qt.Key_F4]: "f4",
-        [Qt.Key_F5]: "f5", [Qt.Key_F6]: "f6", [Qt.Key_F7]: "f7", [Qt.Key_F8]: "f8",
-        [Qt.Key_F9]: "f9", [Qt.Key_F10]: "f10", [Qt.Key_F11]: "f11", [Qt.Key_F12]: "f12"
+        [Qt.Key_Backslash]: "backslash"
     })
+
+    function keyNameFor(event) {
+        if (event.key >= Qt.Key_F1 && event.key <= Qt.Key_F35)
+            return "f" + (event.key - Qt.Key_F1 + 1);
+        var text = String(event.text || "").toLowerCase();
+        return root.keyNamesByQtKey[event.key] || (text.length === 1 && text.charCodeAt(0) > 32 ? text : "");
+    }
 
     function parseToggleShortcuts(text) {
         var binds;
@@ -233,8 +237,7 @@ Item {
             | (event.modifiers & Qt.ControlModifier ? 4 : 0)
             | (event.modifiers & Qt.AltModifier ? 8 : 0)
             | (event.modifiers & Qt.MetaModifier ? 64 : 0);
-        var text = String(event.text || "").toLowerCase();
-        var name = root.keyNamesByQtKey[event.key] || (text.length === 1 && text.charCodeAt(0) > 32 ? text : "");
+        var name = root.keyNameFor(event);
         for (var index = 0; index < root.toggleShortcuts.length; index++) {
             var shortcut = root.toggleShortcuts[index];
             if (shortcut.modmask !== modmask)
