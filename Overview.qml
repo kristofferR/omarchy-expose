@@ -2053,19 +2053,11 @@ Item {
         Keys.onPressed: function (event) {
             if (root.handleSettingsNavigation(event))
                 return;
-            var next;
-            if (event.key === Qt.Key_Left)
-                next = false;
-            else if (event.key === Qt.Key_Right)
-                next = true;
-            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                next = !settingToggle.checked;
-            else {
+            if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
                 event.accepted = false;
                 return;
             }
-            if (next !== settingToggle.checked)
-                settingToggle.toggled(next);
+            settingToggle.toggled(!settingToggle.checked);
             event.accepted = true;
         }
 
