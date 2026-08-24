@@ -73,7 +73,7 @@ With **Same overview**, every display shows the same grid. With **Per monitor**,
 
 ## Settings
 
-Open **Settings** from the footer while the overview is open. Changes apply immediately:
+Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-4 jump to a section, Up/Down move between controls, Left/Right adjust the focused control, Space or Enter activate, Escape closes. Changes apply immediately:
 
 - Opening animation: Original (default), Fade, Zoom, or Slide
 - Animation speed saved per mode, linked for in/out by default or expandable to separate timings
