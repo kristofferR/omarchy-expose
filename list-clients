@@ -2,55 +2,51 @@
 set -euo pipefail
 
 # Keep failures and hostile compositor metadata inside this short-lived helper,
-# not the long-running Omarchy shell. Output is an optional display-state record
-# followed by at most 256 bounded client records as NDJSON.
+# not the long-running Omarchy shell. Output is a display-state record followed
+# by at most 256 bounded client records as NDJSON. One batched hyprctl call
+# returns both JSON documents, which jq reads as a stream.
 ulimit -v 131072
 
-if ! timeout --signal=TERM --kill-after=1 2 hyprctl -j monitors | jq -c '
+timeout --signal=TERM --kill-after=1 2 hyprctl --batch "j/monitors; j/clients" | jq -c -n '
   def bounded($n): if type == "string" then .[0:$n] else "" end;
+  def dimension: if type == "number" and . > 0 and . <= 32768 then floor else 0 end;
   def workspace:
     if type == "object" then {
       id: (if (.id | type) == "number" then .id else 0 end),
       name: (.name | bounded(128))
     } else {id: 0, name: ""} end;
-  (if type == "array" then . else [] end) as $allMonitors
+  ((try input catch []) | if type == "array" then . else [] end) as $allMonitors
+  | ((try input catch []) | if type == "array" then . else [] end) as $clients
   | ($allMonitors | map(select(.focused == true)) | first // $allMonitors[0] // {}) as $focused
   | ($allMonitors[0:32]) as $monitors
   | {
-    kind: "display-state",
-    activeWorkspace: ($focused.activeWorkspace | workspace),
-    monitors: [
-      $monitors[]
+      kind: "display-state",
+      activeWorkspace: ($focused.activeWorkspace | workspace),
+      monitors: [
+        $monitors[]
+        | {
+            id: (if (.id | type) == "number" then .id else 0 end),
+            name: (.name | bounded(128)),
+            activeWorkspace: (.activeWorkspace | workspace)
+          }
+      ]
+    },
+    limit(256;
+      $clients[]
+      | select(.mapped != false)
       | {
-          id: (if (.id | type) == "number" then .id else 0 end),
-          name: (.name | bounded(128)),
-          activeWorkspace: (.activeWorkspace | workspace)
+          kind: "client",
+          address: (.address | bounded(32)),
+          class: (.class | bounded(512)),
+          initialClass: (.initialClass | bounded(512)),
+          title: (.title | bounded(512)),
+          workspace: {
+            id: (if (.workspace.id | type) == "number" then .workspace.id else 0 end),
+            name: (.workspace.name | bounded(128))
+          },
+          pinned: (.pinned == true),
+          monitor: (if (.monitor | type) == "number" then .monitor else 0 end),
+          size: (if (.size | type) == "array" then [(.size[0] | dimension), (.size[1] | dimension)] else [0, 0] end)
         }
-    ]
-  }
-'; then
-  :
-fi
-
-timeout --signal=TERM --kill-after=1 2 hyprctl -j clients | jq -c '
-  def bounded($n): if type == "string" then .[0:$n] else "" end;
-  def dimension: if type == "number" and . > 0 and . <= 32768 then floor else 0 end;
-  limit(256;
-    .[]
-    | select(.mapped != false)
-    | {
-        kind: "client",
-        address: (.address | bounded(32)),
-        class: (.class | bounded(512)),
-        initialClass: (.initialClass | bounded(512)),
-        title: (.title | bounded(512)),
-        workspace: {
-          id: (if (.workspace.id | type) == "number" then .workspace.id else 0 end),
-          name: (.workspace.name | bounded(128))
-        },
-        pinned: (.pinned == true),
-        monitor: (if (.monitor | type) == "number" then .monitor else 0 end),
-        size: (if (.size | type) == "array" then [(.size[0] | dimension), (.size[1] | dimension)] else [0, 0] end)
-      }
-  )
+    )
 '
