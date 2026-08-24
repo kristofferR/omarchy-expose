@@ -142,6 +142,11 @@ Item {
     property bool dismissNotifyShell: false
     property real motionProgress: 0
     property real motionTarget: 0
+    // Cards bind to this instead of motionProgress so the animation only
+    // notifies them twice, not once per frame.
+    readonly property bool motionSettled: root.motionProgress >= 0.999
+    property int lastRequestedBlur: -1
+    property var iconCache: ({})
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
@@ -1135,15 +1140,24 @@ Item {
         return Boolean(workspaceName) && String(client.workspace.name || "") === workspaceName;
     }
 
-    function toplevelsForScreen(screenName) {
-        var needle = root.filterText.toLowerCase();
-        var currentWorkspace = root.workspaceForScreen(screenName);
+    function toplevelsOnScreen(screenName) {
         var result = [];
         var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
         for (var index = 0; index < source.length; index++) {
             var top = source[index];
-            if (!top || !root.isOnScreen(top, screenName))
-                continue;
+            if (top && root.isOnScreen(top, screenName))
+                result.push(top);
+        }
+        return result;
+    }
+
+    function toplevelsForScreen(screenName) {
+        var needle = root.filterText.toLowerCase();
+        var currentWorkspace = root.workspaceForScreen(screenName);
+        var candidates = root.toplevelsOnScreen(screenName);
+        var result = [];
+        for (var index = 0; index < candidates.length; index++) {
+            var top = candidates[index];
             if (root.workspaceScope === "current" && !root.isOnWorkspace(top, currentWorkspace))
                 continue;
             var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
@@ -1151,6 +1165,15 @@ Item {
                 result.push(top);
         }
         return result;
+    }
+
+    function toplevelListsEqual(left, right) {
+        if (left.length !== right.length)
+            return false;
+        for (var index = 0; index < left.length; index++)
+            if (left[index] !== right[index])
+                return false;
+        return true;
     }
 
     function monitorFor(top) {
@@ -1424,15 +1447,23 @@ Item {
 
     function iconFor(appId) {
         var wanted = normalized(appId);
+        if (Object.prototype.hasOwnProperty.call(root.iconCache, wanted))
+            return root.iconCache[wanted];
+        var result = "";
         var entries = DesktopEntries.applications ? DesktopEntries.applications.values : [];
         for (var i = 0; i < entries.length; i++) {
             var entry = entries[i];
             var id = normalized(entry.id);
             var name = normalized(entry.name);
-            if (id === wanted || id.indexOf(wanted) !== -1 || wanted.indexOf(id) !== -1 || name === wanted)
-                return Quickshell.iconPath(String(entry.icon || "application-x-executable"), true);
+            if (id === wanted || id.indexOf(wanted) !== -1 || wanted.indexOf(id) !== -1 || name === wanted) {
+                result = Quickshell.iconPath(String(entry.icon || "application-x-executable"), true);
+                break;
+            }
         }
-        return Quickshell.iconPath(wanted || "application-x-executable", true);
+        if (!result)
+            result = Quickshell.iconPath(wanted || "application-x-executable", true);
+        root.iconCache[wanted] = result;
+        return result;
     }
 
     function handleKey(event, layout) {
@@ -1501,7 +1532,17 @@ Item {
                 root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
             if (root.previewIndex >= root.filteredToplevels.length)
                 root.clearPreview();
-            root.refreshClients();
+            // open() takes a fresh snapshot before mounting, so nothing needs
+            // one while the overview is closed.
+            if (root.surfaceMounted || root.openingAfterClientRefresh)
+                root.refreshClients();
+        }
+    }
+
+    Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() {
+            root.iconCache = {};
         }
     }
 
@@ -1527,8 +1568,13 @@ Item {
         id: backgroundBlurUpdate
         interval: 16
         onTriggered: {
-            if (backgroundBlurSession.running)
-                backgroundBlurSession.write(String(root.requestedBackgroundBlur()) + "\n");
+            if (!backgroundBlurSession.running)
+                return;
+            var requested = root.requestedBackgroundBlur();
+            if (requested === root.lastRequestedBlur)
+                return;
+            root.lastRequestedBlur = requested;
+            backgroundBlurSession.write(String(requested) + "\n");
         }
     }
 
@@ -1582,6 +1628,7 @@ Item {
             var initialBlur = root.openingAfterClientRefresh && root.effectiveBackgroundBlur > 0
                 ? 1
                 : root.requestedBackgroundBlur();
+            root.lastRequestedBlur = initialBlur;
             backgroundBlurSession.write(String(initialBlur) + "\n");
         }
         stdout: SplitParser {
@@ -1602,6 +1649,7 @@ Item {
         }
         onExited: function (exitCode, exitStatus) {
             root.backgroundBlurPrimed = false;
+            root.lastRequestedBlur = -1;
             if (root.openingAfterClientRefresh) {
                 root.backgroundBlurFailed = true;
                 root.prepareOpenSurface();
@@ -2315,6 +2363,24 @@ Item {
                 var revision = root.modelRevision;
                 return root.toplevelsForScreen(String(modelData.name || ""));
             }
+            // A Repeater over a JS array rebuilds every delegate when the array
+            // is reassigned, and with it every screencopy capture and layer
+            // texture. Cards are therefore created from every window on this
+            // screen and only hidden by the filter, and the list is reassigned
+            // solely when its membership changes.
+            readonly property var cardToplevelsSource: {
+                var revision = root.modelRevision;
+                return root.toplevelsOnScreen(String(modelData.name || ""));
+            }
+            property var cardToplevels: []
+
+            function syncCardToplevels() {
+                if (!root.toplevelListsEqual(overviewWindow.cardToplevels, overviewWindow.cardToplevelsSource))
+                    overviewWindow.cardToplevels = overviewWindow.cardToplevelsSource;
+            }
+
+            onCardToplevelsSourceChanged: overviewWindow.syncCardToplevels()
+            Component.onCompleted: overviewWindow.syncCardToplevels()
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
@@ -2575,173 +2641,233 @@ Item {
                             return root.computeWindowLayout(overviewWindow.screenToplevels, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
                         }
 
-                        Repeater {
-                            model: overviewWindow.screenToplevels
+                        Item {
+                            id: cardLayer
+                            anchors.fill: parent
+                            // The original style grows the whole arrangement out of the
+                            // top-left corner. A single transform does that without
+                            // resizing any card, so no layout, text elision, or layer
+                            // texture is redone per frame.
+                            scale: root.animationStyle === "original" && root.motionTarget > 0
+                                ? root.motionProgress
+                                : 1
+                            transformOrigin: Item.TopLeft
 
-                            delegate: Rectangle {
-                                    id: card
-                                    required property var modelData
-                                    required property int index
-                                    property bool hovered: false
-                                    readonly property bool selected: overviewWindow.acceptsKeyboard && index === root.selectedIndex
-                                    readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
-                                    readonly property bool previewed: overviewWindow.acceptsKeyboard && index === root.previewIndex
-                                    readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && index === root.previewExitIndex
-                                    readonly property bool floatingFooter: root.windowFooterStyle === "floating"
-                                    readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
-                                    readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
-                                    readonly property bool centeredFooter: root.windowFooterStyle === "centered"
-                                    readonly property string windowTitle: String(modelData.title || modelData.appId || "Untitled window")
-                                    readonly property string applicationName: String(modelData.appId || "Application")
-                                    readonly property string workspaceName: root.workspaceName(modelData)
-                                    readonly property color outlineColor: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
-                                    readonly property real outlineWidth: hovered
-                                        ? Math.max(4, Style.hoverBorderWidth * 2)
-                                        : (focusedWindow
-                                            ? Math.max(2, Style.selectedBorderWidth)
-                                            : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
-                                    readonly property var packedRect: overviewArea.windowLayout[index] || Qt.rect(0, 0, 1, 1)
-                                    readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, root.windowFooterHeight)
-                                    readonly property var layoutRect: previewed ? previewRect : packedRect
-                                    readonly property real originalMotionProgress: root.animationStyle === "original" && root.motionTarget > 0
-                                        ? root.motionProgress
-                                        : 1
-                                    x: layoutRect.x * originalMotionProgress
-                                    y: layoutRect.y * originalMotionProgress
-                                    width: layoutRect.width * originalMotionProgress
-                                    height: layoutRect.height * originalMotionProgress
-                                    z: previewed ? 11 : (exitingPreview ? 10 : 0)
-                                    radius: integratedFooter ? Style.cornerRadius : 0
-                                    color: integratedFooter ? Color.menu.background : "transparent"
-                                    border.color: integratedFooter ? outlineColor : "transparent"
-                                    border.width: integratedFooter ? outlineWidth : 0
-                                    opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
-                                    Behavior on x {
-                                        enabled: root.motionProgress >= 0.999
-                                        NumberAnimation {
-                                            duration: root.previewAnimationDuration
-                                            easing.type: root.previewAnimationEasing
-                                        }
-                                    }
-                                    Behavior on y {
-                                        enabled: root.motionProgress >= 0.999
-                                        NumberAnimation {
-                                            duration: root.previewAnimationDuration
-                                            easing.type: root.previewAnimationEasing
-                                        }
-                                    }
-                                    Behavior on width {
-                                        enabled: root.motionProgress >= 0.999
-                                        NumberAnimation {
-                                            duration: root.previewAnimationDuration
-                                            easing.type: root.previewAnimationEasing
-                                        }
-                                    }
-                                    Behavior on height {
-                                        enabled: root.motionProgress >= 0.999
-                                        NumberAnimation {
-                                            duration: root.previewAnimationDuration
-                                            easing.type: root.previewAnimationEasing
-                                        }
-                                    }
-                                    Behavior on opacity {
-                                        enabled: root.motionProgress >= 0.999
-                                        NumberAnimation {
-                                            duration: root.previewFadeDuration
-                                        }
-                                    }
+                            Repeater {
+                                model: overviewWindow.cardToplevels
 
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        enabled: !root.settingsOpen && (root.previewIndex < 0 || card.previewed)
-                                        hoverEnabled: true
-                                        onEnabledChanged: {
-                                            if (!enabled) {
+                                delegate: Rectangle {
+                                        id: card
+                                        required property var modelData
+                                        // Position in the filtered list; -1 hides the card.
+                                        readonly property int slot: overviewWindow.screenToplevels.indexOf(modelData)
+                                        property bool hovered: false
+                                        readonly property bool selected: overviewWindow.acceptsKeyboard && slot === root.selectedIndex
+                                        readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
+                                        readonly property bool previewed: overviewWindow.acceptsKeyboard && slot === root.previewIndex
+                                        readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && slot === root.previewExitIndex
+                                        readonly property bool floatingFooter: root.windowFooterStyle === "floating"
+                                        readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
+                                        readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
+                                        readonly property bool centeredFooter: root.windowFooterStyle === "centered"
+                                        readonly property string windowTitle: String(modelData.title || modelData.appId || "Untitled window")
+                                        readonly property string applicationName: String(modelData.appId || "Application")
+                                        readonly property string workspaceName: root.workspaceName(modelData)
+                                        readonly property string iconSource: root.iconFor(modelData.appId)
+                                        readonly property color outlineColor: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
+                                        readonly property real outlineWidth: hovered
+                                            ? Math.max(4, Style.hoverBorderWidth * 2)
+                                            : (focusedWindow
+                                                ? Math.max(2, Style.selectedBorderWidth)
+                                                : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
+                                        readonly property var packedRect: overviewArea.windowLayout[slot] || Qt.rect(0, 0, 1, 1)
+                                        readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, root.windowFooterHeight)
+                                        readonly property var layoutRect: previewed ? previewRect : packedRect
+                                        visible: slot >= 0
+                                        x: layoutRect.x
+                                        y: layoutRect.y
+                                        width: layoutRect.width
+                                        height: layoutRect.height
+                                        z: previewed ? 11 : (exitingPreview ? 10 : 0)
+                                        radius: integratedFooter ? Style.cornerRadius : 0
+                                        color: integratedFooter ? Color.menu.background : "transparent"
+                                        border.color: integratedFooter ? outlineColor : "transparent"
+                                        border.width: integratedFooter ? outlineWidth : 0
+                                        opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
+                                        Behavior on x {
+                                            enabled: root.motionSettled
+                                            NumberAnimation {
+                                                duration: root.previewAnimationDuration
+                                                easing.type: root.previewAnimationEasing
+                                            }
+                                        }
+                                        Behavior on y {
+                                            enabled: root.motionSettled
+                                            NumberAnimation {
+                                                duration: root.previewAnimationDuration
+                                                easing.type: root.previewAnimationEasing
+                                            }
+                                        }
+                                        Behavior on width {
+                                            enabled: root.motionSettled
+                                            NumberAnimation {
+                                                duration: root.previewAnimationDuration
+                                                easing.type: root.previewAnimationEasing
+                                            }
+                                        }
+                                        Behavior on height {
+                                            enabled: root.motionSettled
+                                            NumberAnimation {
+                                                duration: root.previewAnimationDuration
+                                                easing.type: root.previewAnimationEasing
+                                            }
+                                        }
+                                        Behavior on opacity {
+                                            enabled: root.motionSettled
+                                            NumberAnimation {
+                                                duration: root.previewFadeDuration
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            enabled: !root.settingsOpen && (root.previewIndex < 0 || card.previewed)
+                                            hoverEnabled: true
+                                            onEnabledChanged: {
+                                                if (!enabled) {
+                                                    card.hovered = false;
+                                                    if (root.hoveredIndex === card.slot)
+                                                        root.hoveredIndex = -1;
+                                                }
+                                            }
+                                            onEntered: {
+                                                card.hovered = true;
+                                                if (overviewWindow.acceptsKeyboard) {
+                                                    root.hoveredIndex = card.slot;
+                                                    root.selectedIndex = card.slot;
+                                                }
+                                            }
+                                            onExited: {
                                                 card.hovered = false;
-                                                if (root.hoveredIndex === card.index)
+                                                if (overviewWindow.acceptsKeyboard && root.hoveredIndex === card.slot)
                                                     root.hoveredIndex = -1;
                                             }
-                                        }
-                                        onEntered: {
-                                            card.hovered = true;
-                                            if (overviewWindow.acceptsKeyboard) {
-                                                root.hoveredIndex = card.index;
-                                                root.selectedIndex = card.index;
+                                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                            onClicked: function (mouse) {
+                                                if (mouse.button === Qt.MiddleButton)
+                                                    root.requestClose(card.modelData);
+                                                else
+                                                    root.activate(card.modelData);
                                             }
                                         }
-                                        onExited: {
-                                            card.hovered = false;
-                                            if (overviewWindow.acceptsKeyboard && root.hoveredIndex === card.index)
-                                                root.hoveredIndex = -1;
-                                        }
-                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                        onClicked: function (mouse) {
-                                            if (mouse.button === Qt.MiddleButton)
-                                                root.requestClose(card.modelData);
-                                            else
-                                                root.activate(card.modelData);
-                                        }
-                                    }
 
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: Style.spacing.sm
-                                        spacing: card.overlayFooter ? 0 : Style.spacing.sm
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: Style.spacing.sm
+                                            spacing: card.overlayFooter ? 0 : Style.spacing.sm
 
-                                        Item {
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
+                                            Item {
+                                                Layout.fillWidth: true
+                                                Layout.fillHeight: true
 
-                                            Rectangle {
-                                                id: previewFrame
-                                                anchors.centerIn: parent
-                                                readonly property real windowAspectRatio: root.aspectRatioFor(card.modelData)
-                                                width: Math.min(parent.width, parent.height * windowAspectRatio)
-                                                height: Math.min(parent.height, parent.width / windowAspectRatio)
-                                                radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-                                                color: Color.background
-                                                clip: true
-                                                layer.enabled: true
-                                                layer.effect: MultiEffect {
-                                                    maskEnabled: true
-                                                    maskSource: previewMask
-                                                    maskThresholdMin: 0.5
-                                                    maskSpreadAtMin: 1.0
-                                                }
-
-                                                Text {
+                                                Rectangle {
+                                                    id: previewFrame
                                                     anchors.centerIn: parent
-                                                    text: "Live preview unavailable"
-                                                    textFormat: Text.PlainText
-                                                    color: Color.menu.text
-                                                    opacity: 0.45
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.body
-                                                }
-
-                                                Item {
-                                                    anchors.centerIn: parent
-                                                    width: parent.width * 2
-                                                    height: parent.height * 2
-                                                    scale: 0.5
+                                                    readonly property real windowAspectRatio: root.aspectRatioFor(card.modelData)
+                                                    width: Math.min(parent.width, parent.height * windowAspectRatio)
+                                                    height: Math.min(parent.height, parent.width / windowAspectRatio)
+                                                    radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
+                                                    color: Color.background
+                                                    clip: true
                                                     layer.enabled: true
-                                                    layer.smooth: true
+                                                    layer.effect: MultiEffect {
+                                                        maskEnabled: true
+                                                        maskSource: previewMask
+                                                        maskThresholdMin: 0.5
+                                                        maskSpreadAtMin: 1.0
+                                                    }
 
-                                                    ScreencopyView {
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "Live preview unavailable"
+                                                        textFormat: Text.PlainText
+                                                        color: Color.menu.text
+                                                        opacity: 0.45
+                                                        font.family: Style.font.menuFamily
+                                                        font.pixelSize: Style.font.body
+                                                    }
+
+                                                    Item {
+                                                        anchors.centerIn: parent
+                                                        width: parent.width * 2
+                                                        height: parent.height * 2
+                                                        scale: 0.5
+                                                        layer.enabled: true
+                                                        layer.smooth: true
+
+                                                        ScreencopyView {
+                                                            anchors.fill: parent
+                                                            captureSource: card.modelData
+                                                            live: root.opened && card.visible
+                                                            paintCursor: false
+                                                        }
+                                                    }
+
+                                                    Loader {
                                                         anchors.fill: parent
-                                                        captureSource: card.modelData
-                                                        live: root.opened
-                                                        paintCursor: false
+                                                        z: 2
+                                                        active: card.overlayFooter
+                                                        sourceComponent: overlayFooter
                                                     }
                                                 }
 
+                                                Rectangle {
+                                                    anchors.fill: previewFrame
+                                                    visible: !card.integratedFooter
+                                                    z: 5
+                                                    radius: previewFrame.radius
+                                                    color: "transparent"
+                                                    border.color: card.outlineColor
+                                                    border.width: card.outlineWidth
+                                                }
+
+                                                Rectangle {
+                                                    id: previewMask
+                                                    anchors.fill: previewFrame
+                                                    radius: previewFrame.radius
+                                                    color: "black"
+                                                    visible: false
+                                                    layer.enabled: true
+                                                    layer.smooth: true
+                                                }
+                                            }
+
+                                            Item {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: Style.space(40)
+                                                visible: !card.overlayFooter
+
+                                                Loader {
+                                                    anchors.fill: parent
+                                                    sourceComponent: card.floatingFooter
+                                                        ? floatingFooter
+                                                        : (card.integratedFooter
+                                                            ? integratedFooter
+                                                            : (card.centeredFooter ? centeredFooter : null))
+                                                }
+                                            }
+                                        }
+
+                                        // Only the configured footer style is instantiated per card.
+                                        Component {
+                                            id: overlayFooter
+
+                                            Item {
                                                 Rectangle {
                                                     anchors.left: parent.left
                                                     anchors.right: parent.right
                                                     anchors.bottom: parent.bottom
                                                     height: Math.min(parent.height * 0.45, Style.space(84))
-                                                    visible: card.overlayFooter
-                                                    z: 2
                                                     gradient: Gradient {
                                                         orientation: Gradient.Vertical
                                                         GradientStop { position: 0; color: "transparent" }
@@ -2754,14 +2880,12 @@ Item {
                                                     anchors.right: parent.right
                                                     anchors.bottom: parent.bottom
                                                     anchors.margins: Style.spacing.md
-                                                    visible: card.overlayFooter
-                                                    z: 3
                                                     spacing: Style.spacing.md
 
                                                     Image {
                                                         Layout.preferredWidth: Style.space(28)
                                                         Layout.preferredHeight: Style.space(28)
-                                                        source: root.iconFor(card.modelData.appId)
+                                                        source: card.iconSource
                                                         fillMode: Image.PreserveAspectFit
                                                         asynchronous: true
                                                     }
@@ -2814,42 +2938,18 @@ Item {
                                                     }
                                                 }
                                             }
-
-                                            Rectangle {
-                                                anchors.fill: previewFrame
-                                                visible: !card.integratedFooter
-                                                z: 5
-                                                radius: previewFrame.radius
-                                                color: "transparent"
-                                                border.color: card.outlineColor
-                                                border.width: card.outlineWidth
-                                            }
-
-                                            Rectangle {
-                                                id: previewMask
-                                                anchors.fill: previewFrame
-                                                radius: previewFrame.radius
-                                                color: "black"
-                                                visible: false
-                                                layer.enabled: true
-                                                layer.smooth: true
-                                            }
                                         }
 
-                                        Item {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: Style.space(40)
-                                            visible: !card.overlayFooter
+                                        Component {
+                                            id: floatingFooter
 
                                             RowLayout {
-                                                anchors.fill: parent
-                                                visible: card.floatingFooter
                                                 spacing: Style.spacing.md
 
                                                 Image {
                                                     Layout.preferredWidth: Style.space(30)
                                                     Layout.preferredHeight: Style.space(30)
-                                                    source: root.iconFor(card.modelData.appId)
+                                                    source: card.iconSource
                                                     fillMode: Image.PreserveAspectFit
                                                     asynchronous: true
                                                 }
@@ -2901,16 +3001,18 @@ Item {
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        Component {
+                                            id: integratedFooter
 
                                             RowLayout {
-                                                anchors.fill: parent
-                                                visible: card.integratedFooter
                                                 spacing: Style.spacing.md
 
                                                 Image {
                                                     Layout.preferredWidth: Style.space(24)
                                                     Layout.preferredHeight: Style.space(24)
-                                                    source: root.iconFor(card.modelData.appId)
+                                                    source: card.iconSource
                                                     fillMode: Image.PreserveAspectFit
                                                     asynchronous: true
                                                 }
@@ -2936,10 +3038,12 @@ Item {
                                                     font.bold: true
                                                 }
                                             }
+                                        }
+
+                                        Component {
+                                            id: centeredFooter
 
                                             ColumnLayout {
-                                                anchors.fill: parent
-                                                visible: card.centeredFooter
                                                 spacing: 0
 
                                                 RowLayout {
@@ -2949,7 +3053,7 @@ Item {
                                                     Image {
                                                         Layout.preferredWidth: Style.space(24)
                                                         Layout.preferredHeight: Style.space(24)
-                                                        source: root.iconFor(card.modelData.appId)
+                                                        source: card.iconSource
                                                         fillMode: Image.PreserveAspectFit
                                                         asynchronous: true
                                                     }
@@ -2979,10 +3083,10 @@ Item {
                                                 }
                                             }
                                         }
-                                    }
 
+                                    }
                                 }
-                            }
+                        }
 
                         Text {
                             anchors.centerIn: parent
