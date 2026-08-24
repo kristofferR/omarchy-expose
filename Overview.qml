@@ -592,24 +592,38 @@ Item {
         return true;
     }
 
-    function handleSettingsTab(event) {
-        if (!root.settingsOpen
-                || (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Backtab))
+    // Tab/Shift+Tab wrap through every focusable item. Up/Down (and Left/Right
+    // inside the confirmation dialog) step without wrapping, so arrow keys never
+    // jump from the last control back to the sidebar.
+    function handleSettingsNavigation(event) {
+        if (!root.settingsOpen)
             return false;
-        var forward = event.key !== Qt.Key_Backtab
-            && !(event.modifiers & Qt.ShiftModifier);
+        var isTab = event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab;
+        var isStep = event.key === Qt.Key_Up || event.key === Qt.Key_Down
+            || (root.footerHideConfirmationOpen && (event.key === Qt.Key_Left || event.key === Qt.Key_Right));
+        if (!isTab && !isStep)
+            return false;
+        var forward = isTab
+            ? event.key !== Qt.Key_Backtab && !(event.modifiers & Qt.ShiftModifier)
+            : event.key === Qt.Key_Down || event.key === Qt.Key_Right;
         for (var index = 0; index < surfaceInstances.instances.length; index++) {
             var surface = surfaceInstances.instances[index];
             if (!surface || !surface.acceptsKeyboard)
                 continue;
             if (root.footerHideConfirmationOpen)
-                surface.moveFooterConfirmationFocus(forward);
+                surface.moveFooterConfirmationFocus(forward, isTab);
             else
-                surface.moveSettingsFocus(forward);
+                surface.moveSettingsFocus(forward, isTab);
             event.accepted = true;
             return true;
         }
         return false;
+    }
+
+    function handleSettingsTab(event) {
+        if (event.key !== Qt.Key_Tab && event.key !== Qt.Key_Backtab)
+            return false;
+        return root.handleSettingsNavigation(event);
     }
 
     function setFilter(value) {
@@ -1638,11 +1652,11 @@ Item {
         }
 
         Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
+            if (root.handleSettingsNavigation(event))
                 return;
-            if (event.key === Qt.Key_Left || event.key === Qt.Key_Down)
+            if (event.key === Qt.Key_Left)
                 settingSlider.commitKeyboardValue(settingSlider.value - settingSlider.stepSize);
-            else if (event.key === Qt.Key_Right || event.key === Qt.Key_Up)
+            else if (event.key === Qt.Key_Right)
                 settingSlider.commitKeyboardValue(settingSlider.value + settingSlider.stepSize);
             else if (event.key === Qt.Key_Home)
                 settingSlider.commitKeyboardValue(settingSlider.from);
@@ -1730,26 +1744,31 @@ Item {
         spacing: Style.spacing.lg
         activeFocusOnTab: true
 
-        function chooseOffset(offset) {
-            if (!settingChoices.options.length)
+        // Arrows stop at either end; Space/Enter cycle through every option.
+        function chooseOffset(offset, wrap) {
+            var count = settingChoices.options.length;
+            if (!count)
                 return;
             var current = 0;
-            for (var index = 0; index < settingChoices.options.length; index++)
+            for (var index = 0; index < count; index++)
                 if (String(settingChoices.options[index].value) === settingChoices.value)
                     current = index;
-            var next = (current + offset + settingChoices.options.length) % settingChoices.options.length;
-            settingChoices.chosen(String(settingChoices.options[next].value));
+            var next = wrap
+                ? (current + offset + count) % count
+                : Math.max(0, Math.min(count - 1, current + offset));
+            if (next !== current)
+                settingChoices.chosen(String(settingChoices.options[next].value));
         }
 
         Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
+            if (root.handleSettingsNavigation(event))
                 return;
-            if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
-                settingChoices.chooseOffset(-1);
-            else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
-                settingChoices.chooseOffset(1);
+            if (event.key === Qt.Key_Left)
+                settingChoices.chooseOffset(-1, false);
+            else if (event.key === Qt.Key_Right)
+                settingChoices.chooseOffset(1, false);
             else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                settingChoices.chooseOffset(0);
+                settingChoices.chooseOffset(1, true);
             else {
                 event.accepted = false;
                 return;
@@ -1819,21 +1838,23 @@ Item {
         spacing: 0
         activeFocusOnTab: true
 
-        function chooseOffset(offset) {
-            var current = displayModeChoices.value === "per-monitor" ? 1 : 0;
-            var next = (current + offset + displayModeChoices.options.length) % displayModeChoices.options.length;
-            displayModeChoices.chosen(String(displayModeChoices.options[next].value));
+        function choose(index) {
+            var next = Math.max(0, Math.min(displayModeChoices.options.length - 1, index));
+            var value = String(displayModeChoices.options[next].value);
+            if (value !== displayModeChoices.value)
+                displayModeChoices.chosen(value);
         }
 
         Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
+            if (root.handleSettingsNavigation(event))
                 return;
-            if (event.key === Qt.Key_Left || event.key === Qt.Key_Up)
-                displayModeChoices.chooseOffset(-1);
-            else if (event.key === Qt.Key_Right || event.key === Qt.Key_Down)
-                displayModeChoices.chooseOffset(1);
+            var current = displayModeChoices.value === "per-monitor" ? 1 : 0;
+            if (event.key === Qt.Key_Left)
+                displayModeChoices.choose(current - 1);
+            else if (event.key === Qt.Key_Right)
+                displayModeChoices.choose(current + 1);
             else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                displayModeChoices.chooseOffset(0);
+                displayModeChoices.choose(1 - current);
             else {
                 event.accepted = false;
                 return;
@@ -1915,23 +1936,35 @@ Item {
         implicitHeight: Style.space(horizontal ? 52 : 48)
         activeFocusOnTab: selected
 
+        signal entered()
+
         function choose(nextIndex) {
-            categoryButton.chosen(Math.max(0, Math.min(3, nextIndex)));
+            var next = Math.max(0, Math.min(3, nextIndex));
+            if (next !== categoryButton.categoryIndex)
+                categoryButton.chosen(next);
         }
 
+        // The sidebar is a list: arrows along its axis pick a section, the
+        // arrow pointing at the content (or Enter/Space) moves focus into it.
         Keys.onPressed: function (event) {
             if (root.handleSettingsTab(event))
                 return;
-            if (event.key === Qt.Key_Up || event.key === Qt.Key_Left)
-                categoryButton.choose((categoryButton.categoryIndex + 3) % 4);
-            else if (event.key === Qt.Key_Down || event.key === Qt.Key_Right)
-                categoryButton.choose((categoryButton.categoryIndex + 1) % 4);
+            var previousKey = categoryButton.horizontal ? Qt.Key_Left : Qt.Key_Up;
+            var nextKey = categoryButton.horizontal ? Qt.Key_Right : Qt.Key_Down;
+            var enterKey = categoryButton.horizontal ? Qt.Key_Down : Qt.Key_Right;
+            if (event.key === previousKey)
+                categoryButton.choose(categoryButton.categoryIndex - 1);
+            else if (event.key === nextKey)
+                categoryButton.choose(categoryButton.categoryIndex + 1);
             else if (event.key === Qt.Key_Home)
                 categoryButton.choose(0);
             else if (event.key === Qt.Key_End)
                 categoryButton.choose(3);
-            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                categoryButton.choose(categoryButton.categoryIndex);
+            else if (event.key === enterKey
+                    || event.key === Qt.Key_Space
+                    || event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter)
+                categoryButton.entered();
             else {
                 event.accepted = false;
                 return;
@@ -2020,13 +2053,21 @@ Item {
         activeFocusOnTab: true
 
         Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
+            if (root.handleSettingsNavigation(event))
                 return;
-            if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
+            var next;
+            if (event.key === Qt.Key_Left)
+                next = false;
+            else if (event.key === Qt.Key_Right)
+                next = true;
+            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                next = !settingToggle.checked;
+            else {
                 event.accepted = false;
                 return;
             }
-            settingToggle.toggled(!settingToggle.checked);
+            if (next !== settingToggle.checked)
+                settingToggle.toggled(next);
             event.accepted = true;
         }
 
@@ -2093,7 +2134,7 @@ Item {
         opacity: enabled ? 1 : 0.38
 
         Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
+            if (root.handleSettingsNavigation(event))
                 return;
             if (!enabled || (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)) {
                 event.accepted = false;
@@ -2242,12 +2283,12 @@ Item {
                     ]);
                 return overviewWindow.availableFocusItems([
                     categoryButton,
+                    motionAnimateButton,
                     animationStyleChoices,
                     animationSpeedSlider,
                     animationInSlider,
                     animationOutSlider,
-                    animationSameSpeedToggle,
-                    motionAnimateButton
+                    animationSameSpeedToggle
                 ]);
             }
 
@@ -2259,7 +2300,7 @@ Item {
                 ]);
             }
 
-            function moveFocus(items, forward, forwardFallbackIndex) {
+            function moveFocus(items, forward, forwardFallbackIndex, wrap) {
                 if (!items.length)
                     return;
                 var focusedIndex = -1;
@@ -2269,18 +2310,30 @@ Item {
                         break;
                     }
                 }
-                var nextIndex = focusedIndex < 0
-                    ? (forward ? Math.min(forwardFallbackIndex, items.length - 1) : items.length - 1)
-                    : (focusedIndex + (forward ? 1 : items.length - 1)) % items.length;
+                var nextIndex;
+                if (focusedIndex < 0)
+                    nextIndex = forward ? Math.min(forwardFallbackIndex, items.length - 1) : items.length - 1;
+                else if (wrap)
+                    nextIndex = (focusedIndex + (forward ? 1 : items.length - 1)) % items.length;
+                else
+                    nextIndex = focusedIndex + (forward ? 1 : -1);
+                if (nextIndex < 0 || nextIndex >= items.length)
+                    return;
                 root.focusSettingsItem(items[nextIndex]);
             }
 
-            function moveSettingsFocus(forward) {
-                overviewWindow.moveFocus(overviewWindow.settingsFocusItems(), forward, 1);
+            function moveSettingsFocus(forward, wrap) {
+                overviewWindow.moveFocus(overviewWindow.settingsFocusItems(), forward, 1, wrap);
             }
 
-            function moveFooterConfirmationFocus(forward) {
-                overviewWindow.moveFocus(overviewWindow.footerConfirmationFocusItems(), forward, 0);
+            function focusFirstSettingsControl() {
+                var items = overviewWindow.settingsFocusItems();
+                if (items.length > 1)
+                    root.focusSettingsItem(items[1]);
+            }
+
+            function moveFooterConfirmationFocus(forward, wrap) {
+                overviewWindow.moveFocus(overviewWindow.footerConfirmationFocusItems(), forward, 0, wrap);
             }
 
             onAcceptsKeyboardChanged: {
@@ -2329,7 +2382,7 @@ Item {
                         event.accepted = true;
                         return;
                     }
-                    if (root.handleSettingsTab(event))
+                    if (root.handleSettingsNavigation(event))
                         return;
                     root.handleKey(event, overviewArea.windowLayout);
                 }
@@ -2961,7 +3014,7 @@ Item {
                                     Item { Layout.fillWidth: true }
 
                                     Text {
-                                        text: "Esc close"
+                                        text: "1-4 section   ↑↓ move   ←→ adjust   Esc close"
                                         textFormat: Text.PlainText
                                         color: Color.menu.text
                                         opacity: 0.5
@@ -3018,6 +3071,7 @@ Item {
                                                     if (nextButton)
                                                         nextButton.forceActiveFocus();
                                                 }
+                                                onEntered: overviewWindow.focusFirstSettingsControl()
                                             }
                                         }
                                     }
@@ -3724,7 +3778,7 @@ Item {
                                     activeFocusOnTab: true
 
                                     Keys.onPressed: function (event) {
-                                        if (root.handleSettingsTab(event))
+                                        if (root.handleSettingsNavigation(event))
                                             return;
                                         if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
                                             event.accepted = false;
