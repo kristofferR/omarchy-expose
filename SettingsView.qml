@@ -1454,7 +1454,8 @@ Item {
                 Qt.callLater(function () {
                     if (!settingsView.visible || footerHideConfirmationLayer.visible)
                         return;
-                    if (bottomTextToggle.visible && bottomTextToggle.enabled)
+                    if (settingsView.controller.settingsCategoryIndex === 0
+                            && bottomTextToggle.visible && bottomTextToggle.enabled)
                         bottomTextToggle.forceActiveFocus();
                     else
                         settingsView.focusSettingsCategory();
