@@ -17,21 +17,9 @@ run_hyprctl() {
   timeout --signal=TERM --kill-after=1 2 hyprctl "$@"
 }
 
-wait_for_layer_close() {
-  local attempt layer_present
-  for attempt in {1..40}; do
-    if layer_present=$(
-      run_hyprctl -j layers |
-        jq -r '[.. | objects | .namespace? // empty] | any(. == "expose-window-overview")'
-    ) && [[ $layer_present == false ]]; then
-      # Let any already-submitted layer commits drain before restoring blur.
-      sleep 0.05
-      return
-    fi
-    sleep 0.01
-  done
-  return 1
-}
+# The overview owns its opacity transition. Prevent Hyprland from snapshotting
+# the unmapped layer and applying a second fade after the QML animation ends.
+run_hyprctl eval 'if rawget(_G, "__omarchy_expose_layer_rule") == nil then __omarchy_expose_layer_rule = hl.layer_rule({ name = "omarchy-expose-layer", match = { namespace = "^expose-window-overview$" }, no_anim = true, animation = "none" }) end' >/dev/null
 
 IFS=$'\t' read -r saved_enabled saved_size saved_contrast < <(
   run_hyprctl --batch -j 'getoption decoration:blur:enabled; getoption decoration:blur:size; getoption decoration:blur:contrast' |
@@ -56,8 +44,6 @@ IFS=$'\t' read -r saved_enabled saved_size saved_contrast < <(
       | @tsv'
 )
 restored=false
-current_size=$saved_size
-current_progress=1000
 
 apply_saved_blur() {
   run_hyprctl eval "hl.config({ decoration = { blur = { enabled = ${saved_enabled}, size = ${saved_size}, contrast = ${saved_contrast} } } })" >/dev/null 2>&1
@@ -65,11 +51,7 @@ apply_saved_blur() {
 
 apply_blur_effect() {
   local size=$1
-  local progress=$2
-  local contrast
-  contrast=$(jq -nr --argjson saved "$saved_contrast" --argjson progress "$progress" \
-    '1 - (1 - $saved) * $progress / 1000')
-  run_hyprctl eval "hl.config({ decoration = { blur = { enabled = true, size = ${size}, contrast = ${contrast} } } })" >/dev/null 2>&1
+  run_hyprctl eval "hl.config({ decoration = { blur = { enabled = true, size = ${size}, contrast = ${saved_contrast} } } })" >/dev/null 2>&1
 }
 
 retry_saved_blur() {
@@ -80,36 +62,6 @@ retry_saved_blur() {
     fi
   done
   return 1
-}
-
-restore_blur_gradually() {
-  if [[ $saved_enabled != true ]]; then
-    retry_saved_blur
-    return
-  fi
-
-  local from=$current_size
-  local delta=$((saved_size - from))
-  local steps=${delta#-}
-  if (( steps < 6 )); then
-    steps=6
-  fi
-  if (( steps > 8 )); then
-    steps=8
-  fi
-
-  local step next_size next_progress
-  for ((step = 1; step <= steps; step++)); do
-    next_size=$((from + delta * step / steps))
-    next_progress=$((current_progress + (1000 - current_progress) * step / steps))
-    apply_blur_effect "$next_size" "$next_progress" || return 1
-    current_size=$next_size
-    if (( step < steps )); then
-      sleep 0.016
-    fi
-  done
-  current_progress=1000
-  retry_saved_blur
 }
 
 restore_blur() {
@@ -128,22 +80,11 @@ trap 'exit 0' HUP INT TERM
 
 while IFS= read -r candidate; do
   requested_size=""
-  requested_progress=1000
   close_requested=false
   while true; do
     if [[ $candidate == close ]]; then
       requested_size=""
       close_requested=true
-    elif [[ $candidate =~ ^([0-9]{1,3}):([0-9]{1,4})$ ]]; then
-      close_requested=false
-      requested_size=$((10#${BASH_REMATCH[1]}))
-      requested_progress=$((10#${BASH_REMATCH[2]}))
-      if (( requested_size > 20 )); then
-        requested_size=20
-      fi
-      if (( requested_progress > 1000 )); then
-        requested_progress=1000
-      fi
     elif [[ $candidate =~ ^[0-9]+$ ]]; then
       close_requested=false
       if [[ $candidate =~ ^0*([0-9]{1,2})$ ]]; then
@@ -159,8 +100,7 @@ while IFS= read -r candidate; do
   done
 
   if [[ $close_requested == true ]]; then
-    wait_for_layer_close || echo "expose: timed out waiting for the overview layer to close" >&2
-    if restore_blur_gradually; then
+    if retry_saved_blur; then
       restored=true
       printf '0\n'
     else
@@ -171,10 +111,15 @@ while IFS= read -r candidate; do
   fi
 
   [[ -n $requested_size ]] || continue
-  if apply_blur_effect "$requested_size" "$requested_progress"; then
+  if (( requested_size == 0 )); then
+    if retry_saved_blur; then
+      restored=true
+      printf '0\n'
+    else
+      printf '%s\n' -1
+    fi
+  elif apply_blur_effect "$requested_size"; then
     restored=false
-    current_size=$requested_size
-    current_progress=$requested_progress
     printf '%s\n' "$requested_size"
   else
     printf '%s\n' -1
