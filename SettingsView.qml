@@ -7,6 +7,12 @@ Item {
 
     required property var controller
     required property var hostWindow
+    readonly property var slideDirectionOptions: [
+        { label: "Left", value: "left" },
+        { label: "Right", value: "right" },
+        { label: "Up", value: "up" },
+        { label: "Down", value: "down" }
+    ]
 
     component SettingSlider: Item {
         id: settingSlider
@@ -314,6 +320,7 @@ Item {
     component SettingsCategoryButton: Item {
         id: categoryButton
         property int categoryIndex: 0
+        property int categoryCount: 1
         property string label: ""
         property bool selected: false
         property bool horizontal: false
@@ -326,7 +333,7 @@ Item {
         signal entered()
 
         function choose(nextIndex) {
-            categoryButton.chosen(Math.max(0, Math.min(3, nextIndex)));
+            categoryButton.chosen(Math.max(0, Math.min(categoryButton.categoryCount - 1, nextIndex)));
         }
 
         // The sidebar is a list: arrows along its axis pick a section, the
@@ -344,7 +351,7 @@ Item {
             else if (event.key === Qt.Key_Home)
                 categoryButton.choose(0);
             else if (event.key === Qt.Key_End)
-                categoryButton.choose(3);
+                categoryButton.choose(categoryButton.categoryCount - 1);
             else if (event.key === enterKey
                     || event.key === Qt.Key_Space
                     || event.key === Qt.Key_Return
@@ -739,6 +746,7 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: Style.space(settingsDialog.narrow ? 52 : 48)
                                 categoryIndex: index
+                                categoryCount: settingsCategoryRepeater.count
                                 label: String(modelData)
                                 selected: settingsView.controller.settingsCategoryIndex === index
                                 horizontal: settingsDialog.narrow
@@ -1204,12 +1212,7 @@ Item {
                                 SettingChoices {
                                     id: slideDirectionChoices
                                     value: String(settingsView.controller.slideDirection["in"])
-                                    options: [
-                                        { label: "Left", value: "left" },
-                                        { label: "Right", value: "right" },
-                                        { label: "Up", value: "up" },
-                                        { label: "Down", value: "down" }
-                                    ]
+                                    options: settingsView.slideDirectionOptions
                                     onChosen: function (value) { settingsView.controller.setSlideDirection(value); }
                                 }
                             }
@@ -1230,12 +1233,7 @@ Item {
                                 SettingChoices {
                                     id: slideDirectionInChoices
                                     value: String(settingsView.controller.slideDirection["in"])
-                                    options: [
-                                        { label: "Left", value: "left" },
-                                        { label: "Right", value: "right" },
-                                        { label: "Up", value: "up" },
-                                        { label: "Down", value: "down" }
-                                    ]
+                                    options: settingsView.slideDirectionOptions
                                     onChosen: function (value) { settingsView.controller.setSlideDirectionIn(value); }
                                 }
                             }
@@ -1261,12 +1259,7 @@ Item {
                                 SettingChoices {
                                     id: slideDirectionOutChoices
                                     value: String(settingsView.controller.slideDirection["out"])
-                                    options: [
-                                        { label: "Left", value: "left" },
-                                        { label: "Right", value: "right" },
-                                        { label: "Up", value: "up" },
-                                        { label: "Down", value: "down" }
-                                    ]
+                                    options: settingsView.slideDirectionOptions
                                     onChosen: function (value) { settingsView.controller.setSlideDirectionOut(value); }
                                 }
                             }
