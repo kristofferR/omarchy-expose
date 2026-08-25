@@ -6,6 +6,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 
 Item {
@@ -887,10 +888,6 @@ Item {
         root.sessionAspectRatios = ratios;
     }
 
-    function normalized(value) {
-        return String(value || "").toLowerCase().replace(/\.desktop$/, "");
-    }
-
     function workspaceName(top) {
         return WindowModel.workspaceName(top);
     }
@@ -1235,24 +1232,22 @@ Item {
         }
     }
 
-    function iconFor(appId) {
-        var wanted = normalized(appId);
-        if (Object.prototype.hasOwnProperty.call(root.iconCache, wanted))
-            return root.iconCache[wanted];
-        var result = "";
+    function iconFor(top) {
+        var identity = IconResolver.identityFor(top);
+        if (Object.prototype.hasOwnProperty.call(root.iconCache, identity.key))
+            return root.iconCache[identity.key];
         var entries = DesktopEntries.applications ? DesktopEntries.applications.values : [];
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            var id = normalized(entry.id);
-            var name = normalized(entry.name);
-            if (id === wanted || id.indexOf(wanted) !== -1 || wanted.indexOf(id) !== -1 || name === wanted) {
-                result = Quickshell.iconPath(String(entry.icon || "application-x-executable"), true);
-                break;
-            }
-        }
+        var entry = IconResolver.findEntry(entries, identity.candidates);
+        var iconName = entry
+            ? String(entry.icon || "application-x-executable")
+            : String(identity.candidates[0] || "application-x-executable");
+        var appLibrary = root.shell && root.shell.appLibrary ? root.shell.appLibrary : null;
+        var result = appLibrary && typeof appLibrary.iconSource === "function"
+            ? String(appLibrary.iconSource(iconName) || "")
+            : "";
         if (!result)
-            result = Quickshell.iconPath(wanted || "application-x-executable", true);
-        root.iconCache[wanted] = result;
+            result = Quickshell.iconPath(iconName, true);
+        root.iconCache[identity.key] = result;
         return result;
     }
 
@@ -1341,6 +1336,11 @@ Item {
         function onValuesChanged() {
             root.iconCache = {};
         }
+    }
+
+    Connections {
+        target: root.shell && root.shell.appLibrary ? root.shell.appLibrary : null
+        function onIconIndexChanged() { root.iconCache = {}; }
     }
 
     Timer {
@@ -2390,7 +2390,7 @@ Item {
                                         readonly property string windowTitle: String(modelData.title || WindowModel.appIdFor(modelData) || "Untitled window")
                                         readonly property string applicationName: WindowModel.appIdFor(modelData) || "Application"
                                         readonly property string workspaceName: root.workspaceName(modelData)
-                                        readonly property string iconSource: root.iconFor(WindowModel.appIdFor(modelData))
+                                        readonly property string iconSource: root.iconFor(modelData)
                                         readonly property color outlineColor: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
                                         readonly property real outlineWidth: hovered
                                             ? Math.max(4, Style.hoverBorderWidth * 2)
