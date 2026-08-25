@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "expose.window-overview",
   "name": "Exposé",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "author": "Kristoffer Risanger (@kristofferR)",
   "license": "MIT",
   "description": "macOS-style Exposé for Omarchy: one key or a hot corner shows every open window as a live preview. Type to search, press Space to Quick Look, press Enter to launch.",
