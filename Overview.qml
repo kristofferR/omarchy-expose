@@ -455,14 +455,21 @@ Item {
 
     function setAnimationTimingSeparate(style, separate) {
         var timing = root.animationTimingFor(style);
+        if (style === "slide" && !separate)
+            root.setSlideDirection(root.slideDirection["in"]);
         return separate
             ? root.setAnimationTiming(style, timing["in"], timing["out"], true)
             : root.setAnimationTiming(style, timing["in"], timing["in"], false);
     }
 
+    function isSlideDirection(value) {
+        var direction = String(value === null || value === undefined ? "" : value);
+        return Object.prototype.hasOwnProperty.call(root.slideVectors, direction);
+    }
+
     function normalizeSlideDirection(value) {
         var direction = String(value === null || value === undefined ? "" : value);
-        return direction in root.slideVectors ? direction : "left";
+        return root.isSlideDirection(direction) ? direction : "left";
     }
 
     function setSlideDirections(inValue, outValue) {
@@ -1687,17 +1694,17 @@ Item {
             return String(root.setAnimationDurationOut(style, value));
         }
         function slideDirection(direction: string): string {
-            if (!(direction in root.slideVectors))
+            if (!root.isSlideDirection(direction))
                 return "expected left, right, up, or down";
             return root.setSlideDirection(direction);
         }
         function slideDirectionIn(direction: string): string {
-            if (!(direction in root.slideVectors))
+            if (!root.isSlideDirection(direction))
                 return "expected left, right, up, or down";
             return root.setSlideDirectionIn(direction);
         }
         function slideDirectionOut(direction: string): string {
-            if (!(direction in root.slideVectors))
+            if (!root.isSlideDirection(direction))
                 return "expected left, right, up, or down";
             return root.setSlideDirectionOut(direction);
         }
