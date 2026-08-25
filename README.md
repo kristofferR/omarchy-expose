@@ -80,7 +80,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
-- Multiple displays: Same overview (all windows on the focused display) or Per monitor (that display's windows only)
+- Multiple displays: Same overview (all windows together on the selected display) or Per monitor (only that display's windows)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off and position (disable the same corner in other hot-corner plugins to avoid overlap)
 - Move cursor to the activated window on/off

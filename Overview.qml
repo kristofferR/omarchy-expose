@@ -155,7 +155,27 @@ Item {
     property string focusedMonitorName: ""
     property string overviewScreenName: ""
     property bool overviewScreenPinned: false
+    readonly property var effectiveOverviewScreen: {
+        var screens = Quickshell.screens;
+        var wanted = String(root.overviewScreenName || "");
+        var fallback = null;
+        for (var index = 0; index < screens.length; index++) {
+            var screen = screens[index];
+            if (!screen)
+                continue;
+            if (!fallback)
+                fallback = screen;
+            if (wanted && String(screen.name || "") === wanted)
+                return screen;
+        }
+        return fallback;
+    }
+    readonly property string effectiveOverviewScreenName: root.effectiveOverviewScreen
+        ? String(root.effectiveOverviewScreen.name || "")
+        : ""
     readonly property string keyboardScreenName: {
+        if (root.effectiveOverviewScreenName && (root.surfaceMounted || root.overviewScreenName))
+            return root.effectiveOverviewScreenName;
         if (root.overviewScreenName)
             return root.overviewScreenName;
         if (root.focusedMonitorName)
@@ -169,22 +189,9 @@ Item {
     // corner opened Exposé. Instantiating on every enabled output duplicates
     // screencopy captures and layer textures.
     readonly property var mountedScreens: {
-        var screens = Quickshell.screens;
-        if (!root.surfaceMounted)
+        if (!root.surfaceMounted || !root.effectiveOverviewScreen)
             return [];
-        var wanted = String(root.overviewScreenName || "");
-        var match = [];
-        var fallback = [];
-        for (var index = 0; index < screens.length; index++) {
-            var screen = screens[index];
-            if (!screen)
-                continue;
-            if (!fallback.length)
-                fallback.push(screen);
-            if (wanted && String(screen.name || "") === wanted)
-                match.push(screen);
-        }
-        return match.length ? match : fallback;
+        return [root.effectiveOverviewScreen];
     }
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
@@ -2019,12 +2026,12 @@ Item {
         readonly property var options: [
             {
                 label: "Same overview",
-                description: "Show every window on the focused display",
+                description: "Show all windows together on the selected display",
                 value: "mirrored"
             },
             {
                 label: "Per monitor",
-                description: "Show only windows from the focused display",
+                description: "Show only the selected display's windows",
                 value: "per-monitor"
             }
         ]
@@ -2411,7 +2418,7 @@ Item {
                 : null
             property alias hotCornerHovered: openHotCorner.containsMouse
             readonly property bool acceptsKeyboard: {
-                var wanted = String(root.overviewScreenName || "");
+                var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
                     return String(modelData.name || "") === wanted;
                 return true;
