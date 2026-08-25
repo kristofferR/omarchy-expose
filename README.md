@@ -9,8 +9,8 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
-- **Workspace scope.** Press Tab to switch between every window and windows on the current workspace. Per-monitor mode evaluates the current workspace separately for each display.
-- **Multi-monitor layouts.** Same overview mirrors the full overview on every display by default. Per monitor keeps windows on their own display.
+- **Workspace scope.** Press Tab to switch between every window and windows on the current workspace. Per-monitor mode evaluates the current workspace of the selected display.
+- **Multi-monitor layouts.** The overview opens only on the focused display (or the display whose hot corner was used). Same overview shows every window there; per monitor keeps that display's own windows.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
 
@@ -83,7 +83,7 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 
 Clicking a card activates it; middle-clicking closes it. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
-With **Same overview**, every display shows the same grid. With **Per monitor**, each display shows only its own windows; after pressing Tab, each display uses its own active workspace.
+The overlay is created on one display only. With **Same overview**, that display shows every window. With **Per monitor**, it shows only windows that already belong to that display; after pressing Tab, the current workspace is the one active on that display.
 
 ## Settings
 
@@ -95,7 +95,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Background blur (0–20) and dim (0–90)
 - Preview placement: in-place or centered
 - Window footer style: floating, integrated, overlay, or centered
-- Multiple displays: Same overview (default) or Per monitor
+- Multiple displays: Same overview (all windows together on the selected display) or Per monitor (only that display's windows)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off and position (disable the same corner in other hot-corner plugins to avoid overlap)
 - Move cursor to the activated window on/off
