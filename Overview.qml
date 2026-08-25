@@ -159,7 +159,7 @@ Item {
     property bool backgroundBlurPrimed: false
     property bool backgroundBlurFailed: false
     property bool dismissNotifyShell: false
-    // 0 idle, 1 clearing the layer effect, 2 restoring the desktop blur.
+    // 0 idle, 1 restoring the desktop blur while the surface is transparent.
     property int backgroundBlurReleasePhase: 0
     property real motionProgress: 0
     property real motionTarget: 0
@@ -167,7 +167,6 @@ Item {
     // notifies them twice, not once per frame.
     readonly property bool motionSettled: root.motionProgress >= 0.999
     property int lastRequestedBlur: -1
-    property int lastRequestedBlurProgress: -1
     property var iconCache: ({})
     property int modelRevision: 0
     property var sessionToplevels: []
@@ -228,8 +227,6 @@ Item {
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
-    onMotionProgressChanged: root.scheduleBackgroundBlurUpdate()
-
     onEffectiveBackgroundBlurChanged: {
         if (!root.surfaceMounted)
             return;
@@ -242,9 +239,7 @@ Item {
     }
 
     function open(payload) {
-        if (root.backgroundBlurReleasePhase === 1)
-            root.backgroundBlurReleasePhase = 0;
-        var blurRestoreInFlight = root.backgroundBlurReleasePhase === 2 && backgroundBlurSession.running;
+        var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
             root.backgroundBlurReleasePhase = 0;
         root.closeSettings();
@@ -252,6 +247,10 @@ Item {
         root.workspaceScope = "all";
         root.dismissNotifyShell = false;
         if (root.surfaceMounted) {
+            if (blurRestoreInFlight) {
+                root.openingPending = true;
+                return;
+            }
             root.opened = true;
             root.animateMotionTo(1);
             root.refreshHyprlandState();
@@ -317,14 +316,11 @@ Item {
     }
 
     function requestedBackgroundBlur() {
-        if (root.effectiveBackgroundBlur <= 0 || root.motionProgress <= 0)
-            return 0;
-        return Math.round(root.effectiveBackgroundBlur * root.motionProgress);
+        return Math.max(0, Math.round(root.effectiveBackgroundBlur));
     }
 
-    function writeBackgroundBlur(size, progress) {
-        var normalizedProgress = Math.max(0, Math.min(1000, Math.round(progress * 1000)));
-        backgroundBlurSession.write(String(size) + ":" + String(normalizedProgress) + "\n");
+    function writeBackgroundBlur(size) {
+        backgroundBlurSession.write(String(size) + "\n");
     }
 
     function scheduleBackgroundBlurUpdate() {
@@ -400,9 +396,8 @@ Item {
         backgroundBlurUpdate.stop();
         if (backgroundBlurSession.running) {
             root.backgroundBlurReleasePhase = 1;
-            root.lastRequestedBlur = 0;
-            root.lastRequestedBlurProgress = 0;
-            root.writeBackgroundBlur(0, 0);
+            root.backgroundBlurPrimed = false;
+            backgroundBlurSession.write("close\n");
             return;
         }
         root.releaseBlurredSurface();
@@ -412,13 +407,8 @@ Item {
         root.surfaceMounted = false;
         root.backgroundBlurPrimed = false;
         root.clearOverviewScreen();
-        if (backgroundBlurSession.running) {
-            root.backgroundBlurReleasePhase = 2;
-            backgroundBlurSession.write("close\n");
-        } else {
-            root.backgroundBlurReleasePhase = 0;
-            root.finishDismiss();
-        }
+        root.backgroundBlurReleasePhase = 0;
+        root.finishDismiss();
     }
 
     function finishDismiss() {
@@ -1439,12 +1429,10 @@ Item {
             if (!backgroundBlurSession.running)
                 return;
             var requested = root.requestedBackgroundBlur();
-            var requestedProgress = Math.max(0, Math.min(1000, Math.round(root.motionProgress * 1000)));
-            if (requested === root.lastRequestedBlur && requestedProgress === root.lastRequestedBlurProgress)
+            if (requested === root.lastRequestedBlur)
                 return;
             root.lastRequestedBlur = requested;
-            root.lastRequestedBlurProgress = requestedProgress;
-            root.writeBackgroundBlur(requested, root.motionProgress);
+            root.writeBackgroundBlur(requested);
         }
     }
 
@@ -1462,13 +1450,9 @@ Item {
         command: [root.pluginDir + "/background-blur-session"]
         stdinEnabled: true
         onStarted: {
-            var initialBlur = root.openingPending && root.effectiveBackgroundBlur > 0
-                ? 1
-                : root.requestedBackgroundBlur();
-            var initialProgress = root.openingPending ? 0 : root.motionProgress;
+            var initialBlur = root.requestedBackgroundBlur();
             root.lastRequestedBlur = initialBlur;
-            root.lastRequestedBlurProgress = Math.round(initialProgress * 1000);
-            root.writeBackgroundBlur(initialBlur, initialProgress);
+            root.writeBackgroundBlur(initialBlur);
         }
         stdout: SplitParser {
             onRead: function (line) {
@@ -1477,10 +1461,9 @@ Item {
                     return;
                 if (applied < 0) {
                     if (root.backgroundBlurReleasePhase > 0) {
-                        var releaseSurface = root.backgroundBlurReleasePhase === 1 && root.surfaceMounted;
                         root.backgroundBlurReleasePhase = 0;
                         backgroundBlurSession.running = false;
-                        if (releaseSurface) {
+                        if (root.surfaceMounted) {
                             root.surfaceMounted = false;
                             root.backgroundBlurPrimed = false;
                             root.clearOverviewScreen();
@@ -1498,26 +1481,18 @@ Item {
                     return;
                 }
                 if (applied === 0 && root.backgroundBlurReleasePhase === 1) {
-                    root.releaseBlurredSurface();
-                    return;
-                }
-                if (applied === 0 && root.backgroundBlurReleasePhase === 2) {
                     root.backgroundBlurReleasePhase = 0;
-                    if (root.openingPending || root.surfaceMounted) {
-                        if (root.effectiveBackgroundBlur > 0) {
-                            root.lastRequestedBlur = 1;
-                            root.lastRequestedBlurProgress = 0;
-                            root.writeBackgroundBlur(1, 0);
-                        } else {
-                            backgroundBlurSession.running = false;
-                        }
+                    if (root.openingPending) {
+                        root.lastRequestedBlur = root.requestedBackgroundBlur();
+                        root.writeBackgroundBlur(root.lastRequestedBlur);
                     } else {
                         backgroundBlurSession.running = false;
-                        root.finishDismiss();
+                        root.releaseBlurredSurface();
                     }
                     return;
                 }
                 if (root.openingPending) {
+                    root.backgroundBlurReleasePhase = 0;
                     root.backgroundBlurPrimed = true;
                     root.prepareOpenSurface();
                 }
@@ -1526,11 +1501,9 @@ Item {
         onExited: function (exitCode, exitStatus) {
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
-            root.lastRequestedBlurProgress = -1;
             if (root.backgroundBlurReleasePhase > 0) {
-                var releaseSurface = root.backgroundBlurReleasePhase === 1 && root.surfaceMounted;
                 root.backgroundBlurReleasePhase = 0;
-                if (releaseSurface) {
+                if (root.surfaceMounted) {
                     root.surfaceMounted = false;
                     root.clearOverviewScreen();
                 }
@@ -1773,6 +1746,7 @@ Item {
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
+            HyprlandWindow.opacity: root.motionProgress
             BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0
                     && !root.backgroundBlurFailed
                 ? backgroundBlurRegion
@@ -1849,7 +1823,7 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 color: "black"
-                opacity: root.motionProgress * root.effectiveBackgroundDim / 100
+                opacity: root.effectiveBackgroundDim / 100
             }
 
             Item {
@@ -1857,7 +1831,6 @@ Item {
                 anchors.fill: parent
                 focus: overviewWindow.acceptsKeyboard
                 enabled: root.opened
-                opacity: root.motionProgress
                 scale: root.animationStyle === "zoom"
                     ? 0.82 + 0.18 * root.motionProgress
                     : (root.animationStyle === "slide"
