@@ -778,6 +778,8 @@ Item {
     }
 
     function handleDisplayStateChanged() {
+        if (!root.surfaceMounted && !root.openingPending)
+            return;
         if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
         var selectedTop = root.filteredToplevels[root.selectedIndex];
@@ -827,6 +829,8 @@ Item {
     }
 
     function handleToplevelCollectionChanged() {
+        if (!root.surfaceMounted && !root.openingPending)
+            return;
         var membershipChanged = root.syncSessionToplevels();
         var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
         if ((membershipChanged || filteredMembershipMayChange)
