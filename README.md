@@ -32,7 +32,7 @@ omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 That's it: the top-left hot corner works right away. Optionally, bind a key in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
-o.bind("SUPER + A", "Exposé", "omarchy-shell expose toggle")
+o.bind("SUPER + A", "Exposé", hl.dsp.event("expose.window-overview:toggle"))
 ```
 
 Any unused chord works. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
@@ -138,7 +138,7 @@ Exposé runs unsandboxed inside Omarchy Shell with your user's permissions.
 - **No thumbnails:** verify Hyprland exposes toplevel-export support and no screen-capture policy blocks Quickshell. Cards stay usable with fallback labels.
 - **Workspace says “—”:** Exposé matches foreign-toplevel objects to `hyprctl clients -j`; very short-lived windows or identical title/class pairs can briefly be ambiguous.
 - **Plugin not listed:** run `omarchy plugin validate .`, then `omarchy-shell shell rescanPlugins`.
-- **Shortcut does nothing:** run `hyprctl reload`, check `hyprctl configerrors`, and test `omarchy-shell expose toggle` directly.
+- **Shortcut does nothing:** run `hyprctl reload`, check `hyprctl configerrors`, and test `hyprctl dispatch 'hl.dsp.event("expose.window-overview:toggle")'` directly.
 
 ## Credits
 
