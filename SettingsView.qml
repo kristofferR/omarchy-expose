@@ -26,12 +26,13 @@ Item {
         implicitWidth: Style.space(280)
         implicitHeight: Style.space(32)
         activeFocusOnTab: true
-        readonly property real normalizedValue: Math.max(0, Math.min(1, (value - from) / Math.max(1, to - from)))
+        readonly property real span: Math.max(0.000001, to - from)
+        readonly property real normalizedValue: Math.max(0, Math.min(1, (value - from) / span))
 
         function valueAt(position) {
             var availableWidth = Math.max(1, sliderTrackArea.width - sliderHandle.width);
             var normalized = Math.max(0, Math.min(1, (position - sliderHandle.width / 2) / availableWidth));
-            var raw = settingSlider.from + normalized * (settingSlider.to - settingSlider.from);
+            var raw = settingSlider.from + normalized * settingSlider.span;
             if (settingSlider.stepSize <= 0)
                 return raw;
             var stepped = settingSlider.from + Math.round((raw - settingSlider.from) / settingSlider.stepSize) * settingSlider.stepSize;
@@ -1451,8 +1452,12 @@ Item {
                 });
             else if (!visible && settingsView.controller.settingsOpen && settingsView.hostWindow.acceptsKeyboard)
                 Qt.callLater(function () {
-                    if (settingsView.visible && !footerHideConfirmationLayer.visible)
+                    if (!settingsView.visible || footerHideConfirmationLayer.visible)
+                        return;
+                    if (bottomTextToggle.visible && bottomTextToggle.enabled)
                         bottomTextToggle.forceActiveFocus();
+                    else
+                        settingsView.focusSettingsCategory();
                 });
         }
 
