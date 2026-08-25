@@ -159,12 +159,15 @@ Item {
     property bool backgroundBlurPrimed: false
     property bool backgroundBlurFailed: false
     property bool dismissNotifyShell: false
+    // 0 idle, 1 clearing the layer effect, 2 restoring the desktop blur.
+    property int backgroundBlurReleasePhase: 0
     property real motionProgress: 0
     property real motionTarget: 0
     // Cards bind to this instead of motionProgress so the animation only
     // notifies them twice, not once per frame.
     readonly property bool motionSettled: root.motionProgress >= 0.999
     property int lastRequestedBlur: -1
+    property int lastRequestedBlurProgress: -1
     property var iconCache: ({})
     property int modelRevision: 0
     property var sessionToplevels: []
@@ -239,6 +242,11 @@ Item {
     }
 
     function open(payload) {
+        if (root.backgroundBlurReleasePhase === 1)
+            root.backgroundBlurReleasePhase = 0;
+        var blurRestoreInFlight = root.backgroundBlurReleasePhase === 2 && backgroundBlurSession.running;
+        if (!blurRestoreInFlight)
+            root.backgroundBlurReleasePhase = 0;
         root.closeSettings();
         root.filterText = "";
         root.workspaceScope = "all";
@@ -265,10 +273,12 @@ Item {
         root.clearPreview();
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
-        if (root.effectiveBackgroundBlur > 0)
-            backgroundBlurSession.running = true;
-        else
+        if (root.effectiveBackgroundBlur > 0) {
+            if (!blurRestoreInFlight)
+                backgroundBlurSession.running = true;
+        } else {
             root.prepareOpenSurface();
+        }
     }
 
     function close() {
@@ -282,6 +292,8 @@ Item {
         root.clearPreview();
         root.opened = false;
         root.dismissNotifyShell = root.dismissNotifyShell || notifyShell;
+        if (root.backgroundBlurReleasePhase > 0)
+            return;
         if (root.surfaceMounted) {
             root.animateMotionTo(0);
             return;
@@ -290,6 +302,7 @@ Item {
         root.motionTarget = 0;
         root.motionProgress = 0;
         root.backgroundBlurPrimed = false;
+        root.backgroundBlurReleasePhase = 0;
         backgroundBlurSession.running = false;
         root.clearOverviewScreen();
         root.finishDismiss();
@@ -306,7 +319,12 @@ Item {
     function requestedBackgroundBlur() {
         if (root.effectiveBackgroundBlur <= 0 || root.motionProgress <= 0)
             return 0;
-        return Math.max(1, Math.round(root.effectiveBackgroundBlur * root.motionProgress));
+        return Math.round(root.effectiveBackgroundBlur * root.motionProgress);
+    }
+
+    function writeBackgroundBlur(size, progress) {
+        var normalizedProgress = Math.max(0, Math.min(1000, Math.round(progress * 1000)));
+        backgroundBlurSession.write(String(size) + ":" + String(normalizedProgress) + "\n");
     }
 
     function scheduleBackgroundBlurUpdate() {
@@ -374,16 +392,33 @@ Item {
 
     function completeMotion() {
         root.motionProgress = root.motionTarget;
-        root.scheduleBackgroundBlurUpdate();
         if (root.motionTarget > 0) {
+            root.scheduleBackgroundBlurUpdate();
             Qt.callLater(root.focusKeyboardWindow);
             return;
         }
+        backgroundBlurUpdate.stop();
+        if (backgroundBlurSession.running) {
+            root.backgroundBlurReleasePhase = 1;
+            root.lastRequestedBlur = 0;
+            root.lastRequestedBlurProgress = 0;
+            root.writeBackgroundBlur(0, 0);
+            return;
+        }
+        root.releaseBlurredSurface();
+    }
+
+    function releaseBlurredSurface() {
         root.surfaceMounted = false;
         root.backgroundBlurPrimed = false;
-        backgroundBlurSession.running = false;
         root.clearOverviewScreen();
-        root.finishDismiss();
+        if (backgroundBlurSession.running) {
+            root.backgroundBlurReleasePhase = 2;
+            backgroundBlurSession.write("close\n");
+        } else {
+            root.backgroundBlurReleasePhase = 0;
+            root.finishDismiss();
+        }
     }
 
     function finishDismiss() {
@@ -1404,10 +1439,12 @@ Item {
             if (!backgroundBlurSession.running)
                 return;
             var requested = root.requestedBackgroundBlur();
-            if (requested === root.lastRequestedBlur)
+            var requestedProgress = Math.max(0, Math.min(1000, Math.round(root.motionProgress * 1000)));
+            if (requested === root.lastRequestedBlur && requestedProgress === root.lastRequestedBlurProgress)
                 return;
             root.lastRequestedBlur = requested;
-            backgroundBlurSession.write(String(requested) + "\n");
+            root.lastRequestedBlurProgress = requestedProgress;
+            root.writeBackgroundBlur(requested, root.motionProgress);
         }
     }
 
@@ -1428,8 +1465,10 @@ Item {
             var initialBlur = root.openingPending && root.effectiveBackgroundBlur > 0
                 ? 1
                 : root.requestedBackgroundBlur();
+            var initialProgress = root.openingPending ? 0 : root.motionProgress;
             root.lastRequestedBlur = initialBlur;
-            backgroundBlurSession.write(String(initialBlur) + "\n");
+            root.lastRequestedBlurProgress = Math.round(initialProgress * 1000);
+            root.writeBackgroundBlur(initialBlur, initialProgress);
         }
         stdout: SplitParser {
             onRead: function (line) {
@@ -1437,8 +1476,45 @@ Item {
                 if (!isFinite(applied))
                     return;
                 if (applied < 0) {
+                    if (root.backgroundBlurReleasePhase > 0) {
+                        var releaseSurface = root.backgroundBlurReleasePhase === 1 && root.surfaceMounted;
+                        root.backgroundBlurReleasePhase = 0;
+                        backgroundBlurSession.running = false;
+                        if (releaseSurface) {
+                            root.surfaceMounted = false;
+                            root.backgroundBlurPrimed = false;
+                            root.clearOverviewScreen();
+                        }
+                        if (root.openingPending) {
+                            root.backgroundBlurFailed = true;
+                            root.prepareOpenSurface();
+                        } else {
+                            root.finishDismiss();
+                        }
+                        return;
+                    }
                     root.backgroundBlurFailed = true;
                     root.prepareOpenSurface();
+                    return;
+                }
+                if (applied === 0 && root.backgroundBlurReleasePhase === 1) {
+                    root.releaseBlurredSurface();
+                    return;
+                }
+                if (applied === 0 && root.backgroundBlurReleasePhase === 2) {
+                    root.backgroundBlurReleasePhase = 0;
+                    if (root.openingPending || root.surfaceMounted) {
+                        if (root.effectiveBackgroundBlur > 0) {
+                            root.lastRequestedBlur = 1;
+                            root.lastRequestedBlurProgress = 0;
+                            root.writeBackgroundBlur(1, 0);
+                        } else {
+                            backgroundBlurSession.running = false;
+                        }
+                    } else {
+                        backgroundBlurSession.running = false;
+                        root.finishDismiss();
+                    }
                     return;
                 }
                 if (root.openingPending) {
@@ -1450,6 +1526,17 @@ Item {
         onExited: function (exitCode, exitStatus) {
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
+            root.lastRequestedBlurProgress = -1;
+            if (root.backgroundBlurReleasePhase > 0) {
+                var releaseSurface = root.backgroundBlurReleasePhase === 1 && root.surfaceMounted;
+                root.backgroundBlurReleasePhase = 0;
+                if (releaseSurface) {
+                    root.surfaceMounted = false;
+                    root.clearOverviewScreen();
+                }
+                if (!root.surfaceMounted && !root.openingPending)
+                    root.finishDismiss();
+            }
             if (root.openingPending) {
                 root.backgroundBlurFailed = true;
                 root.prepareOpenSurface();
@@ -1687,7 +1774,6 @@ Item {
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
             BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0
-                    && root.motionProgress > 0
                     && !root.backgroundBlurFailed
                 ? backgroundBlurRegion
                 : null
