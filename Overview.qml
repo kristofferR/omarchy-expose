@@ -121,6 +121,10 @@ Item {
     }
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
+    // Reach farther along both screen edges than into the desktop. Fast flings
+    // are easier to catch without stealing a large square from the bar below.
+    readonly property int hotCornerReach: Style.space(48)
+    readonly property int hotCornerDepth: Style.space(6)
     readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
     readonly property string multiMonitorMode: root.pluginEntry && root.pluginEntry.multiMonitorMode === "per-monitor"
         ? "per-monitor"
@@ -1578,6 +1582,42 @@ Item {
         }
     }
 
+    component HotCornerTarget: Item {
+        id: cornerTarget
+        required property bool onTop
+        required property bool onLeft
+        readonly property bool hovered: horizontalTarget.containsMouse || verticalTarget.containsMouse
+        signal entered()
+        signal exited()
+
+        implicitWidth: root.hotCornerReach
+        implicitHeight: root.hotCornerReach
+
+        MouseArea {
+            id: horizontalTarget
+            x: 0
+            y: cornerTarget.onTop ? 0 : parent.height - height
+            width: parent.width
+            height: root.hotCornerDepth
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.entered()
+            onExited: cornerTarget.exited()
+        }
+
+        MouseArea {
+            id: verticalTarget
+            x: cornerTarget.onLeft ? 0 : parent.width - width
+            y: 0
+            width: root.hotCornerDepth
+            height: parent.height
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.entered()
+            onExited: cornerTarget.exited()
+        }
+    }
+
     Variants {
         id: hotCornerInstances
         model: root.hotCornerEnabled && !root.surfaceMounted ? Quickshell.screens : []
@@ -1592,21 +1632,35 @@ Item {
                 bottom: !root.hotCornerOnTop
                 left: root.hotCornerOnLeft
             }
-            implicitWidth: Style.space(12)
-            implicitHeight: Style.space(12)
+            implicitWidth: root.hotCornerReach
+            implicitHeight: root.hotCornerReach
             color: "#02000000"
+            mask: Region {
+                Region {
+                    x: 0
+                    y: root.hotCornerOnTop ? 0 : root.hotCornerReach - root.hotCornerDepth
+                    width: root.hotCornerReach
+                    height: root.hotCornerDepth
+                }
+                Region {
+                    x: root.hotCornerOnLeft ? 0 : root.hotCornerReach - root.hotCornerDepth
+                    y: 0
+                    width: root.hotCornerDepth
+                    height: root.hotCornerReach
+                }
+            }
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.namespace: "expose-hot-corner"
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.exclusiveZone: -1
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-            property alias hotCornerHovered: closedHotCorner.containsMouse
+            readonly property bool hotCornerHovered: closedHotCorner.hovered
 
-            MouseArea {
+            HotCornerTarget {
                 id: closedHotCorner
                 anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
+                onTop: root.hotCornerOnTop
+                onLeft: root.hotCornerOnLeft
                 onEntered: root.triggerHotCorner(String(modelData.name || ""))
                 onExited: root.scheduleHotCornerRearm()
             }
@@ -1637,7 +1691,7 @@ Item {
                     && !root.backgroundBlurFailed
                 ? backgroundBlurRegion
                 : null
-            property alias hotCornerHovered: openHotCorner.containsMouse
+            readonly property bool hotCornerHovered: openHotCorner.hovered
             readonly property bool acceptsKeyboard: {
                 var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
@@ -1951,16 +2005,16 @@ Item {
                 }
             }
 
-            MouseArea {
+            HotCornerTarget {
                 id: openHotCorner
-                width: Style.space(12)
-                height: Style.space(12)
+                width: root.hotCornerReach
+                height: root.hotCornerReach
                 x: root.hotCornerOnLeft ? 0 : parent.width - width
                 y: root.hotCornerOnTop ? 0 : parent.height - height
                 z: 100
                 enabled: root.hotCornerEnabled
-                hoverEnabled: true
-                acceptedButtons: Qt.NoButton
+                onTop: root.hotCornerOnTop
+                onLeft: root.hotCornerOnLeft
                 onEntered: root.triggerHotCorner()
                 onExited: root.scheduleHotCornerRearm()
             }
