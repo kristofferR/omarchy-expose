@@ -6,6 +6,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "WindowModel.js" as WindowModel
 
 Item {
     id: root
@@ -129,15 +130,13 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
-    property int activeWorkspaceId: 0
-    property string activeWorkspaceName: ""
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
     property int previewExitIndex: -1
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
-    property bool openingAfterClientRefresh: false
+    property bool openingPending: false
     property bool settingsOpen: false
     property int settingsCategoryIndex: 0
     property bool footerHideConfirmationOpen: false
@@ -152,16 +151,6 @@ Item {
     readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
     readonly property int previewFadeDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130
     readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
-    property var clients: []
-    property var pendingClients: []
-    property var monitorStates: []
-    property bool pendingDisplayStateSeen: false
-    property int pendingActiveWorkspaceId: 0
-    property string pendingActiveWorkspaceName: ""
-    property var pendingMonitorStates: []
-    property bool clientSnapshotRejected: false
-    property bool clientRefreshPending: false
-    property bool openingClientRefreshComplete: false
     property bool backgroundBlurPrimed: false
     property bool backgroundBlurFailed: false
     property bool dismissNotifyShell: false
@@ -175,9 +164,10 @@ Item {
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
-    property var pendingAspectRatioToplevels: []
-    readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
-    property string focusedMonitorName: ""
+    readonly property var allToplevels: Hyprland.toplevels ? Hyprland.toplevels.values : []
+    readonly property string focusedMonitorName: Hyprland.focusedMonitor
+        ? String(Hyprland.focusedMonitor.name || "")
+        : ""
     property string overviewScreenName: ""
     property bool overviewScreenPinned: false
     readonly property var effectiveOverviewScreen: {
@@ -205,9 +195,9 @@ Item {
             return root.overviewScreenName;
         if (root.focusedMonitorName)
             return root.focusedMonitorName;
-        var active = ToplevelManager.activeToplevel;
-        if (active && active.screens && active.screens.length)
-            return String(active.screens[0].name || "");
+        var active = Hyprland.activeToplevel;
+        if (active && active.monitor)
+            return String(active.monitor.name || "");
         return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
     }
     // One overlay surface: the focused monitor, or the display whose hot
@@ -227,7 +217,7 @@ Item {
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     onMotionProgressChanged: root.scheduleBackgroundBlurUpdate()
@@ -251,28 +241,29 @@ Item {
         if (root.surfaceMounted) {
             root.opened = true;
             root.animateMotionTo(1);
-            root.refreshClients();
+            root.refreshHyprlandState();
             Qt.callLater(root.focusKeyboardWindow);
             return;
         }
-        if (root.openingAfterClientRefresh)
+        if (root.openingPending)
             return;
         if (!root.overviewScreenPinned)
             root.overviewScreenName = root.keyboardScreenName;
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
+        root.refreshHyprlandState();
         root.resetSessionToplevels();
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
         root.hoveredIndex = -1;
         root.clearPreview();
-        root.openingAfterClientRefresh = true;
-        root.openingClientRefreshComplete = false;
+        root.openingPending = true;
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
-        root.refreshClients();
         if (root.effectiveBackgroundBlur > 0)
             backgroundBlurSession.running = true;
+        else
+            root.prepareOpenSurface();
     }
 
     function close() {
@@ -280,8 +271,7 @@ Item {
     }
 
     function startDismiss(notifyShell) {
-        root.openingAfterClientRefresh = false;
-        root.openingClientRefreshComplete = false;
+        root.openingPending = false;
         root.closeSettings();
         root.hoveredIndex = -1;
         root.clearPreview();
@@ -305,7 +295,7 @@ Item {
     }
 
     function toggle() {
-        (root.opened || root.openingAfterClientRefresh) ? root.dismiss() : root.open("{}");
+        (root.opened || root.openingPending) ? root.dismiss() : root.open("{}");
     }
 
     function requestedBackgroundBlur() {
@@ -320,7 +310,7 @@ Item {
     }
 
     function prepareOpenSurface() {
-        if (!root.openingAfterClientRefresh || !root.openingClientRefreshComplete)
+        if (!root.openingPending)
             return;
         if (root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             if (!backgroundBlurSession.running) {
@@ -335,10 +325,9 @@ Item {
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
         root.surfaceMounted = true;
         Qt.callLater(function () {
-            if (!root.surfaceMounted || !root.openingAfterClientRefresh)
+            if (!root.surfaceMounted || !root.openingPending)
                 return;
-            root.openingAfterClientRefresh = false;
-            root.openingClientRefreshComplete = false;
+            root.openingPending = false;
             root.opened = true;
             root.animateMotionTo(1);
             root.focusKeyboardWindow();
@@ -667,7 +656,7 @@ Item {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
         root.hotCornerArmed = false;
-        if (root.opened || root.openingAfterClientRefresh) {
+        if (root.opened || root.openingPending) {
             root.dismiss();
             return;
         }
@@ -766,7 +755,7 @@ Item {
 
     function setWorkspaceScope(value) {
         var next = value === "current" ? "current" : "all";
-        if (next === "current" && root.activeWorkspaceId === 0 && !root.activeWorkspaceName)
+        if (next === "current" && !root.workspaceForScreen(root.keyboardScreenName))
             return;
         if (next === root.workspaceScope)
             return;
@@ -774,73 +763,64 @@ Item {
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     function toggleWorkspaceScope() {
         root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
     }
 
-    function monitorStatesEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.id !== b.id
-                    || a.name !== b.name
-                    || a.focused !== b.focused
-                    || a.activeWorkspace.id !== b.activeWorkspace.id
-                    || a.activeWorkspace.name !== b.activeWorkspace.name)
-                return false;
-        }
-        return true;
+    function refreshHyprlandState() {
+        Hyprland.refreshMonitors();
+        Hyprland.refreshWorkspaces();
+        Hyprland.refreshToplevels();
     }
 
-    function focusedNameFromMonitors(monitors) {
-        var list = monitors || [];
-        for (var index = 0; index < list.length; index++) {
-            var monitor = list[index];
-            if (monitor && monitor.focused)
-                return String(monitor.name || "");
-        }
-        return list.length && list[0] ? String(list[0].name || "") : "";
-    }
-
-    function applyDisplayState(id, name, monitors) {
-        var nextId = Number(id) || 0;
-        var nextName = String(name || "").slice(0, 128);
-        var nextMonitors = monitors || [];
-        var nextFocused = root.focusedNameFromMonitors(nextMonitors);
-        if (nextId === root.activeWorkspaceId
-                && nextName === root.activeWorkspaceName
-                && nextFocused === root.focusedMonitorName
-                && root.monitorStatesEqual(root.monitorStates, nextMonitors))
-            return;
-        root.activeWorkspaceId = nextId;
-        root.activeWorkspaceName = nextName;
-        root.monitorStates = nextMonitors;
-        root.focusedMonitorName = nextFocused;
-        if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingAfterClientRefresh))
-            root.overviewScreenName = nextFocused || root.keyboardScreenName;
+    function handleDisplayStateChanged() {
+        if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
+            root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
+        var selectedTop = root.filteredToplevels[root.selectedIndex];
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        var nextIndex = root.filteredToplevels.indexOf(selectedTop);
+        root.selectedIndex = nextIndex >= 0 ? nextIndex : Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+    }
+
+    function handleToplevelMetadataChanged(top) {
+        if (root.openingPending) {
+            var sessionIndex = root.sessionToplevels.indexOf(top);
+            if (sessionIndex >= 0) {
+                var ratios = root.sessionAspectRatios.slice();
+                ratios[sessionIndex] = root.liveAspectRatioFor(top);
+                root.sessionAspectRatios = ratios;
+            }
+        }
+        root.handleDisplayStateChanged();
+    }
+
+    function handleToplevelCollectionChanged() {
+        var membershipChanged = root.syncSessionToplevels();
+        var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
+        if ((membershipChanged || filteredMembershipMayChange)
+                && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+            root.clearPreview();
+        if (filteredMembershipMayChange)
+            root.modelRevision++;
+        if (root.selectedIndex >= root.filteredToplevels.length)
+            root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
+        if (root.previewIndex >= root.filteredToplevels.length)
+            root.clearPreview();
     }
 
     function activate(top) {
         if (!top)
             return;
-        var client = root.clientFor(top);
-        var address = client && client.address ? String(client.address) : "";
-        // Resolve against fresh compositor state in the helper: the metadata
-        // poll can be between updates at the exact moment Enter is pressed.
         var helper = root.pluginDir + "/activate-window";
         Quickshell.execDetached([
             helper,
-            address,
-            String(top.appId || ""),
+            WindowModel.addressFor(top),
+            WindowModel.appIdFor(top),
             String(top.title || ""),
             root.moveCursorToWindow ? "true" : "false"
         ]);
@@ -848,47 +828,32 @@ Item {
     }
 
     function requestClose(top) {
-        if (!top || typeof top.close !== "function")
+        var wayland = WindowModel.waylandFor(top);
+        if (!wayland || typeof wayland.close !== "function")
             return;
-        top.close();
-    }
-
-    function refreshClients() {
-        if (clientQuery.running) {
-            root.clientRefreshPending = true;
-            return;
-        }
-        root.clientRefreshPending = false;
-        clientQuery.running = true;
+        wayland.close();
     }
 
     function resetSessionToplevels() {
         var next = [];
         for (var index = 0; index < root.allToplevels.length; index++)
-            if (root.allToplevels[index])
+            if (WindowModel.isEligible(root.allToplevels[index]))
                 next.push(root.allToplevels[index]);
         root.sessionToplevels = next;
-        root.pendingAspectRatioToplevels = [];
         root.captureSessionAspectRatios();
         root.modelRevision++;
     }
 
     function syncSessionToplevels() {
-        if (!root.surfaceMounted)
+        if (!root.surfaceMounted && !root.openingPending)
             return false;
         var current = [];
         for (var currentIndex = 0; currentIndex < root.allToplevels.length; currentIndex++)
-            if (root.allToplevels[currentIndex])
+            if (WindowModel.isEligible(root.allToplevels[currentIndex]))
                 current.push(root.allToplevels[currentIndex]);
 
         var next = [];
         var nextRatios = [];
-        var pendingRatios = [];
-        for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
-            var pendingTop = root.pendingAspectRatioToplevels[pendingIndex];
-            if (current.indexOf(pendingTop) !== -1)
-                pendingRatios.push(pendingTop);
-        }
         for (var oldIndex = 0; oldIndex < root.sessionToplevels.length; oldIndex++) {
             var existing = root.sessionToplevels[oldIndex];
             if (current.indexOf(existing) === -1)
@@ -902,7 +867,6 @@ Item {
                 continue;
             next.push(candidate);
             nextRatios.push(root.liveAspectRatioFor(candidate));
-            pendingRatios.push(candidate);
         }
 
         var changed = next.length !== root.sessionToplevels.length;
@@ -912,7 +876,6 @@ Item {
             return false;
         root.sessionToplevels = next;
         root.sessionAspectRatios = nextRatios;
-        root.pendingAspectRatioToplevels = pendingRatios;
         root.modelRevision++;
         return true;
     }
@@ -924,236 +887,23 @@ Item {
         root.sessionAspectRatios = ratios;
     }
 
-    function beginClientSnapshot() {
-        root.pendingClients = [];
-        root.pendingDisplayStateSeen = false;
-        root.pendingActiveWorkspaceId = 0;
-        root.pendingActiveWorkspaceName = "";
-        root.pendingMonitorStates = [];
-        root.clientSnapshotRejected = false;
-    }
-
-    function addClientLine(rawLine) {
-        var line = String(rawLine || "");
-        if (line.length === 0)
-            return;
-        if (line.length > 16384) {
-            root.clientSnapshotRejected = true;
-            return;
-        }
-        try {
-            var row = JSON.parse(line);
-            if (!row || typeof row !== "object") {
-                root.clientSnapshotRejected = true;
-                return;
-            }
-            if (row.kind === "display-state") {
-                var activeWorkspace = row.activeWorkspace;
-                if (root.pendingDisplayStateSeen
-                        || !activeWorkspace
-                        || typeof activeWorkspace !== "object"
-                        || typeof activeWorkspace.id !== "number"
-                        || !isFinite(activeWorkspace.id)
-                        || typeof activeWorkspace.name !== "string"
-                        || !Array.isArray(row.monitors)
-                        || row.monitors.length > 32) {
-                    root.clientSnapshotRejected = true;
-                    return;
-                }
-                var monitors = [];
-                for (var monitorIndex = 0; monitorIndex < row.monitors.length; monitorIndex++) {
-                    var monitor = row.monitors[monitorIndex];
-                    var monitorWorkspace = monitor && monitor.activeWorkspace;
-                    if (!monitor
-                            || typeof monitor !== "object"
-                            || typeof monitor.id !== "number"
-                            || !isFinite(monitor.id)
-                            || typeof monitor.name !== "string"
-                            || !monitorWorkspace
-                            || typeof monitorWorkspace !== "object"
-                            || typeof monitorWorkspace.id !== "number"
-                            || !isFinite(monitorWorkspace.id)
-                            || typeof monitorWorkspace.name !== "string") {
-                        root.clientSnapshotRejected = true;
-                        return;
-                    }
-                    monitors.push({
-                        id: Number(monitor.id) || 0,
-                        name: String(monitor.name || "").slice(0, 128),
-                        focused: monitor.focused === true,
-                        activeWorkspace: {
-                            id: Number(monitorWorkspace.id) || 0,
-                            name: String(monitorWorkspace.name || "").slice(0, 128)
-                        }
-                    });
-                }
-                root.pendingDisplayStateSeen = true;
-                root.pendingActiveWorkspaceId = Number(activeWorkspace.id) || 0;
-                root.pendingActiveWorkspaceName = String(activeWorkspace.name || "").slice(0, 128);
-                root.pendingMonitorStates = monitors;
-                return;
-            }
-            if ((row.kind && row.kind !== "client")
-                    || typeof row.address !== "string"
-                    || root.pendingClients.length >= 256) {
-                root.clientSnapshotRejected = true;
-                return;
-            }
-            var workspace = row.workspace && typeof row.workspace === "object" ? row.workspace : {};
-            var size = row.size && typeof row.size === "object" && typeof row.size.length === "number" ? row.size : [];
-            root.pendingClients.push({
-                address: String(row.address).slice(0, 32),
-                class: String(row.class || "").slice(0, 512),
-                initialClass: String(row.initialClass || "").slice(0, 512),
-                title: String(row.title || "").slice(0, 512),
-                workspace: {
-                    id: Number(workspace.id) || 0,
-                    name: String(workspace.name || "").slice(0, 128)
-                },
-                pinned: row.pinned === true,
-                monitor: Number(row.monitor) || 0,
-                size: [
-                    Math.max(0, Math.min(32768, Number(size[0]) || 0)),
-                    Math.max(0, Math.min(32768, Number(size[1]) || 0))
-                ]
-            });
-        } catch (e) {
-            root.clientSnapshotRejected = true;
-        }
-    }
-
-    function finishClientSnapshot(exitCode, exitStatus) {
-        var snapshotAccepted = exitCode === 0 && exitStatus === 0 && !root.clientSnapshotRejected;
-        if (snapshotAccepted) {
-            var snapshot = root.pendingClients.slice();
-            var comparableSnapshot = snapshot.slice();
-            var comparablePrevious = root.clients.slice();
-            comparableSnapshot.sort(function (a, b) { return a.address.localeCompare(b.address); });
-            comparablePrevious.sort(function (a, b) { return a.address.localeCompare(b.address); });
-            var placementsChanged = !root.clientPlacementsEqual(comparablePrevious, comparableSnapshot);
-            var selectedTop = root.filteredToplevels[root.selectedIndex];
-            if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
-                root.clients = snapshot;
-                root.modelRevision++;
-                if ((root.workspaceScope === "current" || root.multiMonitorMode === "per-monitor") && placementsChanged) {
-                    root.hoveredIndex = -1;
-                    root.clearPreview();
-                    var nextSelectedIndex = root.filteredToplevels.indexOf(selectedTop);
-                    root.selectedIndex = nextSelectedIndex >= 0 ? nextSelectedIndex : 0;
-                }
-            }
-            if (root.pendingDisplayStateSeen)
-                root.applyDisplayState(root.pendingActiveWorkspaceId, root.pendingActiveWorkspaceName, root.pendingMonitorStates);
-            if (!root.clientRefreshPending && root.pendingAspectRatioToplevels.length > 0) {
-                var updatedRatios = root.sessionAspectRatios.slice();
-                for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
-                    var sessionIndex = root.sessionToplevels.indexOf(root.pendingAspectRatioToplevels[pendingIndex]);
-                    if (sessionIndex >= 0)
-                        updatedRatios[sessionIndex] = root.liveAspectRatioFor(root.pendingAspectRatioToplevels[pendingIndex]);
-                }
-                root.pendingAspectRatioToplevels = [];
-                root.sessionAspectRatios = updatedRatios;
-                root.modelRevision++;
-            }
-        }
-        root.pendingClients = [];
-        root.pendingDisplayStateSeen = false;
-        root.pendingActiveWorkspaceId = 0;
-        root.pendingActiveWorkspaceName = "";
-        root.pendingMonitorStates = [];
-        if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
-            root.captureSessionAspectRatios();
-            root.openingClientRefreshComplete = true;
-            root.prepareOpenSurface();
-        }
-        if (root.clientRefreshPending)
-            Qt.callLater(root.refreshClients);
-    }
-
-    function clientSnapshotsEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.address !== b.address
-                    || a.class !== b.class
-                    || a.initialClass !== b.initialClass
-                    || a.title !== b.title
-                    || a.workspace.id !== b.workspace.id
-                    || a.workspace.name !== b.workspace.name
-                    || a.pinned !== b.pinned
-                    || a.monitor !== b.monitor
-                    || a.size[0] !== b.size[0]
-                    || a.size[1] !== b.size[1])
-                return false;
-        }
-        return true;
-    }
-
-    function clientPlacementsEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.address !== b.address
-                    || a.workspace.id !== b.workspace.id
-                    || a.workspace.name !== b.workspace.name
-                    || a.pinned !== b.pinned
-                    || a.monitor !== b.monitor)
-                return false;
-        }
-        return true;
-    }
-
     function normalized(value) {
         return String(value || "").toLowerCase().replace(/\.desktop$/, "");
     }
 
-    function clientFor(top) {
-        if (!top)
-            return null;
-        var app = normalized(top.appId);
-        var title = String(top.title || "");
-        var occurrence = 0;
-        for (var i = 0; i < root.allToplevels.length; i++) {
-            var previous = root.allToplevels[i];
-            if (previous === top)
-                break;
-            if (normalized(previous.appId) === app && String(previous.title || "") === title)
-                occurrence++;
-        }
-        var seen = 0;
-        for (var j = 0; j < root.clients.length; j++) {
-            var client = root.clients[j];
-            if ((normalized(client.class) === app || normalized(client.initialClass) === app) && String(client.title || "") === title) {
-                if (seen === occurrence)
-                    return client;
-                seen++;
-            }
-        }
-        for (var k = 0; k < root.clients.length; k++)
-            if (normalized(root.clients[k].class) === app || normalized(root.clients[k].initialClass) === app)
-                return root.clients[k];
-        return null;
-    }
-
     function workspaceName(top) {
-        var client = clientFor(top);
-        if (!client || !client.workspace)
-            return "—";
-        return String(client.workspace.name || client.workspace.id || "—");
+        return WindowModel.workspaceName(top);
     }
 
     function workspaceLabel(top) {
         return "Workspace " + root.workspaceName(top);
     }
 
-    function monitorStateForScreen(screenName) {
+    function monitorForScreen(screenName) {
         var wanted = String(screenName || "");
-        for (var index = 0; index < root.monitorStates.length; index++) {
-            var monitor = root.monitorStates[index];
+        var monitors = Hyprland.monitors ? Hyprland.monitors.values : [];
+        for (var index = 0; index < monitors.length; index++) {
+            var monitor = monitors[index];
             if (monitor && monitor.name === wanted)
                 return monitor;
         }
@@ -1162,11 +912,11 @@ Item {
 
     function workspaceForScreen(screenName) {
         if (root.multiMonitorMode === "per-monitor") {
-            var monitor = root.monitorStateForScreen(screenName);
+            var monitor = root.monitorForScreen(screenName);
             if (monitor && monitor.activeWorkspace)
                 return monitor.activeWorkspace;
         }
-        return {id: root.activeWorkspaceId, name: root.activeWorkspaceName};
+        return Hyprland.focusedWorkspace || null;
     }
 
     function activeWorkspaceLabelForScreen(screenName) {
@@ -1181,33 +931,11 @@ Item {
     }
 
     function isOnScreen(top, screenName) {
-        if (root.multiMonitorMode !== "per-monitor")
-            return true;
-        var screens = top && top.screens ? top.screens : [];
-        if (screens.length) {
-            for (var index = 0; index < screens.length; index++)
-                if (String(screens[index].name || "") === String(screenName || ""))
-                    return true;
-            return false;
-        }
-        var monitor = root.monitorStateForScreen(screenName);
-        var client = root.clientFor(top);
-        if (monitor && client)
-            return Number(client.monitor) === Number(monitor.id);
-        return !monitor;
+        return WindowModel.isOnScreen(top, screenName, root.multiMonitorMode === "per-monitor");
     }
 
     function isOnWorkspace(top, workspace) {
-        var client = root.clientFor(top);
-        if (!client || !client.workspace || !workspace)
-            return false;
-        if (client.pinned)
-            return true;
-        var workspaceId = Number(workspace.id) || 0;
-        if (workspaceId !== 0)
-            return Number(client.workspace.id) === workspaceId;
-        var workspaceName = String(workspace.name || "");
-        return Boolean(workspaceName) && String(client.workspace.name || "") === workspaceName;
+        return WindowModel.isOnWorkspace(top, workspace);
     }
 
     function toplevelsOnScreen(screenName) {
@@ -1230,7 +958,7 @@ Item {
             var top = candidates[index];
             if (root.workspaceScope === "current" && !root.isOnWorkspace(top, currentWorkspace))
                 continue;
-            var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
+            var haystack = WindowModel.searchTextFor(top);
             if (!needle || haystack.indexOf(needle) !== -1)
                 result.push(top);
         }
@@ -1246,16 +974,8 @@ Item {
         return true;
     }
 
-    function monitorFor(top) {
-        var client = clientFor(top);
-        return client ? Number(client.monitor) : -1;
-    }
-
     function liveAspectRatioFor(top) {
-        var client = clientFor(top);
-        if (!client || !client.size || client.size.length < 2 || client.size[0] <= 0 || client.size[1] <= 0)
-            return 1.6;
-        return Math.max(0.45, Math.min(4, client.size[0] / client.size[1]));
+        return WindowModel.aspectRatioFor(top);
     }
 
     function aspectRatioFor(top) {
@@ -1589,23 +1309,30 @@ Item {
     }
 
     Connections {
-        target: ToplevelManager.toplevels
-        function onValuesChanged() {
-            var membershipChanged = root.syncSessionToplevels();
-            var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
-            if ((membershipChanged || filteredMembershipMayChange)
-                    && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
-                root.clearPreview();
-            if (filteredMembershipMayChange)
-                root.modelRevision++;
-            if (root.selectedIndex >= root.filteredToplevels.length)
-                root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length)
-                root.clearPreview();
-            // open() takes a fresh snapshot before mounting, so nothing needs
-            // one while the overview is closed.
-            if (root.surfaceMounted || root.openingAfterClientRefresh)
-                root.refreshClients();
+        target: Hyprland.toplevels
+        function onValuesChanged() { root.handleToplevelCollectionChanged(); }
+    }
+
+    Instantiator {
+        model: Hyprland.toplevels
+
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onWorkspaceChanged() { root.handleDisplayStateChanged(); }
+            function onMonitorChanged() { root.handleDisplayStateChanged(); }
+            function onLastIpcObjectChanged() { root.handleToplevelMetadataChanged(modelData); }
+            function onWaylandHandleChanged() { root.handleToplevelCollectionChanged(); }
+        }
+    }
+
+    Instantiator {
+        model: Hyprland.monitors
+
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onActiveWorkspaceChanged() { root.handleDisplayStateChanged(); }
         }
     }
 
@@ -1657,36 +1384,12 @@ Item {
         }
     }
 
-    Timer {
-        // Toplevel changes refresh immediately above. This slower fallback
-        // catches workspace moves, which the foreign-toplevel protocol does
-        // not expose, without continuously pressuring the shell process.
-        interval: 5000
-        repeat: true
-        running: root.opened
-        onTriggered: root.refreshClients()
-    }
-
-    Process {
-        id: clientQuery
-        command: [root.pluginDir + "/list-clients"]
-        onStarted: root.beginClientSnapshot()
-        stdout: SplitParser {
-            onRead: function (line) {
-                root.addClientLine(line);
-            }
-        }
-        onExited: function (exitCode, exitStatus) {
-            root.finishClientSnapshot(exitCode, exitStatus);
-        }
-    }
-
     Process {
         id: backgroundBlurSession
         command: [root.pluginDir + "/background-blur-session"]
         stdinEnabled: true
         onStarted: {
-            var initialBlur = root.openingAfterClientRefresh && root.effectiveBackgroundBlur > 0
+            var initialBlur = root.openingPending && root.effectiveBackgroundBlur > 0
                 ? 1
                 : root.requestedBackgroundBlur();
             root.lastRequestedBlur = initialBlur;
@@ -1702,7 +1405,7 @@ Item {
                     root.prepareOpenSurface();
                     return;
                 }
-                if (root.openingAfterClientRefresh) {
+                if (root.openingPending) {
                     root.backgroundBlurPrimed = true;
                     root.prepareOpenSurface();
                 }
@@ -1711,7 +1414,7 @@ Item {
         onExited: function (exitCode, exitStatus) {
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
-            if (root.openingAfterClientRefresh) {
+            if (root.openingPending) {
                 root.backgroundBlurFailed = true;
                 root.prepareOpenSurface();
             }
@@ -1721,6 +1424,15 @@ Item {
     // Let compositor keybinds reach the resident shell without spawning a CLI.
     Connections {
         target: Hyprland
+        function onFocusedMonitorChanged() { root.handleDisplayStateChanged(); }
+        function onFocusedWorkspaceChanged() { root.handleDisplayStateChanged(); }
+        function onActiveToplevelChanged() {
+            if (!root.opened)
+                return;
+            var index = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
+            if (index >= 0)
+                root.selectedIndex = index;
+        }
         function onRawEvent(event) {
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
@@ -2668,17 +2380,17 @@ Item {
                                         readonly property bool inLayout: slot >= 0
                                         property bool hovered: false
                                         readonly property bool selected: overviewWindow.acceptsKeyboard && inLayout && slot === root.selectedIndex
-                                        readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
+                                        readonly property bool focusedWindow: modelData === Hyprland.activeToplevel
                                         readonly property bool previewed: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewIndex
                                         readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewExitIndex
                                         readonly property bool floatingFooter: root.windowFooterStyle === "floating"
                                         readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
                                         readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
                                         readonly property bool centeredFooter: root.windowFooterStyle === "centered"
-                                        readonly property string windowTitle: String(modelData.title || modelData.appId || "Untitled window")
-                                        readonly property string applicationName: String(modelData.appId || "Application")
+                                        readonly property string windowTitle: String(modelData.title || WindowModel.appIdFor(modelData) || "Untitled window")
+                                        readonly property string applicationName: WindowModel.appIdFor(modelData) || "Application"
                                         readonly property string workspaceName: root.workspaceName(modelData)
-                                        readonly property string iconSource: root.iconFor(modelData.appId)
+                                        readonly property string iconSource: root.iconFor(WindowModel.appIdFor(modelData))
                                         readonly property color outlineColor: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
                                         readonly property real outlineWidth: hovered
                                             ? Math.max(4, Style.hoverBorderWidth * 2)
@@ -2823,7 +2535,7 @@ Item {
 
                                                         ScreencopyView {
                                                             anchors.fill: parent
-                                                            captureSource: card.modelData
+                                                            captureSource: WindowModel.waylandFor(card.modelData)
                                                             live: root.opened && card.inLayout
                                                             paintCursor: false
                                                         }
