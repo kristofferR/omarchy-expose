@@ -6,6 +6,8 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import "IconResolver.js" as IconResolver
+import "WindowModel.js" as WindowModel
 
 Item {
     id: root
@@ -133,15 +135,13 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
-    property int activeWorkspaceId: 0
-    property string activeWorkspaceName: ""
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
     property int previewExitIndex: -1
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
-    property bool openingAfterClientRefresh: false
+    property bool openingPending: false
     property bool settingsOpen: false
     property int settingsCategoryIndex: 0
     property bool footerHideConfirmationOpen: false
@@ -156,16 +156,6 @@ Item {
     readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
     readonly property int previewFadeDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130
     readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
-    property var clients: []
-    property var pendingClients: []
-    property var monitorStates: []
-    property bool pendingDisplayStateSeen: false
-    property int pendingActiveWorkspaceId: 0
-    property string pendingActiveWorkspaceName: ""
-    property var pendingMonitorStates: []
-    property bool clientSnapshotRejected: false
-    property bool clientRefreshPending: false
-    property bool openingClientRefreshComplete: false
     property bool backgroundBlurPrimed: false
     property bool backgroundBlurFailed: false
     property bool dismissNotifyShell: false
@@ -179,9 +169,10 @@ Item {
     property int modelRevision: 0
     property var sessionToplevels: []
     property var sessionAspectRatios: []
-    property var pendingAspectRatioToplevels: []
-    readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
-    property string focusedMonitorName: ""
+    readonly property var allToplevels: Hyprland.toplevels ? Hyprland.toplevels.values : []
+    readonly property string focusedMonitorName: Hyprland.focusedMonitor
+        ? String(Hyprland.focusedMonitor.name || "")
+        : ""
     property string overviewScreenName: ""
     property bool overviewScreenPinned: false
     readonly property var effectiveOverviewScreen: {
@@ -209,9 +200,9 @@ Item {
             return root.overviewScreenName;
         if (root.focusedMonitorName)
             return root.focusedMonitorName;
-        var active = ToplevelManager.activeToplevel;
-        if (active && active.screens && active.screens.length)
-            return String(active.screens[0].name || "");
+        var active = Hyprland.activeToplevel;
+        if (active && active.monitor)
+            return String(active.monitor.name || "");
         return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
     }
     // One overlay surface: the focused monitor, or the display whose hot
@@ -231,7 +222,7 @@ Item {
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     onMotionProgressChanged: root.scheduleBackgroundBlurUpdate()
@@ -255,28 +246,29 @@ Item {
         if (root.surfaceMounted) {
             root.opened = true;
             root.animateMotionTo(1);
-            root.refreshClients();
+            root.refreshHyprlandState();
             Qt.callLater(root.focusKeyboardWindow);
             return;
         }
-        if (root.openingAfterClientRefresh)
+        if (root.openingPending)
             return;
         if (!root.overviewScreenPinned)
             root.overviewScreenName = root.keyboardScreenName;
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
+        root.openingPending = true;
+        root.refreshHyprlandState();
         root.resetSessionToplevels();
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
         root.hoveredIndex = -1;
         root.clearPreview();
-        root.openingAfterClientRefresh = true;
-        root.openingClientRefreshComplete = false;
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
-        root.refreshClients();
         if (root.effectiveBackgroundBlur > 0)
             backgroundBlurSession.running = true;
+        else
+            root.prepareOpenSurface();
     }
 
     function close() {
@@ -284,8 +276,7 @@ Item {
     }
 
     function startDismiss(notifyShell) {
-        root.openingAfterClientRefresh = false;
-        root.openingClientRefreshComplete = false;
+        root.openingPending = false;
         root.closeSettings();
         root.hoveredIndex = -1;
         root.clearPreview();
@@ -309,7 +300,7 @@ Item {
     }
 
     function toggle() {
-        (root.opened || root.openingAfterClientRefresh) ? root.dismiss() : root.open("{}");
+        (root.opened || root.openingPending) ? root.dismiss() : root.open("{}");
     }
 
     function requestedBackgroundBlur() {
@@ -324,7 +315,7 @@ Item {
     }
 
     function prepareOpenSurface() {
-        if (!root.openingAfterClientRefresh || !root.openingClientRefreshComplete)
+        if (!root.openingPending)
             return;
         if (root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             if (!backgroundBlurSession.running) {
@@ -339,10 +330,9 @@ Item {
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
         root.surfaceMounted = true;
         Qt.callLater(function () {
-            if (!root.surfaceMounted || !root.openingAfterClientRefresh)
+            if (!root.surfaceMounted || !root.openingPending)
                 return;
-            root.openingAfterClientRefresh = false;
-            root.openingClientRefreshComplete = false;
+            root.openingPending = false;
             root.opened = true;
             root.animateMotionTo(1);
             root.focusKeyboardWindow();
@@ -671,7 +661,7 @@ Item {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
         root.hotCornerArmed = false;
-        if (root.opened || root.openingAfterClientRefresh) {
+        if (root.opened || root.openingPending) {
             root.dismiss();
             return;
         }
@@ -770,7 +760,7 @@ Item {
 
     function setWorkspaceScope(value) {
         var next = value === "current" ? "current" : "all";
-        if (next === "current" && root.activeWorkspaceId === 0 && !root.activeWorkspaceName)
+        if (next === "current" && !root.workspaceForScreen(root.keyboardScreenName))
             return;
         if (next === root.workspaceScope)
             return;
@@ -778,73 +768,94 @@ Item {
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     function toggleWorkspaceScope() {
         root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
     }
 
-    function monitorStatesEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.id !== b.id
-                    || a.name !== b.name
-                    || a.focused !== b.focused
-                    || a.activeWorkspace.id !== b.activeWorkspace.id
-                    || a.activeWorkspace.name !== b.activeWorkspace.name)
-                return false;
-        }
-        return true;
+    function refreshHyprlandState() {
+        Hyprland.refreshMonitors();
+        Hyprland.refreshWorkspaces();
+        Hyprland.refreshToplevels();
     }
 
-    function focusedNameFromMonitors(monitors) {
-        var list = monitors || [];
-        for (var index = 0; index < list.length; index++) {
-            var monitor = list[index];
-            if (monitor && monitor.focused)
-                return String(monitor.name || "");
-        }
-        return list.length && list[0] ? String(list[0].name || "") : "";
-    }
-
-    function applyDisplayState(id, name, monitors) {
-        var nextId = Number(id) || 0;
-        var nextName = String(name || "").slice(0, 128);
-        var nextMonitors = monitors || [];
-        var nextFocused = root.focusedNameFromMonitors(nextMonitors);
-        if (nextId === root.activeWorkspaceId
-                && nextName === root.activeWorkspaceName
-                && nextFocused === root.focusedMonitorName
-                && root.monitorStatesEqual(root.monitorStates, nextMonitors))
+    function handleDisplayStateChanged() {
+        if (!root.surfaceMounted && !root.openingPending)
             return;
-        root.activeWorkspaceId = nextId;
-        root.activeWorkspaceName = nextName;
-        root.monitorStates = nextMonitors;
-        root.focusedMonitorName = nextFocused;
-        if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingAfterClientRefresh))
-            root.overviewScreenName = nextFocused || root.keyboardScreenName;
+        if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
+            root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
+        var selectedTop = root.filteredToplevels[root.selectedIndex];
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(ToplevelManager.activeToplevel));
+        var nextIndex = root.filteredToplevels.indexOf(selectedTop);
+        root.selectedIndex = nextIndex >= 0 ? nextIndex : Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+    }
+
+    function handleToplevelMetadataChanged(top) {
+        if (!root.surfaceMounted && !root.openingPending)
+            return;
+        var selectedTop = root.filteredToplevels[root.selectedIndex];
+        var previewTop = root.previewIndex >= 0 ? root.filteredToplevels[root.previewIndex] : null;
+        var previewExitTop = root.previewExitIndex >= 0 ? root.filteredToplevels[root.previewExitIndex] : null;
+        var membershipChanged = root.syncSessionToplevels();
+        if (root.openingPending) {
+            var sessionIndex = root.sessionToplevels.indexOf(top);
+            if (sessionIndex >= 0) {
+                var ratios = root.sessionAspectRatios.slice();
+                ratios[sessionIndex] = root.liveAspectRatioFor(top);
+                root.sessionAspectRatios = ratios;
+            }
+        }
+        if (!membershipChanged)
+            root.modelRevision++;
+
+        var selectedIndex = root.filteredToplevels.indexOf(selectedTop);
+        if (selectedIndex < 0)
+            selectedIndex = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
+        root.selectedIndex = Math.max(0, selectedIndex);
+
+        if (previewTop) {
+            var previewIndex = root.filteredToplevels.indexOf(previewTop);
+            if (previewIndex < 0)
+                root.clearPreview();
+            else
+                root.previewIndex = previewIndex;
+        } else if (previewExitTop) {
+            var previewExitIndex = root.filteredToplevels.indexOf(previewExitTop);
+            if (previewExitIndex < 0)
+                root.clearPreview();
+            else
+                root.previewExitIndex = previewExitIndex;
+        }
+    }
+
+    function handleToplevelCollectionChanged() {
+        if (!root.surfaceMounted && !root.openingPending)
+            return;
+        var membershipChanged = root.syncSessionToplevels();
+        var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
+        if ((membershipChanged || filteredMembershipMayChange)
+                && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+            root.clearPreview();
+        if (filteredMembershipMayChange)
+            root.modelRevision++;
+        if (root.selectedIndex >= root.filteredToplevels.length)
+            root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
+        if (root.previewIndex >= root.filteredToplevels.length)
+            root.clearPreview();
     }
 
     function activate(top) {
         if (!top)
             return;
-        var client = root.clientFor(top);
-        var address = client && client.address ? String(client.address) : "";
-        // Resolve against fresh compositor state in the helper: the metadata
-        // poll can be between updates at the exact moment Enter is pressed.
         var helper = root.pluginDir + "/activate-window";
         Quickshell.execDetached([
             helper,
-            address,
-            String(top.appId || ""),
+            WindowModel.addressFor(top),
+            WindowModel.appIdFor(top),
             String(top.title || ""),
             root.moveCursorToWindow ? "true" : "false"
         ]);
@@ -852,47 +863,32 @@ Item {
     }
 
     function requestClose(top) {
-        if (!top || typeof top.close !== "function")
+        var wayland = WindowModel.waylandFor(top);
+        if (!wayland || typeof wayland.close !== "function")
             return;
-        top.close();
-    }
-
-    function refreshClients() {
-        if (clientQuery.running) {
-            root.clientRefreshPending = true;
-            return;
-        }
-        root.clientRefreshPending = false;
-        clientQuery.running = true;
+        wayland.close();
     }
 
     function resetSessionToplevels() {
         var next = [];
         for (var index = 0; index < root.allToplevels.length; index++)
-            if (root.allToplevels[index])
+            if (WindowModel.isEligible(root.allToplevels[index]))
                 next.push(root.allToplevels[index]);
         root.sessionToplevels = next;
-        root.pendingAspectRatioToplevels = [];
         root.captureSessionAspectRatios();
         root.modelRevision++;
     }
 
     function syncSessionToplevels() {
-        if (!root.surfaceMounted)
+        if (!root.surfaceMounted && !root.openingPending)
             return false;
         var current = [];
         for (var currentIndex = 0; currentIndex < root.allToplevels.length; currentIndex++)
-            if (root.allToplevels[currentIndex])
+            if (WindowModel.isEligible(root.allToplevels[currentIndex]))
                 current.push(root.allToplevels[currentIndex]);
 
         var next = [];
         var nextRatios = [];
-        var pendingRatios = [];
-        for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
-            var pendingTop = root.pendingAspectRatioToplevels[pendingIndex];
-            if (current.indexOf(pendingTop) !== -1)
-                pendingRatios.push(pendingTop);
-        }
         for (var oldIndex = 0; oldIndex < root.sessionToplevels.length; oldIndex++) {
             var existing = root.sessionToplevels[oldIndex];
             if (current.indexOf(existing) === -1)
@@ -906,7 +902,6 @@ Item {
                 continue;
             next.push(candidate);
             nextRatios.push(root.liveAspectRatioFor(candidate));
-            pendingRatios.push(candidate);
         }
 
         var changed = next.length !== root.sessionToplevels.length;
@@ -916,7 +911,6 @@ Item {
             return false;
         root.sessionToplevels = next;
         root.sessionAspectRatios = nextRatios;
-        root.pendingAspectRatioToplevels = pendingRatios;
         root.modelRevision++;
         return true;
     }
@@ -928,236 +922,19 @@ Item {
         root.sessionAspectRatios = ratios;
     }
 
-    function beginClientSnapshot() {
-        root.pendingClients = [];
-        root.pendingDisplayStateSeen = false;
-        root.pendingActiveWorkspaceId = 0;
-        root.pendingActiveWorkspaceName = "";
-        root.pendingMonitorStates = [];
-        root.clientSnapshotRejected = false;
-    }
-
-    function addClientLine(rawLine) {
-        var line = String(rawLine || "");
-        if (line.length === 0)
-            return;
-        if (line.length > 16384) {
-            root.clientSnapshotRejected = true;
-            return;
-        }
-        try {
-            var row = JSON.parse(line);
-            if (!row || typeof row !== "object") {
-                root.clientSnapshotRejected = true;
-                return;
-            }
-            if (row.kind === "display-state") {
-                var activeWorkspace = row.activeWorkspace;
-                if (root.pendingDisplayStateSeen
-                        || !activeWorkspace
-                        || typeof activeWorkspace !== "object"
-                        || typeof activeWorkspace.id !== "number"
-                        || !isFinite(activeWorkspace.id)
-                        || typeof activeWorkspace.name !== "string"
-                        || !Array.isArray(row.monitors)
-                        || row.monitors.length > 32) {
-                    root.clientSnapshotRejected = true;
-                    return;
-                }
-                var monitors = [];
-                for (var monitorIndex = 0; monitorIndex < row.monitors.length; monitorIndex++) {
-                    var monitor = row.monitors[monitorIndex];
-                    var monitorWorkspace = monitor && monitor.activeWorkspace;
-                    if (!monitor
-                            || typeof monitor !== "object"
-                            || typeof monitor.id !== "number"
-                            || !isFinite(monitor.id)
-                            || typeof monitor.name !== "string"
-                            || !monitorWorkspace
-                            || typeof monitorWorkspace !== "object"
-                            || typeof monitorWorkspace.id !== "number"
-                            || !isFinite(monitorWorkspace.id)
-                            || typeof monitorWorkspace.name !== "string") {
-                        root.clientSnapshotRejected = true;
-                        return;
-                    }
-                    monitors.push({
-                        id: Number(monitor.id) || 0,
-                        name: String(monitor.name || "").slice(0, 128),
-                        focused: monitor.focused === true,
-                        activeWorkspace: {
-                            id: Number(monitorWorkspace.id) || 0,
-                            name: String(monitorWorkspace.name || "").slice(0, 128)
-                        }
-                    });
-                }
-                root.pendingDisplayStateSeen = true;
-                root.pendingActiveWorkspaceId = Number(activeWorkspace.id) || 0;
-                root.pendingActiveWorkspaceName = String(activeWorkspace.name || "").slice(0, 128);
-                root.pendingMonitorStates = monitors;
-                return;
-            }
-            if ((row.kind && row.kind !== "client")
-                    || typeof row.address !== "string"
-                    || root.pendingClients.length >= 256) {
-                root.clientSnapshotRejected = true;
-                return;
-            }
-            var workspace = row.workspace && typeof row.workspace === "object" ? row.workspace : {};
-            var size = row.size && typeof row.size === "object" && typeof row.size.length === "number" ? row.size : [];
-            root.pendingClients.push({
-                address: String(row.address).slice(0, 32),
-                class: String(row.class || "").slice(0, 512),
-                initialClass: String(row.initialClass || "").slice(0, 512),
-                title: String(row.title || "").slice(0, 512),
-                workspace: {
-                    id: Number(workspace.id) || 0,
-                    name: String(workspace.name || "").slice(0, 128)
-                },
-                pinned: row.pinned === true,
-                monitor: Number(row.monitor) || 0,
-                size: [
-                    Math.max(0, Math.min(32768, Number(size[0]) || 0)),
-                    Math.max(0, Math.min(32768, Number(size[1]) || 0))
-                ]
-            });
-        } catch (e) {
-            root.clientSnapshotRejected = true;
-        }
-    }
-
-    function finishClientSnapshot(exitCode, exitStatus) {
-        var snapshotAccepted = exitCode === 0 && exitStatus === 0 && !root.clientSnapshotRejected;
-        if (snapshotAccepted) {
-            var snapshot = root.pendingClients.slice();
-            var comparableSnapshot = snapshot.slice();
-            var comparablePrevious = root.clients.slice();
-            comparableSnapshot.sort(function (a, b) { return a.address.localeCompare(b.address); });
-            comparablePrevious.sort(function (a, b) { return a.address.localeCompare(b.address); });
-            var placementsChanged = !root.clientPlacementsEqual(comparablePrevious, comparableSnapshot);
-            var selectedTop = root.filteredToplevels[root.selectedIndex];
-            if (!root.clientSnapshotsEqual(comparablePrevious, comparableSnapshot)) {
-                root.clients = snapshot;
-                root.modelRevision++;
-                if ((root.workspaceScope === "current" || root.multiMonitorMode === "per-monitor") && placementsChanged) {
-                    root.hoveredIndex = -1;
-                    root.clearPreview();
-                    var nextSelectedIndex = root.filteredToplevels.indexOf(selectedTop);
-                    root.selectedIndex = nextSelectedIndex >= 0 ? nextSelectedIndex : 0;
-                }
-            }
-            if (root.pendingDisplayStateSeen)
-                root.applyDisplayState(root.pendingActiveWorkspaceId, root.pendingActiveWorkspaceName, root.pendingMonitorStates);
-            if (!root.clientRefreshPending && root.pendingAspectRatioToplevels.length > 0) {
-                var updatedRatios = root.sessionAspectRatios.slice();
-                for (var pendingIndex = 0; pendingIndex < root.pendingAspectRatioToplevels.length; pendingIndex++) {
-                    var sessionIndex = root.sessionToplevels.indexOf(root.pendingAspectRatioToplevels[pendingIndex]);
-                    if (sessionIndex >= 0)
-                        updatedRatios[sessionIndex] = root.liveAspectRatioFor(root.pendingAspectRatioToplevels[pendingIndex]);
-                }
-                root.pendingAspectRatioToplevels = [];
-                root.sessionAspectRatios = updatedRatios;
-                root.modelRevision++;
-            }
-        }
-        root.pendingClients = [];
-        root.pendingDisplayStateSeen = false;
-        root.pendingActiveWorkspaceId = 0;
-        root.pendingActiveWorkspaceName = "";
-        root.pendingMonitorStates = [];
-        if (!root.clientRefreshPending && root.openingAfterClientRefresh) {
-            root.captureSessionAspectRatios();
-            root.openingClientRefreshComplete = true;
-            root.prepareOpenSurface();
-        }
-        if (root.clientRefreshPending)
-            Qt.callLater(root.refreshClients);
-    }
-
-    function clientSnapshotsEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.address !== b.address
-                    || a.class !== b.class
-                    || a.initialClass !== b.initialClass
-                    || a.title !== b.title
-                    || a.workspace.id !== b.workspace.id
-                    || a.workspace.name !== b.workspace.name
-                    || a.pinned !== b.pinned
-                    || a.monitor !== b.monitor
-                    || a.size[0] !== b.size[0]
-                    || a.size[1] !== b.size[1])
-                return false;
-        }
-        return true;
-    }
-
-    function clientPlacementsEqual(left, right) {
-        if (!left || left.length !== right.length)
-            return false;
-        for (var index = 0; index < left.length; index++) {
-            var a = left[index];
-            var b = right[index];
-            if (a.address !== b.address
-                    || a.workspace.id !== b.workspace.id
-                    || a.workspace.name !== b.workspace.name
-                    || a.pinned !== b.pinned
-                    || a.monitor !== b.monitor)
-                return false;
-        }
-        return true;
-    }
-
-    function normalized(value) {
-        return String(value || "").toLowerCase().replace(/\.desktop$/, "");
-    }
-
-    function clientFor(top) {
-        if (!top)
-            return null;
-        var app = normalized(top.appId);
-        var title = String(top.title || "");
-        var occurrence = 0;
-        for (var i = 0; i < root.allToplevels.length; i++) {
-            var previous = root.allToplevels[i];
-            if (previous === top)
-                break;
-            if (normalized(previous.appId) === app && String(previous.title || "") === title)
-                occurrence++;
-        }
-        var seen = 0;
-        for (var j = 0; j < root.clients.length; j++) {
-            var client = root.clients[j];
-            if ((normalized(client.class) === app || normalized(client.initialClass) === app) && String(client.title || "") === title) {
-                if (seen === occurrence)
-                    return client;
-                seen++;
-            }
-        }
-        for (var k = 0; k < root.clients.length; k++)
-            if (normalized(root.clients[k].class) === app || normalized(root.clients[k].initialClass) === app)
-                return root.clients[k];
-        return null;
-    }
-
     function workspaceName(top) {
-        var client = clientFor(top);
-        if (!client || !client.workspace)
-            return "—";
-        return String(client.workspace.name || client.workspace.id || "—");
+        return WindowModel.workspaceName(top);
     }
 
     function workspaceLabel(top) {
         return "Workspace " + root.workspaceName(top);
     }
 
-    function monitorStateForScreen(screenName) {
+    function monitorForScreen(screenName) {
         var wanted = String(screenName || "");
-        for (var index = 0; index < root.monitorStates.length; index++) {
-            var monitor = root.monitorStates[index];
+        var monitors = Hyprland.monitors ? Hyprland.monitors.values : [];
+        for (var index = 0; index < monitors.length; index++) {
+            var monitor = monitors[index];
             if (monitor && monitor.name === wanted)
                 return monitor;
         }
@@ -1166,15 +943,17 @@ Item {
 
     function workspaceForScreen(screenName) {
         if (root.multiMonitorMode === "per-monitor") {
-            var monitor = root.monitorStateForScreen(screenName);
+            var monitor = root.monitorForScreen(screenName);
             if (monitor && monitor.activeWorkspace)
                 return monitor.activeWorkspace;
         }
-        return {id: root.activeWorkspaceId, name: root.activeWorkspaceName};
+        return Hyprland.focusedWorkspace || null;
     }
 
     function activeWorkspaceLabelForScreen(screenName) {
         var workspace = root.workspaceForScreen(screenName);
+        if (!workspace)
+            return "—";
         return String(workspace.name || workspace.id || "—");
     }
 
@@ -1185,38 +964,16 @@ Item {
     }
 
     function isOnScreen(top, screenName) {
-        if (root.multiMonitorMode !== "per-monitor")
-            return true;
-        var screens = top && top.screens ? top.screens : [];
-        if (screens.length) {
-            for (var index = 0; index < screens.length; index++)
-                if (String(screens[index].name || "") === String(screenName || ""))
-                    return true;
-            return false;
-        }
-        var monitor = root.monitorStateForScreen(screenName);
-        var client = root.clientFor(top);
-        if (monitor && client)
-            return Number(client.monitor) === Number(monitor.id);
-        return !monitor;
+        return WindowModel.isOnScreen(top, screenName, root.multiMonitorMode === "per-monitor");
     }
 
     function isOnWorkspace(top, workspace) {
-        var client = root.clientFor(top);
-        if (!client || !client.workspace || !workspace)
-            return false;
-        if (client.pinned)
-            return true;
-        var workspaceId = Number(workspace.id) || 0;
-        if (workspaceId !== 0)
-            return Number(client.workspace.id) === workspaceId;
-        var workspaceName = String(workspace.name || "");
-        return Boolean(workspaceName) && String(client.workspace.name || "") === workspaceName;
+        return WindowModel.isOnWorkspace(top, workspace);
     }
 
     function toplevelsOnScreen(screenName) {
         var result = [];
-        var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
+        var source = root.surfaceMounted || root.openingPending ? root.sessionToplevels : root.allToplevels;
         for (var index = 0; index < source.length; index++) {
             var top = source[index];
             if (top && root.isOnScreen(top, screenName))
@@ -1234,7 +991,7 @@ Item {
             var top = candidates[index];
             if (root.workspaceScope === "current" && !root.isOnWorkspace(top, currentWorkspace))
                 continue;
-            var haystack = (String(top.appId || "") + " " + String(top.title || "")).toLowerCase();
+            var haystack = WindowModel.searchTextFor(top);
             if (!needle || haystack.indexOf(needle) !== -1)
                 result.push(top);
         }
@@ -1250,16 +1007,8 @@ Item {
         return true;
     }
 
-    function monitorFor(top) {
-        var client = clientFor(top);
-        return client ? Number(client.monitor) : -1;
-    }
-
     function liveAspectRatioFor(top) {
-        var client = clientFor(top);
-        if (!client || !client.size || client.size.length < 2 || client.size[0] <= 0 || client.size[1] <= 0)
-            return 1.6;
-        return Math.max(0.45, Math.min(4, client.size[0] / client.size[1]));
+        return WindowModel.aspectRatioFor(top);
     }
 
     function aspectRatioFor(top) {
@@ -1519,24 +1268,22 @@ Item {
         }
     }
 
-    function iconFor(appId) {
-        var wanted = normalized(appId);
-        if (Object.prototype.hasOwnProperty.call(root.iconCache, wanted))
-            return root.iconCache[wanted];
-        var result = "";
+    function iconFor(top) {
+        var identity = IconResolver.identityFor(top);
+        if (Object.prototype.hasOwnProperty.call(root.iconCache, identity.key))
+            return root.iconCache[identity.key];
         var entries = DesktopEntries.applications ? DesktopEntries.applications.values : [];
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            var id = normalized(entry.id);
-            var name = normalized(entry.name);
-            if (id === wanted || id.indexOf(wanted) !== -1 || wanted.indexOf(id) !== -1 || name === wanted) {
-                result = Quickshell.iconPath(String(entry.icon || "application-x-executable"), true);
-                break;
-            }
-        }
+        var entry = IconResolver.findEntry(entries, identity.candidates);
+        var iconName = entry
+            ? String(entry.icon || "application-x-executable")
+            : String(identity.candidates[0] || "application-x-executable");
+        var appLibrary = root.shell && root.shell.appLibrary ? root.shell.appLibrary : null;
+        var result = appLibrary && typeof appLibrary.iconSource === "function"
+            ? String(appLibrary.iconSource(iconName) || "")
+            : "";
         if (!result)
-            result = Quickshell.iconPath(wanted || "application-x-executable", true);
-        root.iconCache[wanted] = result;
+            result = Quickshell.iconPath(iconName, true);
+        root.iconCache[identity.key] = result;
         return result;
     }
 
@@ -1593,23 +1340,30 @@ Item {
     }
 
     Connections {
-        target: ToplevelManager.toplevels
-        function onValuesChanged() {
-            var membershipChanged = root.syncSessionToplevels();
-            var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
-            if ((membershipChanged || filteredMembershipMayChange)
-                    && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
-                root.clearPreview();
-            if (filteredMembershipMayChange)
-                root.modelRevision++;
-            if (root.selectedIndex >= root.filteredToplevels.length)
-                root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-            if (root.previewIndex >= root.filteredToplevels.length)
-                root.clearPreview();
-            // open() takes a fresh snapshot before mounting, so nothing needs
-            // one while the overview is closed.
-            if (root.surfaceMounted || root.openingAfterClientRefresh)
-                root.refreshClients();
+        target: Hyprland.toplevels
+        function onValuesChanged() { root.handleToplevelCollectionChanged(); }
+    }
+
+    Instantiator {
+        model: Hyprland.toplevels
+
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onWorkspaceChanged() { root.handleDisplayStateChanged(); }
+            function onMonitorChanged() { root.handleDisplayStateChanged(); }
+            function onLastIpcObjectChanged() { root.handleToplevelMetadataChanged(modelData); }
+            function onWaylandHandleChanged() { root.handleToplevelCollectionChanged(); }
+        }
+    }
+
+    Instantiator {
+        model: Hyprland.monitors
+
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onActiveWorkspaceChanged() { root.handleDisplayStateChanged(); }
         }
     }
 
@@ -1618,6 +1372,11 @@ Item {
         function onValuesChanged() {
             root.iconCache = {};
         }
+    }
+
+    Connections {
+        target: root.shell && root.shell.appLibrary ? root.shell.appLibrary : null
+        function onIconIndexChanged() { root.iconCache = {}; }
     }
 
     Timer {
@@ -1661,36 +1420,12 @@ Item {
         }
     }
 
-    Timer {
-        // Toplevel changes refresh immediately above. This slower fallback
-        // catches workspace moves, which the foreign-toplevel protocol does
-        // not expose, without continuously pressuring the shell process.
-        interval: 5000
-        repeat: true
-        running: root.opened
-        onTriggered: root.refreshClients()
-    }
-
-    Process {
-        id: clientQuery
-        command: [root.pluginDir + "/list-clients"]
-        onStarted: root.beginClientSnapshot()
-        stdout: SplitParser {
-            onRead: function (line) {
-                root.addClientLine(line);
-            }
-        }
-        onExited: function (exitCode, exitStatus) {
-            root.finishClientSnapshot(exitCode, exitStatus);
-        }
-    }
-
     Process {
         id: backgroundBlurSession
         command: [root.pluginDir + "/background-blur-session"]
         stdinEnabled: true
         onStarted: {
-            var initialBlur = root.openingAfterClientRefresh && root.effectiveBackgroundBlur > 0
+            var initialBlur = root.openingPending && root.effectiveBackgroundBlur > 0
                 ? 1
                 : root.requestedBackgroundBlur();
             root.lastRequestedBlur = initialBlur;
@@ -1706,7 +1441,7 @@ Item {
                     root.prepareOpenSurface();
                     return;
                 }
-                if (root.openingAfterClientRefresh) {
+                if (root.openingPending) {
                     root.backgroundBlurPrimed = true;
                     root.prepareOpenSurface();
                 }
@@ -1715,7 +1450,7 @@ Item {
         onExited: function (exitCode, exitStatus) {
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
-            if (root.openingAfterClientRefresh) {
+            if (root.openingPending) {
                 root.backgroundBlurFailed = true;
                 root.prepareOpenSurface();
             }
@@ -1725,6 +1460,15 @@ Item {
     // Let compositor keybinds reach the resident shell without spawning a CLI.
     Connections {
         target: Hyprland
+        function onFocusedMonitorChanged() { root.handleDisplayStateChanged(); }
+        function onFocusedWorkspaceChanged() { root.handleDisplayStateChanged(); }
+        function onActiveToplevelChanged() {
+            if (!root.opened)
+                return;
+            var index = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
+            if (index >= 0)
+                root.selectedIndex = index;
+        }
         function onRawEvent(event) {
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
@@ -1835,542 +1579,6 @@ Item {
                 return "expected mirrored or per-monitor";
             root.setMultiMonitorMode(mode);
             return mode;
-        }
-    }
-
-    component SettingSlider: Item {
-        id: settingSlider
-        property real from: 0
-        property real to: 100
-        property real value: 0
-        property real stepSize: 1
-        property string suffix: ""
-        signal edited(real nextValue)
-        signal committed(real nextValue)
-        implicitWidth: Style.space(280)
-        implicitHeight: Style.space(32)
-        activeFocusOnTab: true
-        readonly property real normalizedValue: Math.max(0, Math.min(1, (value - from) / Math.max(1, to - from)))
-
-        function valueAt(position) {
-            var availableWidth = Math.max(1, sliderTrackArea.width - sliderHandle.width);
-            var normalized = Math.max(0, Math.min(1, (position - sliderHandle.width / 2) / availableWidth));
-            var raw = settingSlider.from + normalized * (settingSlider.to - settingSlider.from);
-            if (settingSlider.stepSize <= 0)
-                return raw;
-            var stepped = settingSlider.from + Math.round((raw - settingSlider.from) / settingSlider.stepSize) * settingSlider.stepSize;
-            return Math.max(settingSlider.from, Math.min(settingSlider.to, stepped));
-        }
-
-        function commitKeyboardValue(nextValue) {
-            var next = Math.max(settingSlider.from, Math.min(settingSlider.to, nextValue));
-            settingSlider.edited(next);
-            settingSlider.committed(next);
-        }
-
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsNavigation(event))
-                return;
-            if (event.key === Qt.Key_Left)
-                settingSlider.commitKeyboardValue(settingSlider.value - settingSlider.stepSize);
-            else if (event.key === Qt.Key_Right)
-                settingSlider.commitKeyboardValue(settingSlider.value + settingSlider.stepSize);
-            else if (event.key === Qt.Key_Home)
-                settingSlider.commitKeyboardValue(settingSlider.from);
-            else if (event.key === Qt.Key_End)
-                settingSlider.commitKeyboardValue(settingSlider.to);
-            else {
-                event.accepted = false;
-                return;
-            }
-            event.accepted = true;
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            spacing: Style.spacing.md
-
-            Item {
-                id: sliderTrackArea
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: Math.max(1, Style.normalBorderWidth)
-                    color: Color.menu.border
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width * settingSlider.normalizedValue
-                    height: Math.max(2, Style.focusBorderWidth)
-                    color: Color.accent
-                }
-
-                Rectangle {
-                    id: sliderHandle
-                    width: Style.space(12)
-                    height: width
-                    x: Math.round((parent.width - width) * settingSlider.normalizedValue)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: Color.accent
-                    border.color: Color.background
-                    border.width: Math.max(1, Style.normalBorderWidth)
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onPressed: function (mouse) {
-                        settingSlider.forceActiveFocus();
-                        settingSlider.edited(settingSlider.valueAt(mouse.x));
-                    }
-                    onPositionChanged: function (mouse) {
-                        if (pressed)
-                            settingSlider.edited(settingSlider.valueAt(mouse.x));
-                    }
-                    onReleased: function (mouse) {
-                        settingSlider.committed(settingSlider.valueAt(mouse.x));
-                    }
-                }
-            }
-
-            Text {
-                Layout.preferredWidth: Style.space(52)
-                horizontalAlignment: Text.AlignRight
-                text: Math.round(settingSlider.value) + settingSlider.suffix
-                textFormat: Text.PlainText
-                color: settingSlider.activeFocus ? Color.accent : Color.menu.text
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.caption
-                font.bold: settingSlider.activeFocus
-            }
-        }
-    }
-
-    component SettingChoices: RowLayout {
-        id: settingChoices
-        property var options: []
-        property string value: ""
-        signal chosen(string nextValue)
-        spacing: Style.spacing.lg
-        activeFocusOnTab: true
-
-        // Arrows stop at either end; Space/Enter cycle through every option.
-        function chooseOffset(offset, wrap) {
-            var count = settingChoices.options.length;
-            if (!count)
-                return;
-            var current = 0;
-            for (var index = 0; index < count; index++)
-                if (String(settingChoices.options[index].value) === settingChoices.value)
-                    current = index;
-            var next = wrap
-                ? (current + offset + count) % count
-                : Math.max(0, Math.min(count - 1, current + offset));
-            if (next !== current)
-                settingChoices.chosen(String(settingChoices.options[next].value));
-        }
-
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsNavigation(event))
-                return;
-            if (event.key === Qt.Key_Left)
-                settingChoices.chooseOffset(-1, false);
-            else if (event.key === Qt.Key_Right)
-                settingChoices.chooseOffset(1, false);
-            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                settingChoices.chooseOffset(1, true);
-            else {
-                event.accepted = false;
-                return;
-            }
-            event.accepted = true;
-        }
-
-        Repeater {
-            model: settingChoices.options
-
-            delegate: Item {
-                id: choice
-                required property var modelData
-                readonly property bool selected: String(modelData.value) === settingChoices.value
-                Layout.preferredWidth: choiceLabel.implicitWidth
-                Layout.preferredHeight: Style.space(28)
-
-                Text {
-                    id: choiceLabel
-                    anchors.centerIn: parent
-                    text: String(choice.modelData.label)
-                    textFormat: Text.PlainText
-                    color: choice.selected && settingChoices.activeFocus ? Color.accent : Color.menu.text
-                    opacity: choice.selected ? 1 : 0.45
-                    font.family: Style.font.menuFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: choice.selected
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: Math.max(2, Style.focusBorderWidth)
-                    visible: choice.selected
-                    color: Color.accent
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        settingChoices.forceActiveFocus();
-                        settingChoices.chosen(String(choice.modelData.value));
-                    }
-                }
-            }
-        }
-    }
-
-    component DisplayModeChoices: RowLayout {
-        id: displayModeChoices
-        property string value: "mirrored"
-        signal chosen(string nextValue)
-        readonly property var options: [
-            {
-                label: "Same overview",
-                description: "Show all windows together on the selected display",
-                value: "mirrored"
-            },
-            {
-                label: "Per monitor",
-                description: "Show only the selected display's windows",
-                value: "per-monitor"
-            }
-        ]
-        spacing: 0
-        activeFocusOnTab: true
-
-        function choose(index) {
-            var next = Math.max(0, Math.min(displayModeChoices.options.length - 1, index));
-            var value = String(displayModeChoices.options[next].value);
-            if (value !== displayModeChoices.value)
-                displayModeChoices.chosen(value);
-        }
-
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsNavigation(event))
-                return;
-            var current = displayModeChoices.value === "per-monitor" ? 1 : 0;
-            if (event.key === Qt.Key_Left)
-                displayModeChoices.choose(current - 1);
-            else if (event.key === Qt.Key_Right)
-                displayModeChoices.choose(current + 1);
-            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                displayModeChoices.choose(1 - current);
-            else {
-                event.accepted = false;
-                return;
-            }
-            event.accepted = true;
-        }
-
-        Repeater {
-            model: displayModeChoices.options
-
-            delegate: Rectangle {
-                id: displayModeChoice
-                required property var modelData
-                readonly property bool selected: String(modelData.value) === displayModeChoices.value
-                Layout.fillWidth: true
-                Layout.preferredHeight: Style.space(64)
-                color: "transparent"
-                border.color: displayModeChoices.activeFocus && selected ? Color.accent : Color.menu.border
-                border.width: Math.max(1, Style.normalBorderWidth)
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Style.spacing.md
-                    spacing: Style.spacing.xs
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: String(displayModeChoice.modelData.label)
-                        textFormat: Text.PlainText
-                        color: Color.menu.text
-                        opacity: displayModeChoice.selected ? 1 : 0.6
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.body
-                        font.bold: displayModeChoice.selected
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: String(displayModeChoice.modelData.description)
-                        textFormat: Text.PlainText
-                        color: Color.menu.text
-                        opacity: 0.45
-                        font.family: Style.font.menuFamily
-                        font.pixelSize: Style.font.caption
-                        wrapMode: Text.Wrap
-                    }
-                }
-
-                Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: Math.max(2, Style.focusBorderWidth)
-                    visible: displayModeChoice.selected
-                    color: Color.accent
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        displayModeChoices.forceActiveFocus();
-                        displayModeChoices.chosen(String(displayModeChoice.modelData.value));
-                    }
-                }
-            }
-        }
-    }
-
-    component SettingsCategoryButton: Item {
-        id: categoryButton
-        property int categoryIndex: 0
-        property string label: ""
-        property bool selected: false
-        property bool horizontal: false
-        property bool hovered: false
-        signal chosen(int nextIndex)
-        implicitWidth: Style.space(horizontal ? 140 : 200)
-        implicitHeight: Style.space(horizontal ? 52 : 48)
-        activeFocusOnTab: selected
-
-        signal entered()
-
-        function choose(nextIndex) {
-            categoryButton.chosen(Math.max(0, Math.min(3, nextIndex)));
-        }
-
-        // The sidebar is a list: arrows along its axis pick a section, the
-        // arrow pointing at the content (or Enter/Space) moves focus into it.
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsTab(event))
-                return;
-            var previousKey = categoryButton.horizontal ? Qt.Key_Left : Qt.Key_Up;
-            var nextKey = categoryButton.horizontal ? Qt.Key_Right : Qt.Key_Down;
-            var enterKey = categoryButton.horizontal ? Qt.Key_Down : Qt.Key_Right;
-            if (event.key === previousKey)
-                categoryButton.choose(categoryButton.categoryIndex - 1);
-            else if (event.key === nextKey)
-                categoryButton.choose(categoryButton.categoryIndex + 1);
-            else if (event.key === Qt.Key_Home)
-                categoryButton.choose(0);
-            else if (event.key === Qt.Key_End)
-                categoryButton.choose(3);
-            else if (event.key === enterKey
-                    || event.key === Qt.Key_Space
-                    || event.key === Qt.Key_Return
-                    || event.key === Qt.Key_Enter)
-                categoryButton.entered();
-            else {
-                event.accepted = false;
-                return;
-            }
-            event.accepted = true;
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            color: Color.accent
-            opacity: categoryButton.selected ? 0.07 : (categoryButton.hovered ? 0.035 : 0)
-        }
-
-        Rectangle {
-            anchors.left: parent.left
-            anchors.bottom: parent.bottom
-            width: categoryButton.horizontal ? parent.width : Math.max(2, Style.focusBorderWidth)
-            height: categoryButton.horizontal ? Math.max(2, Style.focusBorderWidth) : parent.height
-            visible: categoryButton.selected
-            color: Color.accent
-        }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Style.space(categoryButton.horizontal ? 8 : 18)
-            anchors.rightMargin: Style.space(categoryButton.horizontal ? 8 : 18)
-            spacing: Style.spacing.md
-
-            Text {
-                Layout.preferredWidth: Style.space(18)
-                text: String(categoryButton.categoryIndex + 1)
-                textFormat: Text.PlainText
-                horizontalAlignment: Text.AlignHCenter
-                color: categoryButton.selected ? Color.accent : Color.menu.text
-                opacity: categoryButton.selected || categoryButton.hovered ? 1 : 0.45
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.caption
-                font.bold: categoryButton.selected
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: categoryButton.label
-                textFormat: Text.PlainText
-                horizontalAlignment: Text.AlignLeft
-                color: Color.menu.text
-                opacity: categoryButton.selected || categoryButton.hovered ? 1 : 0.55
-                font.family: Style.font.menuFamily
-                font.pixelSize: Style.font.bodySmall
-                font.bold: categoryButton.selected
-                elide: Text.ElideRight
-            }
-
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: Style.space(2)
-            color: "transparent"
-            border.color: categoryButton.activeFocus ? Color.accent : "transparent"
-            border.width: categoryButton.activeFocus ? Math.max(2, Style.focusBorderWidth) : 0
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: categoryButton.hovered = true
-            onExited: categoryButton.hovered = false
-            onPressed: categoryButton.forceActiveFocus()
-            onClicked: categoryButton.choose(categoryButton.categoryIndex)
-        }
-    }
-
-    component SettingsDivider: Rectangle {
-        implicitHeight: Math.max(1, Style.normalBorderWidth)
-        color: Color.menu.border
-    }
-
-    component SettingToggle: Item {
-        id: settingToggle
-        property bool checked: false
-        signal toggled(bool checked)
-        implicitWidth: Style.space(72)
-        implicitHeight: Style.space(28)
-        activeFocusOnTab: true
-
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsNavigation(event))
-                return;
-            if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
-                event.accepted = false;
-                return;
-            }
-            settingToggle.toggled(!settingToggle.checked);
-            event.accepted = true;
-        }
-
-        Text {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: settingToggle.checked ? "On" : "Off"
-            textFormat: Text.PlainText
-            color: Color.menu.text
-            opacity: settingToggle.checked ? 1 : 0.45
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.caption
-        }
-
-        Rectangle {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(30)
-            height: Style.space(14)
-            color: "transparent"
-            border.color: settingToggle.checked ? Color.accent : Color.menu.border
-            border.width: Math.max(1, Style.normalBorderWidth)
-
-            Rectangle {
-                width: Style.space(10)
-                height: width
-                anchors.verticalCenter: parent.verticalCenter
-                x: settingToggle.checked ? parent.width - width - Style.space(2) : Style.space(2)
-                color: settingToggle.checked ? Color.accent : Color.menu.text
-                opacity: settingToggle.checked ? 1 : 0.45
-                Behavior on x { NumberAnimation { duration: 100 } }
-            }
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: -Style.space(4)
-            visible: settingToggle.activeFocus
-            color: "transparent"
-            border.color: Color.accent
-            border.width: Math.max(2, Style.focusBorderWidth)
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onPressed: settingToggle.forceActiveFocus()
-            onClicked: settingToggle.toggled(!settingToggle.checked)
-        }
-    }
-
-    component DialogButton: Rectangle {
-        id: dialogButton
-        property string label: ""
-        property bool destructive: false
-        property bool hovered: false
-        signal clicked()
-        implicitWidth: buttonLabel.implicitWidth + Style.space(28)
-        implicitHeight: Style.space(36)
-        activeFocusOnTab: true
-        color: "transparent"
-        border.color: enabled && (activeFocus || hovered || destructive) ? Color.accent : Color.menu.border
-        border.width: activeFocus ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)
-        opacity: enabled ? 1 : 0.38
-
-        Keys.onPressed: function (event) {
-            if (root.handleSettingsNavigation(event))
-                return;
-            if (!enabled || (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter)) {
-                event.accepted = false;
-                return;
-            }
-            dialogButton.clicked();
-            event.accepted = true;
-        }
-
-        Text {
-            id: buttonLabel
-            anchors.centerIn: parent
-            text: dialogButton.label
-            textFormat: Text.PlainText
-            color: Color.menu.text
-            font.family: Style.font.menuFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: dialogButton.destructive
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            enabled: dialogButton.enabled
-            hoverEnabled: true
-            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-            onEntered: dialogButton.hovered = true
-            onExited: dialogButton.hovered = false
-            onPressed: dialogButton.forceActiveFocus()
-            onClicked: dialogButton.clicked()
         }
     }
 
@@ -2714,447 +1922,14 @@ Item {
                             Repeater {
                                 model: overviewWindow.cardToplevels
 
-                                delegate: Rectangle {
-                                        id: card
-                                        required property var modelData
-                                        // Position in the filtered list; -1 hides the card.
-                                        readonly property int slot: overviewWindow.screenToplevels.indexOf(modelData)
-                                        readonly property bool inLayout: slot >= 0
-                                        property bool hovered: false
-                                        readonly property bool selected: overviewWindow.acceptsKeyboard && inLayout && slot === root.selectedIndex
-                                        readonly property bool focusedWindow: modelData === ToplevelManager.activeToplevel
-                                        readonly property bool previewed: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewIndex
-                                        readonly property bool exitingPreview: overviewWindow.acceptsKeyboard && inLayout && slot === root.previewExitIndex
-                                        readonly property bool floatingFooter: root.windowFooterStyle === "floating"
-                                        readonly property bool integratedFooter: root.windowFooterStyle === "integrated"
-                                        readonly property bool overlayFooter: root.windowFooterStyle === "overlay"
-                                        readonly property bool centeredFooter: root.windowFooterStyle === "centered"
-                                        readonly property string windowTitle: String(modelData.title || modelData.appId || "Untitled window")
-                                        readonly property string applicationName: String(modelData.appId || "Application")
-                                        readonly property string workspaceName: root.workspaceName(modelData)
-                                        readonly property string iconSource: root.iconFor(modelData.appId)
-                                        readonly property color outlineColor: focusedWindow ? Color.accent : (selected ? Color.menu.selectedText : Color.menu.border)
-                                        readonly property real outlineWidth: hovered
-                                            ? Math.max(4, Style.hoverBorderWidth * 2)
-                                            : (focusedWindow
-                                                ? Math.max(2, Style.selectedBorderWidth)
-                                                : (selected ? Math.max(2, Style.focusBorderWidth) : Math.max(1, Style.normalBorderWidth)))
-                                        // An excluded card keeps its last rectangle, so it neither
-                                        // animates toward the origin nor flies back in from it.
-                                        readonly property var packedRectSource: inLayout ? overviewArea.windowLayout[slot] : null
-                                        property var packedRect: Qt.rect(0, 0, 1, 1)
-                                        onPackedRectSourceChanged: {
-                                            if (packedRectSource)
-                                                packedRect = packedRectSource;
-                                        }
-                                        Component.onCompleted: {
-                                            if (packedRectSource)
-                                                packedRect = packedRectSource;
-                                        }
-                                        readonly property var previewRect: root.previewRectFor(modelData, packedRect, overviewArea.width, overviewArea.height, Style.spacing.sm, root.windowFooterHeight)
-                                        readonly property var layoutRect: previewed ? previewRect : packedRect
-                                        visible: inLayout
-                                        x: layoutRect.x
-                                        y: layoutRect.y
-                                        width: layoutRect.width
-                                        height: layoutRect.height
-                                        z: previewed ? 11 : (exitingPreview ? 10 : 0)
-                                        radius: integratedFooter ? Style.cornerRadius : 0
-                                        color: integratedFooter ? Color.menu.background : "transparent"
-                                        border.color: integratedFooter ? outlineColor : "transparent"
-                                        border.width: integratedFooter ? outlineWidth : 0
-                                        opacity: root.previewIndex < 0 || previewed ? 1 : 0.28
-                                        Behavior on x {
-                                            enabled: root.motionSettled
-                                            NumberAnimation {
-                                                duration: root.previewAnimationDuration
-                                                easing.type: root.previewAnimationEasing
-                                            }
-                                        }
-                                        Behavior on y {
-                                            enabled: root.motionSettled
-                                            NumberAnimation {
-                                                duration: root.previewAnimationDuration
-                                                easing.type: root.previewAnimationEasing
-                                            }
-                                        }
-                                        Behavior on width {
-                                            enabled: root.motionSettled
-                                            NumberAnimation {
-                                                duration: root.previewAnimationDuration
-                                                easing.type: root.previewAnimationEasing
-                                            }
-                                        }
-                                        Behavior on height {
-                                            enabled: root.motionSettled
-                                            NumberAnimation {
-                                                duration: root.previewAnimationDuration
-                                                easing.type: root.previewAnimationEasing
-                                            }
-                                        }
-                                        Behavior on opacity {
-                                            enabled: root.motionSettled
-                                            NumberAnimation {
-                                                duration: root.previewFadeDuration
-                                            }
-                                        }
-
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            enabled: !root.settingsOpen && (root.previewIndex < 0 || card.previewed)
-                                            hoverEnabled: true
-                                            onEnabledChanged: {
-                                                if (!enabled) {
-                                                    card.hovered = false;
-                                                    if (root.hoveredIndex === card.slot)
-                                                        root.hoveredIndex = -1;
-                                                }
-                                            }
-                                            onEntered: {
-                                                card.hovered = true;
-                                                if (overviewWindow.acceptsKeyboard) {
-                                                    root.hoveredIndex = card.slot;
-                                                    root.selectedIndex = card.slot;
-                                                }
-                                            }
-                                            onExited: {
-                                                card.hovered = false;
-                                                if (overviewWindow.acceptsKeyboard && root.hoveredIndex === card.slot)
-                                                    root.hoveredIndex = -1;
-                                            }
-                                            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                            onClicked: function (mouse) {
-                                                if (mouse.button === Qt.MiddleButton)
-                                                    root.requestClose(card.modelData);
-                                                else
-                                                    root.activate(card.modelData);
-                                            }
-                                        }
-
-                                        ColumnLayout {
-                                            anchors.fill: parent
-                                            anchors.margins: Style.spacing.sm
-                                            spacing: card.overlayFooter ? 0 : Style.spacing.sm
-
-                                            Item {
-                                                Layout.fillWidth: true
-                                                Layout.fillHeight: true
-
-                                                Rectangle {
-                                                    id: previewFrame
-                                                    anchors.centerIn: parent
-                                                    readonly property real windowAspectRatio: root.aspectRatioFor(card.modelData)
-                                                    width: Math.min(parent.width, parent.height * windowAspectRatio)
-                                                    height: Math.min(parent.height, parent.width / windowAspectRatio)
-                                                    radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-                                                    color: Color.background
-                                                    clip: true
-                                                    layer.enabled: true
-                                                    layer.effect: MultiEffect {
-                                                        maskEnabled: true
-                                                        maskSource: previewMask
-                                                        maskThresholdMin: 0.5
-                                                        maskSpreadAtMin: 1.0
-                                                    }
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: "Live preview unavailable"
-                                                        textFormat: Text.PlainText
-                                                        color: Color.menu.text
-                                                        opacity: 0.45
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.body
-                                                    }
-
-                                                    Item {
-                                                        anchors.centerIn: parent
-                                                        width: parent.width * 2
-                                                        height: parent.height * 2
-                                                        scale: 0.5
-                                                        layer.enabled: true
-                                                        layer.smooth: true
-
-                                                        ScreencopyView {
-                                                            anchors.fill: parent
-                                                            captureSource: card.modelData
-                                                            live: root.opened && card.inLayout
-                                                            paintCursor: false
-                                                        }
-                                                    }
-
-                                                    Loader {
-                                                        anchors.fill: parent
-                                                        z: 2
-                                                        active: card.overlayFooter
-                                                        sourceComponent: overlayFooter
-                                                    }
-                                                }
-
-                                                Rectangle {
-                                                    anchors.fill: previewFrame
-                                                    visible: !card.integratedFooter
-                                                    z: 5
-                                                    radius: previewFrame.radius
-                                                    color: "transparent"
-                                                    border.color: card.outlineColor
-                                                    border.width: card.outlineWidth
-                                                }
-
-                                                Rectangle {
-                                                    id: previewMask
-                                                    anchors.fill: previewFrame
-                                                    radius: previewFrame.radius
-                                                    color: "black"
-                                                    visible: false
-                                                    layer.enabled: true
-                                                    layer.smooth: true
-                                                }
-                                            }
-
-                                            Item {
-                                                Layout.fillWidth: true
-                                                Layout.preferredHeight: Style.space(40)
-                                                visible: !card.overlayFooter
-
-                                                Loader {
-                                                    anchors.fill: parent
-                                                    sourceComponent: card.floatingFooter
-                                                        ? floatingFooter
-                                                        : (card.integratedFooter
-                                                            ? integratedFooter
-                                                            : (card.centeredFooter ? centeredFooter : null))
-                                                }
-                                            }
-                                        }
-
-                                        // Only the configured footer style is instantiated per card.
-                                        Component {
-                                            id: overlayFooter
-
-                                            Item {
-                                                Rectangle {
-                                                    anchors.left: parent.left
-                                                    anchors.right: parent.right
-                                                    anchors.bottom: parent.bottom
-                                                    height: Math.min(parent.height * 0.45, Style.space(84))
-                                                    gradient: Gradient {
-                                                        orientation: Gradient.Vertical
-                                                        GradientStop { position: 0; color: "transparent" }
-                                                        GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.94) }
-                                                    }
-                                                }
-
-                                                RowLayout {
-                                                    anchors.left: parent.left
-                                                    anchors.right: parent.right
-                                                    anchors.bottom: parent.bottom
-                                                    anchors.margins: Style.spacing.md
-                                                    spacing: Style.spacing.md
-
-                                                    Image {
-                                                        Layout.preferredWidth: Style.space(28)
-                                                        Layout.preferredHeight: Style.space(28)
-                                                        source: card.iconSource
-                                                        fillMode: Image.PreserveAspectFit
-                                                        asynchronous: true
-                                                    }
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: 0
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: card.windowTitle
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                            font.bold: card.selected
-                                                            elide: Text.ElideRight
-                                                        }
-                                                        Text {
-                                                            Layout.fillWidth: true
-                                                            text: card.applicationName
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            opacity: 0.68
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.caption
-                                                            elide: Text.ElideRight
-                                                        }
-                                                    }
-
-                                                    ColumnLayout {
-                                                        spacing: 0
-                                                        Text {
-                                                            Layout.alignment: Qt.AlignRight
-                                                            text: card.workspaceName
-                                                            textFormat: Text.PlainText
-                                                            color: card.focusedWindow ? Color.accent : Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.heading
-                                                            font.bold: true
-                                                        }
-                                                        Text {
-                                                            Layout.alignment: Qt.AlignRight
-                                                            text: "Workspace"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            opacity: 0.55
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.caption
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Component {
-                                            id: floatingFooter
-
-                                            RowLayout {
-                                                spacing: Style.spacing.md
-
-                                                Image {
-                                                    Layout.preferredWidth: Style.space(30)
-                                                    Layout.preferredHeight: Style.space(30)
-                                                    source: card.iconSource
-                                                    fillMode: Image.PreserveAspectFit
-                                                    asynchronous: true
-                                                }
-
-                                                ColumnLayout {
-                                                    Layout.fillWidth: true
-                                                    spacing: 0
-                                                    Text {
-                                                        Layout.fillWidth: true
-                                                        text: card.windowTitle
-                                                        textFormat: Text.PlainText
-                                                        color: Color.menu.text
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.body
-                                                        font.bold: card.selected
-                                                        elide: Text.ElideRight
-                                                    }
-                                                    Text {
-                                                        Layout.fillWidth: true
-                                                        text: card.applicationName
-                                                        textFormat: Text.PlainText
-                                                        color: Color.menu.text
-                                                        opacity: 0.62
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.caption
-                                                        elide: Text.ElideRight
-                                                    }
-                                                }
-
-                                                ColumnLayout {
-                                                    spacing: 0
-                                                    Text {
-                                                        Layout.alignment: Qt.AlignRight
-                                                        text: card.workspaceName
-                                                        textFormat: Text.PlainText
-                                                        color: card.focusedWindow ? Color.accent : Color.menu.text
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.heading
-                                                        font.bold: true
-                                                    }
-                                                    Text {
-                                                        Layout.alignment: Qt.AlignRight
-                                                        text: "Workspace"
-                                                        textFormat: Text.PlainText
-                                                        color: Color.menu.text
-                                                        opacity: 0.55
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.caption
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Component {
-                                            id: integratedFooter
-
-                                            RowLayout {
-                                                spacing: Style.spacing.md
-
-                                                Image {
-                                                    Layout.preferredWidth: Style.space(24)
-                                                    Layout.preferredHeight: Style.space(24)
-                                                    source: card.iconSource
-                                                    fillMode: Image.PreserveAspectFit
-                                                    asynchronous: true
-                                                }
-
-                                                Text {
-                                                    Layout.fillWidth: true
-                                                    text: card.windowTitle
-                                                    textFormat: Text.PlainText
-                                                    color: Color.menu.text
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.body
-                                                    font.bold: card.selected
-                                                    elide: Text.ElideRight
-                                                }
-
-                                                Text {
-                                                    text: "WS " + card.workspaceName
-                                                    textFormat: Text.PlainText
-                                                    color: card.focusedWindow ? Color.accent : Color.menu.text
-                                                    opacity: card.focusedWindow ? 1 : 0.68
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.caption
-                                                    font.bold: true
-                                                }
-                                            }
-                                        }
-
-                                        Component {
-                                            id: centeredFooter
-
-                                            ColumnLayout {
-                                                spacing: 0
-
-                                                RowLayout {
-                                                    Layout.alignment: Qt.AlignHCenter
-                                                    spacing: Style.spacing.md
-
-                                                    Image {
-                                                        Layout.preferredWidth: Style.space(24)
-                                                        Layout.preferredHeight: Style.space(24)
-                                                        source: card.iconSource
-                                                        fillMode: Image.PreserveAspectFit
-                                                        asynchronous: true
-                                                    }
-
-                                                    Text {
-                                                        Layout.maximumWidth: Math.max(1, card.width - Style.space(80))
-                                                        text: card.windowTitle
-                                                        textFormat: Text.PlainText
-                                                        color: Color.menu.text
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.body
-                                                        font.bold: card.selected
-                                                        elide: Text.ElideRight
-                                                    }
-                                                }
-
-                                                Text {
-                                                    Layout.alignment: Qt.AlignHCenter
-                                                    Layout.maximumWidth: Math.max(1, card.width - Style.space(32))
-                                                    text: card.applicationName + "  ·  Workspace " + card.workspaceName
-                                                    textFormat: Text.PlainText
-                                                    color: card.focusedWindow ? Color.accent : Color.menu.text
-                                                    opacity: card.focusedWindow ? 1 : 0.62
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.caption
-                                                    elide: Text.ElideRight
-                                                }
-                                            }
-                                        }
-
-                                    }
+                                delegate: WindowCard {
+                                    controller: root
+                                    screenToplevels: overviewWindow.screenToplevels
+                                    acceptsKeyboard: overviewWindow.acceptsKeyboard
+                                    windowLayout: overviewArea.windowLayout
+                                    layoutAreaWidth: overviewArea.width
+                                    layoutAreaHeight: overviewArea.height
+                                }
                                 }
                         }
 
@@ -3222,1089 +1997,9 @@ Item {
                     }
 
                     sourceComponent: Component {
-                        Item {
-                            id: settingsLayer
-                            anchors.fill: parent
-
-                            function availableFocusItems(candidates) {
-                                var items = [];
-                                for (var index = 0; index < candidates.length; index++) {
-                                    var candidate = candidates[index];
-                                    if (candidate && candidate.visible && candidate.enabled)
-                                        items.push(candidate);
-                                }
-                                return items;
-                            }
-
-                            function settingsFocusItems() {
-                                var categoryButton = settingsCategoryRepeater.itemAt(root.settingsCategoryIndex);
-                                if (root.settingsCategoryIndex === 0)
-                                    return settingsLayer.availableFocusItems([
-                                        categoryButton,
-                                        backgroundBlurSlider,
-                                        backgroundDimSlider,
-                                        bottomTextToggle
-                                    ]);
-                                if (root.settingsCategoryIndex === 1)
-                                    return settingsLayer.availableFocusItems([
-                                        categoryButton,
-                                        hotCornerToggle,
-                                        hotCornerPositionChoices
-                                    ]);
-                                if (root.settingsCategoryIndex === 2)
-                                    return settingsLayer.availableFocusItems([
-                                        categoryButton,
-                                        previewPlacementChoices,
-                                        windowFooterChoices,
-                                        movePointerToggle,
-                                        displayModeChoicesControl
-                                    ]);
-                                return settingsLayer.availableFocusItems([
-                                    categoryButton,
-                                    motionAnimateButton,
-                                    animationStyleChoices,
-                                    slideDirectionChoices,
-                                    slideDirectionInChoices,
-                                    slideDirectionOutChoices,
-                                    animationSpeedSlider,
-                                    animationInSlider,
-                                    animationOutSlider,
-                                    animationSameSpeedToggle
-                                ]);
-                            }
-
-                            function footerConfirmationFocusItems() {
-                                return settingsLayer.availableFocusItems([
-                                    footerHideAcknowledgement,
-                                    footerHideCancelButton,
-                                    footerHideConfirmButton
-                                ]);
-                            }
-
-                            function moveFocus(items, forward, forwardFallbackIndex, wrap) {
-                                if (!items.length)
-                                    return;
-                                var focusedIndex = -1;
-                                for (var index = 0; index < items.length; index++) {
-                                    if (items[index].activeFocus) {
-                                        focusedIndex = index;
-                                        break;
-                                    }
-                                }
-                                var nextIndex;
-                                if (focusedIndex < 0)
-                                    nextIndex = forward ? Math.min(forwardFallbackIndex, items.length - 1) : items.length - 1;
-                                else if (wrap)
-                                    nextIndex = (focusedIndex + (forward ? 1 : items.length - 1)) % items.length;
-                                else
-                                    nextIndex = focusedIndex + (forward ? 1 : -1);
-                                if (nextIndex < 0 || nextIndex >= items.length)
-                                    return;
-                                root.focusSettingsItem(items[nextIndex]);
-                            }
-
-                            function focusSettingsCategory() {
-                                var categoryButton = settingsCategoryRepeater.itemAt(root.settingsCategoryIndex);
-                                if (categoryButton)
-                                    categoryButton.forceActiveFocus();
-                            }
-
-                            function moveSettingsFocus(forward, wrap) {
-                                settingsLayer.moveFocus(settingsLayer.settingsFocusItems(), forward, 1, wrap);
-                            }
-
-                            function focusFirstSettingsControl() {
-                                var items = settingsLayer.settingsFocusItems();
-                                if (items.length > 1)
-                                    root.focusSettingsItem(items[1]);
-                            }
-
-                            function moveFooterConfirmationFocus(forward, wrap) {
-                                settingsLayer.moveFocus(settingsLayer.footerConfirmationFocusItems(), forward, 0, wrap);
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: root.closeSettings()
-                            }
-
-                            Rectangle {
-                                id: settingsDialog
-                                readonly property bool narrow: width < Style.space(760)
-                                anchors.centerIn: parent
-                                width: Math.min(Style.space(920), parent.width - Style.space(80))
-                                height: Math.min(Style.space(narrow ? 720 : 640), parent.height - Style.space(80))
-                                radius: Style.cornerRadius
-                                color: Color.menu.background
-                                border.color: Color.menu.border
-                                border.width: Math.max(1, Style.normalBorderWidth)
-                                enabled: !root.footerHideConfirmationOpen
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: function (mouse) { mouse.accepted = true; }
-                                }
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    spacing: 0
-
-                                    Item {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: Style.space(66)
-
-                                        RowLayout {
-                                            anchors.fill: parent
-                                            anchors.leftMargin: Style.space(24)
-                                            anchors.rightMargin: Style.space(24)
-                                            spacing: Style.spacing.lg
-
-                                            Text {
-                                                text: "Exposé settings"
-                                                textFormat: Text.PlainText
-                                                color: Color.menu.text
-                                                font.family: Style.font.menuFamily
-                                                font.pixelSize: Style.font.heading
-                                                font.bold: true
-                                            }
-
-                                            Item { Layout.fillWidth: true }
-
-                                            Text {
-                                                text: "1-4 section   ↑↓ move   ←→ adjust   Esc close"
-                                                textFormat: Text.PlainText
-                                                color: Color.menu.text
-                                                opacity: 0.5
-                                                font.family: Style.font.menuFamily
-                                                font.pixelSize: Style.font.caption
-                                            }
-                                        }
-                                    }
-
-                                    SettingsDivider { Layout.fillWidth: true }
-
-                                    GridLayout {
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        columns: settingsDialog.narrow ? 1 : 2
-                                        columnSpacing: 0
-                                        rowSpacing: 0
-
-                                        Item {
-                                            Layout.fillWidth: settingsDialog.narrow
-                                            Layout.fillHeight: !settingsDialog.narrow
-                                            Layout.preferredWidth: settingsDialog.narrow ? 0 : Style.space(218)
-                                            Layout.preferredHeight: settingsDialog.narrow ? Style.space(54) : 0
-
-                                            GridLayout {
-                                                anchors.top: parent.top
-                                                anchors.left: parent.left
-                                                anchors.right: parent.right
-                                                columns: settingsDialog.narrow ? 4 : 1
-                                                columnSpacing: 0
-                                                rowSpacing: 0
-
-                                                Repeater {
-                                                    id: settingsCategoryRepeater
-                                                    model: [
-                                                        "Appearance",
-                                                        "Hot corner",
-                                                        "Windows",
-                                                        "Motion"
-                                                    ]
-
-                                                    delegate: SettingsCategoryButton {
-                                                        required property int index
-                                                        required property var modelData
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(settingsDialog.narrow ? 52 : 48)
-                                                        categoryIndex: index
-                                                        label: String(modelData)
-                                                        selected: root.settingsCategoryIndex === index
-                                                        horizontal: settingsDialog.narrow
-                                                        onChosen: function (nextIndex) {
-                                                            root.settingsCategoryIndex = nextIndex;
-                                                            var nextButton = settingsCategoryRepeater.itemAt(nextIndex);
-                                                            if (nextButton)
-                                                                nextButton.forceActiveFocus();
-                                                        }
-                                                        onEntered: overviewWindow.focusFirstSettingsControl()
-                                                    }
-                                                }
-                                            }
-
-                                            Rectangle {
-                                                anchors.right: parent.right
-                                                anchors.bottom: parent.bottom
-                                                width: settingsDialog.narrow ? parent.width : Math.max(1, Style.normalBorderWidth)
-                                                height: settingsDialog.narrow ? Math.max(1, Style.normalBorderWidth) : parent.height
-                                                color: Color.menu.border
-                                            }
-                                        }
-
-                                        Item {
-                                            id: settingsCategoryContent
-                                            Layout.fillWidth: true
-                                            Layout.fillHeight: true
-                                            clip: true
-
-                                            Item {
-                                                anchors.fill: parent
-                                                anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
-                                                visible: root.settingsCategoryIndex === 0
-                                                enabled: visible
-
-                                                ColumnLayout {
-                                                    anchors.fill: parent
-                                                    spacing: Style.spacing.md
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: Style.spacing.xs
-
-                                                        Text {
-                                                            text: "Appearance"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.accent
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.caption
-                                                            font.bold: true
-                                                            font.capitalization: Font.AllUppercase
-                                                        }
-
-                                                        Text {
-                                                            text: "Backdrop and footer"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.heading
-                                                            font.bold: true
-                                                        }
-                                                    }
-
-                                                    Item { Layout.preferredHeight: Style.spacing.sm }
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Blur"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        SettingSlider {
-                                                            id: backgroundBlurSlider
-                                                            Layout.fillWidth: true
-                                                            from: 0
-                                                            to: 20
-                                                            value: root.effectiveBackgroundBlur
-                                                            suffix: " px"
-                                                            onEdited: function (value) { root.backgroundBlurPreview = value; }
-                                                            onCommitted: function (value) {
-                                                                root.backgroundBlurPreview = Math.round(value);
-                                                                root.setBackgroundBlur(value);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Dim"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        SettingSlider {
-                                                            id: backgroundDimSlider
-                                                            Layout.fillWidth: true
-                                                            from: 0
-                                                            to: 90
-                                                            value: root.effectiveBackgroundDim
-                                                            suffix: "%"
-                                                            onEdited: function (value) { root.backgroundDimPreview = value; }
-                                                            onCommitted: function (value) {
-                                                                root.backgroundDimPreview = Math.round(value);
-                                                                root.setBackgroundDim(value);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            text: "Bottom text"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingToggle {
-                                                            id: bottomTextToggle
-                                                            checked: root.showFooter
-                                                            onToggled: function (checked) {
-                                                                if (checked)
-                                                                    root.updatePluginSetting("showFooter", true);
-                                                                else
-                                                                    root.requestFooterHide();
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-                                                    Item { Layout.fillHeight: true }
-                                                }
-                                            }
-
-                                            Item {
-                                                anchors.fill: parent
-                                                anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
-                                                visible: root.settingsCategoryIndex === 1
-                                                enabled: visible
-
-                                                ColumnLayout {
-                                                    anchors.fill: parent
-                                                    spacing: Style.spacing.md
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: Style.spacing.xs
-
-                                                        Text {
-                                                            text: "Hot corner"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.accent
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.caption
-                                                            font.bold: true
-                                                            font.capitalization: Font.AllUppercase
-                                                        }
-
-                                                        Text {
-                                                            text: "Overview activation"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.heading
-                                                            font.bold: true
-                                                        }
-                                                    }
-
-                                                    Item { Layout.preferredHeight: Style.spacing.sm }
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            text: "Enabled"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingToggle {
-                                                            id: hotCornerToggle
-                                                            checked: root.hotCornerEnabled
-                                                            onToggled: function (checked) { root.setHotCornerEnabled(checked); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Position"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: hotCornerPositionChoices
-                                                            value: root.hotCornerPosition
-                                                            options: [
-                                                                { label: "TL", value: "top-left" },
-                                                                { label: "TR", value: "top-right" },
-                                                                { label: "BL", value: "bottom-left" },
-                                                                { label: "BR", value: "bottom-right" }
-                                                            ]
-                                                            onChosen: function (value) { root.setHotCornerPosition(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-                                                    Item { Layout.fillHeight: true }
-                                                }
-                                            }
-
-                                            Item {
-                                                anchors.fill: parent
-                                                anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
-                                                visible: root.settingsCategoryIndex === 2
-                                                enabled: visible
-
-                                                ColumnLayout {
-                                                    anchors.fill: parent
-                                                    spacing: Style.spacing.md
-
-                                                    ColumnLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: Style.spacing.xs
-
-                                                        Text {
-                                                            text: "Windows"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.accent
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.caption
-                                                            font.bold: true
-                                                            font.capitalization: Font.AllUppercase
-                                                        }
-
-                                                        Text {
-                                                            text: "Window behavior"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.heading
-                                                            font.bold: true
-                                                        }
-                                                    }
-
-                                                    Item { Layout.preferredHeight: Style.spacing.sm }
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Preview"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: previewPlacementChoices
-                                                            value: root.previewPlacement
-                                                            options: [
-                                                                { label: "In place", value: "in-place" },
-                                                                { label: "Centered", value: "centered" }
-                                                            ]
-                                                            onChosen: function (value) { root.setPreviewPlacement(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Labels"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: windowFooterChoices
-                                                            value: root.windowFooterStyle
-                                                            spacing: Style.spacing.md
-                                                            options: [
-                                                                { label: "Floating", value: "floating" },
-                                                                { label: "Rail", value: "integrated" },
-                                                                { label: "Overlay", value: "overlay" },
-                                                                { label: "Centered", value: "centered" }
-                                                            ]
-                                                            onChosen: function (value) { root.setWindowFooterStyle(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            text: "Move pointer"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingToggle {
-                                                            id: movePointerToggle
-                                                            checked: root.moveCursorToWindow
-                                                            onToggled: function (checked) { root.setMoveCursorToWindow(checked); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(76)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Displays"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        DisplayModeChoices {
-                                                            id: displayModeChoicesControl
-                                                            Layout.fillWidth: true
-                                                            value: root.multiMonitorMode
-                                                            onChosen: function (value) { root.setMultiMonitorMode(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-                                                    Item { Layout.fillHeight: true }
-                                                }
-                                            }
-
-                                            Item {
-                                                anchors.fill: parent
-                                                anchors.margins: Style.space(settingsDialog.narrow ? 20 : 28)
-                                                visible: root.settingsCategoryIndex === 3
-                                                enabled: visible
-
-                                                ColumnLayout {
-                                                    anchors.fill: parent
-                                                    spacing: Style.spacing.md
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        spacing: Style.spacing.lg
-
-                                                        ColumnLayout {
-                                                            Layout.fillWidth: true
-                                                            spacing: Style.spacing.xs
-
-                                                            Text {
-                                                                text: "Motion"
-                                                                textFormat: Text.PlainText
-                                                                color: Color.accent
-                                                                font.family: Style.font.menuFamily
-                                                                font.pixelSize: Style.font.caption
-                                                                font.bold: true
-                                                                font.capitalization: Font.AllUppercase
-                                                            }
-
-                                                            Text {
-                                                                text: "Overview transition"
-                                                                textFormat: Text.PlainText
-                                                                color: Color.menu.text
-                                                                font.family: Style.font.menuFamily
-                                                                font.pixelSize: Style.font.heading
-                                                                font.bold: true
-                                                            }
-                                                        }
-
-                                                        DialogButton {
-                                                            id: motionAnimateButton
-                                                            label: "Animate"
-                                                            onClicked: root.previewAnimation()
-                                                        }
-                                                    }
-
-                                                    Item { Layout.preferredHeight: Style.spacing.sm }
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Style"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: animationStyleChoices
-                                                            value: root.animationStyle
-                                                            options: [
-                                                                { label: "Original", value: "original" },
-                                                                { label: "Fade", value: "fade" },
-                                                                { label: "Zoom", value: "zoom" },
-                                                                { label: "Slide", value: "slide" }
-                                                            ]
-                                                            onChosen: function (value) {
-                                                                root.clearAnimationTimingPreview();
-                                                                root.setAnimationStyle(value);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: root.animationStyle === "slide" && !root.animationTimingFor("slide").separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Direction"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: slideDirectionChoices
-                                                            value: String(root.slideDirection["in"])
-                                                            options: [
-                                                                { label: "Left", value: "left" },
-                                                                { label: "Right", value: "right" },
-                                                                { label: "Up", value: "up" },
-                                                                { label: "Down", value: "down" }
-                                                            ]
-                                                            onChosen: function (value) { root.setSlideDirection(value); }
-                                                        }
-                                                    }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "In from"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: slideDirectionInChoices
-                                                            value: String(root.slideDirection["in"])
-                                                            options: [
-                                                                { label: "Left", value: "left" },
-                                                                { label: "Right", value: "right" },
-                                                                { label: "Up", value: "up" },
-                                                                { label: "Down", value: "down" }
-                                                            ]
-                                                            onChosen: function (value) { root.setSlideDirectionIn(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider {
-                                                        Layout.fillWidth: true
-                                                        visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
-                                                    }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: root.animationStyle === "slide" && root.animationTimingFor("slide").separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Out to"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingChoices {
-                                                            id: slideDirectionOutChoices
-                                                            value: String(root.slideDirection["out"])
-                                                            options: [
-                                                                { label: "Left", value: "left" },
-                                                                { label: "Right", value: "right" },
-                                                                { label: "Up", value: "up" },
-                                                                { label: "Down", value: "down" }
-                                                            ]
-                                                            onChosen: function (value) { root.setSlideDirectionOut(value); }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider {
-                                                        Layout.fillWidth: true
-                                                        visible: root.animationStyle === "slide"
-                                                    }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: !root.animationTimingFor(root.animationStyle).separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Speed"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        SettingSlider {
-                                                            id: animationSpeedSlider
-                                                            Layout.fillWidth: true
-                                                            from: 100
-                                                            to: 800
-                                                            stepSize: 10
-                                                            value: root.animationInDurationFor(root.animationStyle)
-                                                            suffix: " ms"
-                                                            onEdited: function (value) {
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationInDurationPreview = value;
-                                                                root.animationOutDurationPreview = value;
-                                                            }
-                                                            onCommitted: function (value) {
-                                                                var next = root.setAnimationDuration(root.animationStyle, value);
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationInDurationPreview = next;
-                                                                root.animationOutDurationPreview = next;
-                                                            }
-                                                        }
-                                                    }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: root.animationTimingFor(root.animationStyle).separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "In"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        SettingSlider {
-                                                            id: animationInSlider
-                                                            Layout.fillWidth: true
-                                                            from: 100
-                                                            to: 800
-                                                            stepSize: 10
-                                                            value: root.animationInDurationFor(root.animationStyle)
-                                                            suffix: " ms"
-                                                            onEdited: function (value) {
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationInDurationPreview = value;
-                                                            }
-                                                            onCommitted: function (value) {
-                                                                var next = root.setAnimationDurationIn(root.animationStyle, value);
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationInDurationPreview = next;
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider {
-                                                        Layout.fillWidth: true
-                                                        visible: root.animationTimingFor(root.animationStyle).separate
-                                                    }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        visible: root.animationTimingFor(root.animationStyle).separate
-                                                        Text {
-                                                            Layout.preferredWidth: Style.space(120)
-                                                            text: "Out"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        SettingSlider {
-                                                            id: animationOutSlider
-                                                            Layout.fillWidth: true
-                                                            from: 100
-                                                            to: 800
-                                                            stepSize: 10
-                                                            value: root.animationOutDurationFor(root.animationStyle)
-                                                            suffix: " ms"
-                                                            onEdited: function (value) {
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationOutDurationPreview = value;
-                                                            }
-                                                            onCommitted: function (value) {
-                                                                var next = root.setAnimationDurationOut(root.animationStyle, value);
-                                                                root.animationDurationPreviewStyle = root.animationStyle;
-                                                                root.animationOutDurationPreview = next;
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-
-                                                    RowLayout {
-                                                        Layout.fillWidth: true
-                                                        Layout.preferredHeight: Style.space(48)
-                                                        Text {
-                                                            text: "Same in and out"
-                                                            textFormat: Text.PlainText
-                                                            color: Color.menu.text
-                                                            font.family: Style.font.menuFamily
-                                                            font.pixelSize: Style.font.body
-                                                        }
-                                                        Item { Layout.fillWidth: true }
-                                                        SettingToggle {
-                                                            id: animationSameSpeedToggle
-                                                            checked: !root.animationTimingFor(root.animationStyle).separate
-                                                            onToggled: function (checked) {
-                                                                root.clearAnimationTimingPreview();
-                                                                root.setAnimationTimingSeparate(root.animationStyle, !checked);
-                                                            }
-                                                        }
-                                                    }
-
-                                                    SettingsDivider { Layout.fillWidth: true }
-                                                    Item { Layout.fillHeight: true }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    SettingsDivider { Layout.fillWidth: true }
-
-                                    Item {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: Style.space(44)
-
-                                        RowLayout {
-                                            anchors.fill: parent
-                                            anchors.leftMargin: Style.space(24)
-                                            anchors.rightMargin: Style.space(24)
-                                            spacing: Style.spacing.lg
-
-                                            Text {
-                                                text: "Changes save immediately"
-                                                textFormat: Text.PlainText
-                                                color: Color.menu.text
-                                                opacity: 0.45
-                                                font.family: Style.font.menuFamily
-                                                font.pixelSize: Style.font.caption
-                                            }
-
-                                            Item { Layout.fillWidth: true }
-
-                                            Text {
-                                                visible: !settingsDialog.narrow
-                                                text: "1–4 category   Tab controls"
-                                                textFormat: Text.PlainText
-                                                color: Color.menu.text
-                                                opacity: 0.45
-                                                font.family: Style.font.menuFamily
-                                                font.pixelSize: Style.font.caption
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Item {
-                                id: footerHideConfirmationLayer
-                                anchors.fill: parent
-                                visible: root.footerHideConfirmationOpen
-                                z: 10
-                                onVisibleChanged: {
-                                    if (visible && overviewWindow.acceptsKeyboard)
-                                        Qt.callLater(function () {
-                                            if (footerHideConfirmationLayer.visible)
-                                                footerHideAcknowledgement.forceActiveFocus();
-                                        });
-                                    else if (!visible && root.settingsOpen && overviewWindow.acceptsKeyboard)
-                                        Qt.callLater(function () {
-                                            if (settingsLayer.visible && !footerHideConfirmationLayer.visible)
-                                                bottomTextToggle.forceActiveFocus();
-                                        });
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: root.closeFooterHideConfirmation()
-                                }
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    color: "black"
-                                    opacity: 0.72
-                                }
-
-                                Rectangle {
-                                    id: footerHideDialog
-                                    anchors.centerIn: parent
-                                    width: Math.min(Style.space(560), parent.width - Style.space(80))
-                                    height: Math.min(parent.height - Style.space(80), footerHideContent.implicitHeight + Style.space(56))
-                                    radius: Style.cornerRadius
-                                    color: Color.menu.background
-                                    border.color: Color.menu.border
-                                    border.width: Math.max(1, Style.normalBorderWidth)
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: function (mouse) { mouse.accepted = true; }
-                                    }
-
-                                    ColumnLayout {
-                                        id: footerHideContent
-                                        anchors.fill: parent
-                                        anchors.margins: Style.space(28)
-                                        spacing: Style.spacing.lg
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: "Hide bottom text?"
-                                            textFormat: Text.PlainText
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.heading
-                                            font.bold: true
-                                        }
-
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: "This also hides the Settings link. You can turn it back on while this panel remains open."
-                                            textFormat: Text.PlainText
-                                            wrapMode: Text.WordWrap
-                                            color: Color.menu.text
-                                            font.family: Style.font.menuFamily
-                                            font.pixelSize: Style.font.body
-                                        }
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: recoveryText.implicitHeight + Style.space(24)
-                                            color: Color.background
-                                            border.color: Color.menu.border
-                                            border.width: Math.max(1, Style.normalBorderWidth)
-
-                                            Text {
-                                                id: recoveryText
-                                                anchors.fill: parent
-                                                anchors.margins: Style.space(12)
-                                                text: "After closing Settings, restore it in ~/.config/omarchy/shell.json by setting showFooter to true in the expose.window-overview plugin entry."
-                                                textFormat: Text.PlainText
-                                                wrapMode: Text.WordWrap
-                                                color: Color.menu.text
-                                                opacity: 0.72
-                                                font.family: Style.font.menuFamily
-                                                font.pixelSize: Style.font.caption
-                                            }
-                                        }
-
-                                        Item {
-                                            id: footerHideAcknowledgement
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: Math.max(Style.space(40), acknowledgementText.implicitHeight)
-                                            activeFocusOnTab: true
-
-                                            Keys.onPressed: function (event) {
-                                                if (root.handleSettingsNavigation(event))
-                                                    return;
-                                                if (event.key !== Qt.Key_Space && event.key !== Qt.Key_Return && event.key !== Qt.Key_Enter) {
-                                                    event.accepted = false;
-                                                    return;
-                                                }
-                                                root.footerHideAcknowledged = !root.footerHideAcknowledged;
-                                                event.accepted = true;
-                                            }
-
-                                            RowLayout {
-                                                id: acknowledgementRow
-                                                anchors.fill: parent
-                                                spacing: Style.spacing.md
-
-                                                Rectangle {
-                                                    Layout.preferredWidth: Style.space(18)
-                                                    Layout.preferredHeight: Style.space(18)
-                                                    color: root.footerHideAcknowledged ? Color.accent : "transparent"
-                                                    border.color: footerHideAcknowledgement.activeFocus || root.footerHideAcknowledged
-                                                        ? Color.accent
-                                                        : Color.menu.border
-                                                    border.width: footerHideAcknowledgement.activeFocus
-                                                        ? Math.max(2, Style.focusBorderWidth)
-                                                        : Math.max(1, Style.normalBorderWidth)
-
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        visible: root.footerHideAcknowledged
-                                                        text: "✓"
-                                                        textFormat: Text.PlainText
-                                                        color: Color.background
-                                                        font.family: Style.font.menuFamily
-                                                        font.pixelSize: Style.font.caption
-                                                        font.bold: true
-                                                    }
-                                                }
-
-                                                Text {
-                                                    id: acknowledgementText
-                                                    Layout.fillWidth: true
-                                                    text: "I understand that closing Settings while it is hidden requires editing the config."
-                                                    textFormat: Text.PlainText
-                                                    wrapMode: Text.WordWrap
-                                                    color: Color.menu.text
-                                                    font.family: Style.font.menuFamily
-                                                    font.pixelSize: Style.font.bodySmall
-                                                }
-                                            }
-
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onPressed: footerHideAcknowledgement.forceActiveFocus()
-                                                onClicked: root.footerHideAcknowledged = !root.footerHideAcknowledged
-                                            }
-                                        }
-
-                                        RowLayout {
-                                            Layout.fillWidth: true
-                                            Layout.topMargin: Style.spacing.sm
-                                            spacing: Style.spacing.md
-
-                                            Item { Layout.fillWidth: true }
-
-                                            DialogButton {
-                                                id: footerHideCancelButton
-                                                label: "Cancel"
-                                                onClicked: root.closeFooterHideConfirmation()
-                                            }
-
-                                            DialogButton {
-                                                id: footerHideConfirmButton
-                                                label: "Hide bottom text"
-                                                destructive: true
-                                                enabled: root.footerHideAcknowledged
-                                                onClicked: root.confirmFooterHide()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        SettingsView {
+                            controller: root
+                            hostWindow: overviewWindow
                         }
                     }
                 }
