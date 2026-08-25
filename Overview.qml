@@ -253,12 +253,12 @@ Item {
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
+        root.openingPending = true;
         root.refreshHyprlandState();
         root.resetSessionToplevels();
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
         root.hoveredIndex = -1;
         root.clearPreview();
-        root.openingPending = true;
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
         if (root.effectiveBackgroundBlur > 0)
@@ -789,6 +789,12 @@ Item {
     }
 
     function handleToplevelMetadataChanged(top) {
+        if (!root.surfaceMounted && !root.openingPending)
+            return;
+        var selectedTop = root.filteredToplevels[root.selectedIndex];
+        var previewTop = root.previewIndex >= 0 ? root.filteredToplevels[root.previewIndex] : null;
+        var previewExitTop = root.previewExitIndex >= 0 ? root.filteredToplevels[root.previewExitIndex] : null;
+        var membershipChanged = root.syncSessionToplevels();
         if (root.openingPending) {
             var sessionIndex = root.sessionToplevels.indexOf(top);
             if (sessionIndex >= 0) {
@@ -797,7 +803,27 @@ Item {
                 root.sessionAspectRatios = ratios;
             }
         }
-        root.handleDisplayStateChanged();
+        if (!membershipChanged)
+            root.modelRevision++;
+
+        var selectedIndex = root.filteredToplevels.indexOf(selectedTop);
+        if (selectedIndex < 0)
+            selectedIndex = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
+        root.selectedIndex = Math.max(0, selectedIndex);
+
+        if (previewTop) {
+            var previewIndex = root.filteredToplevels.indexOf(previewTop);
+            if (previewIndex < 0)
+                root.clearPreview();
+            else
+                root.previewIndex = previewIndex;
+        } else if (previewExitTop) {
+            var previewExitIndex = root.filteredToplevels.indexOf(previewExitTop);
+            if (previewExitIndex < 0)
+                root.clearPreview();
+            else
+                root.previewExitIndex = previewExitIndex;
+        }
     }
 
     function handleToplevelCollectionChanged() {
@@ -918,6 +944,8 @@ Item {
 
     function activeWorkspaceLabelForScreen(screenName) {
         var workspace = root.workspaceForScreen(screenName);
+        if (!workspace)
+            return "—";
         return String(workspace.name || workspace.id || "—");
     }
 
@@ -937,7 +965,7 @@ Item {
 
     function toplevelsOnScreen(screenName) {
         var result = [];
-        var source = root.surfaceMounted ? root.sessionToplevels : root.allToplevels;
+        var source = root.surfaceMounted || root.openingPending ? root.sessionToplevels : root.allToplevels;
         for (var index = 0; index < source.length; index++) {
             var top = source[index];
             if (top && root.isOnScreen(top, screenName))
