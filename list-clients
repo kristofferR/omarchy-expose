@@ -27,6 +27,7 @@ timeout --signal=TERM --kill-after=1 2 hyprctl --batch "j/monitors; j/clients" |
         | {
             id: (if (.id | type) == "number" then .id else 0 end),
             name: (.name | bounded(128)),
+            focused: (.focused == true),
             activeWorkspace: (.activeWorkspace | workspace)
           }
       ]

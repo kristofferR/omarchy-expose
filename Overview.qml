@@ -176,11 +176,46 @@ Item {
     property var sessionAspectRatios: []
     property var pendingAspectRatioToplevels: []
     readonly property var allToplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values : []
+    property string focusedMonitorName: ""
+    property string overviewScreenName: ""
+    property bool overviewScreenPinned: false
+    readonly property var effectiveOverviewScreen: {
+        var screens = Quickshell.screens;
+        var wanted = String(root.overviewScreenName || "");
+        var fallback = null;
+        for (var index = 0; index < screens.length; index++) {
+            var screen = screens[index];
+            if (!screen)
+                continue;
+            if (!fallback)
+                fallback = screen;
+            if (wanted && String(screen.name || "") === wanted)
+                return screen;
+        }
+        return fallback;
+    }
+    readonly property string effectiveOverviewScreenName: root.effectiveOverviewScreen
+        ? String(root.effectiveOverviewScreen.name || "")
+        : ""
     readonly property string keyboardScreenName: {
+        if (root.effectiveOverviewScreenName && (root.surfaceMounted || root.overviewScreenName))
+            return root.effectiveOverviewScreenName;
+        if (root.overviewScreenName)
+            return root.overviewScreenName;
+        if (root.focusedMonitorName)
+            return root.focusedMonitorName;
         var active = ToplevelManager.activeToplevel;
         if (active && active.screens && active.screens.length)
             return String(active.screens[0].name || "");
         return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
+    }
+    // One overlay surface: the focused monitor, or the display whose hot
+    // corner opened Exposé. Instantiating on every enabled output duplicates
+    // screencopy captures and layer textures.
+    readonly property var mountedScreens: {
+        if (!root.surfaceMounted || !root.effectiveOverviewScreen)
+            return [];
+        return [root.effectiveOverviewScreen];
     }
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
@@ -221,6 +256,8 @@ Item {
         }
         if (root.openingAfterClientRefresh)
             return;
+        if (!root.overviewScreenPinned)
+            root.overviewScreenName = root.keyboardScreenName;
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
@@ -256,6 +293,7 @@ Item {
         root.motionProgress = 0;
         root.backgroundBlurPrimed = false;
         backgroundBlurSession.running = false;
+        root.clearOverviewScreen();
         root.finishDismiss();
     }
 
@@ -290,6 +328,8 @@ Item {
             if (!root.backgroundBlurPrimed)
                 return;
         }
+        if (!root.overviewScreenPinned)
+            root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
         root.surfaceMounted = true;
         Qt.callLater(function () {
             if (!root.surfaceMounted || !root.openingAfterClientRefresh)
@@ -345,6 +385,7 @@ Item {
         root.surfaceMounted = false;
         root.backgroundBlurPrimed = false;
         backgroundBlurSession.running = false;
+        root.clearOverviewScreen();
         root.finishDismiss();
     }
 
@@ -619,11 +660,25 @@ Item {
         return false;
     }
 
-    function triggerHotCorner() {
+    function triggerHotCorner(screenName) {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
         root.hotCornerArmed = false;
-        root.toggle();
+        if (root.opened || root.openingAfterClientRefresh) {
+            root.dismiss();
+            return;
+        }
+        var name = String(screenName || "");
+        if (name) {
+            root.overviewScreenPinned = true;
+            root.overviewScreenName = name;
+        }
+        root.open("{}");
+    }
+
+    function clearOverviewScreen() {
+        root.overviewScreenPinned = false;
+        root.overviewScreenName = "";
     }
 
     function scheduleHotCornerRearm() {
@@ -731,6 +786,7 @@ Item {
             var b = right[index];
             if (a.id !== b.id
                     || a.name !== b.name
+                    || a.focused !== b.focused
                     || a.activeWorkspace.id !== b.activeWorkspace.id
                     || a.activeWorkspace.name !== b.activeWorkspace.name)
                 return false;
@@ -738,17 +794,32 @@ Item {
         return true;
     }
 
+    function focusedNameFromMonitors(monitors) {
+        var list = monitors || [];
+        for (var index = 0; index < list.length; index++) {
+            var monitor = list[index];
+            if (monitor && monitor.focused)
+                return String(monitor.name || "");
+        }
+        return list.length && list[0] ? String(list[0].name || "") : "";
+    }
+
     function applyDisplayState(id, name, monitors) {
         var nextId = Number(id) || 0;
         var nextName = String(name || "").slice(0, 128);
         var nextMonitors = monitors || [];
+        var nextFocused = root.focusedNameFromMonitors(nextMonitors);
         if (nextId === root.activeWorkspaceId
                 && nextName === root.activeWorkspaceName
+                && nextFocused === root.focusedMonitorName
                 && root.monitorStatesEqual(root.monitorStates, nextMonitors))
             return;
         root.activeWorkspaceId = nextId;
         root.activeWorkspaceName = nextName;
         root.monitorStates = nextMonitors;
+        root.focusedMonitorName = nextFocused;
+        if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingAfterClientRefresh))
+            root.overviewScreenName = nextFocused || root.keyboardScreenName;
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
@@ -906,6 +977,7 @@ Item {
                     monitors.push({
                         id: Number(monitor.id) || 0,
                         name: String(monitor.name || "").slice(0, 128),
+                        focused: monitor.focused === true,
                         activeWorkspace: {
                             id: Number(monitorWorkspace.id) || 0,
                             name: String(monitorWorkspace.name || "").slice(0, 128)
@@ -1956,12 +2028,12 @@ Item {
         readonly property var options: [
             {
                 label: "Same overview",
-                description: "Show every window on every display",
+                description: "Show all windows together on the selected display",
                 value: "mirrored"
             },
             {
                 label: "Per monitor",
-                description: "Keep windows on their own display",
+                description: "Show only the selected display's windows",
                 value: "per-monitor"
             }
         ]
@@ -2316,7 +2388,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.NoButton
-                onEntered: root.triggerHotCorner()
+                onEntered: root.triggerHotCorner(String(modelData.name || ""))
                 onExited: root.scheduleHotCornerRearm()
             }
         }
@@ -2324,7 +2396,7 @@ Item {
 
     Variants {
         id: surfaceInstances
-        model: root.surfaceMounted ? Quickshell.screens : []
+        model: root.mountedScreens
 
         PanelWindow {
             id: overviewWindow
@@ -2348,10 +2420,10 @@ Item {
                 : null
             property alias hotCornerHovered: openHotCorner.containsMouse
             readonly property bool acceptsKeyboard: {
-                var active = ToplevelManager.activeToplevel;
-                if (!active || !active.screens || !active.screens.length)
-                    return Quickshell.screens.length > 0 && Quickshell.screens[0].name === modelData.name;
-                return active.screens[0].name === modelData.name;
+                var wanted = root.effectiveOverviewScreenName;
+                if (wanted)
+                    return String(modelData.name || "") === wanted;
+                return true;
             }
             WlrLayershell.keyboardFocus: root.opened && acceptsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
