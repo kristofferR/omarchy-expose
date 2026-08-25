@@ -9,7 +9,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
-- **Workspace scope.** Press Tab to switch between every window and windows on the current workspace. Per-monitor mode evaluates the current workspace of the focused display.
+- **Workspace scope.** Press Tab to switch between every window and windows on the current workspace. Per-monitor mode evaluates the current workspace of the selected display.
 - **Multi-monitor layouts.** The overview opens only on the focused display (or the display whose hot corner was used). Same overview shows every window there; per monitor keeps that display's own windows.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner (on by default, any corner, can be disabled).
