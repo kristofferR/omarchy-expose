@@ -35,7 +35,7 @@ function isOnScreen(toplevel, screenName, perMonitor) {
     if (!perMonitor)
         return true;
     var monitor = toplevel && toplevel.monitor ? toplevel.monitor : null;
-    return !monitor || String(monitor.name || "") === String(screenName || "");
+    return Boolean(monitor) && String(monitor.name || "") === String(screenName || "");
 }
 
 function isOnWorkspace(toplevel, workspace) {
@@ -56,9 +56,11 @@ function isOnWorkspace(toplevel, workspace) {
 
 function aspectRatioFor(toplevel) {
     var size = ipcFor(toplevel).size || [];
-    if (size.length < 2 || size[0] <= 0 || size[1] <= 0)
+    var width = Number(size[0]);
+    var height = Number(size[1]);
+    if (size.length < 2 || !isFinite(width) || !isFinite(height) || width <= 0 || height <= 0)
         return 1.6;
-    return Math.max(0.45, Math.min(4, Number(size[0]) / Number(size[1])));
+    return Math.max(0.45, Math.min(4, width / height));
 }
 
 function searchTextFor(toplevel) {
