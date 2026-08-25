@@ -416,6 +416,8 @@ Item {
         var nextIn = root.clampAnimationDuration(inValue);
         var nextOut = root.clampAnimationDuration(outValue);
         var nextSeparate = separate === true;
+        if (mode === "slide" && !nextSeparate)
+            root.setSlideDirection(root.slideDirection["in"]);
         var current = root.animationTimingFor(mode);
         if (nextIn !== Number(current["in"])
                 || nextOut !== Number(current["out"])
@@ -455,8 +457,6 @@ Item {
 
     function setAnimationTimingSeparate(style, separate) {
         var timing = root.animationTimingFor(style);
-        if (style === "slide" && !separate)
-            root.setSlideDirection(root.slideDirection["in"]);
         return separate
             ? root.setAnimationTiming(style, timing["in"], timing["out"], true)
             : root.setAnimationTiming(style, timing["in"], timing["in"], false);
