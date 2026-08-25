@@ -74,6 +74,9 @@ TestCase {
         verify(WindowModel.isOnScreen(toplevel, "DP-1", true));
         verify(!WindowModel.isOnScreen(toplevel, "HDMI-A-1", true));
         verify(WindowModel.isOnScreen(toplevel, "HDMI-A-1", false));
+        toplevel.monitor = null;
+        verify(!WindowModel.isOnScreen(toplevel, "DP-1", true));
+        verify(WindowModel.isOnScreen(toplevel, "DP-1", false));
         toplevel.destroy();
     }
 
@@ -85,6 +88,10 @@ TestCase {
         toplevel.lastIpcObject = ({size: [100, 10000]});
         compare(WindowModel.aspectRatioFor(toplevel), 0.45);
         toplevel.lastIpcObject = ({size: [0, 0]});
+        compare(WindowModel.aspectRatioFor(toplevel), 1.6);
+        toplevel.lastIpcObject = ({size: [NaN, 100]});
+        compare(WindowModel.aspectRatioFor(toplevel), 1.6);
+        toplevel.lastIpcObject = ({size: [100, Infinity]});
         compare(WindowModel.aspectRatioFor(toplevel), 1.6);
         toplevel.destroy();
     }
