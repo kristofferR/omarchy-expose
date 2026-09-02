@@ -1,0 +1,37 @@
+#!/bin/bash
+# Local checks: QML unit tests, qmllint, shell syntax, and the plugin manifest.
+#
+# The qmltestrunner and qmllint on PATH are Qt 5 builds that exit without
+# doing anything useful for this Qt 6 code, so the Qt 6 binaries are named
+# explicitly.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+qt6_bin=/usr/lib/qt6/bin
+[[ -x $qt6_bin/qmltestrunner && -x $qt6_bin/qmllint ]] || {
+  echo "validate: Qt 6 qmltestrunner and qmllint are required in $qt6_bin (package qt6-declarative)" >&2
+  exit 1
+}
+command -v omarchy >/dev/null || {
+  echo "validate: omarchy is required for plugin manifest validation" >&2
+  exit 1
+}
+
+QT_QPA_PLATFORM=offscreen "$qt6_bin/qmltestrunner" -input tests
+
+# Quickshell types and the shell's qs.Commons singletons are opaque to
+# qmllint, so the categories they trip on are disabled. Everything else is
+# still reported, and syntax errors fail the run.
+"$qt6_bin/qmllint" \
+  --import disable \
+  --unqualified disable \
+  --missing-type disable \
+  --uncreatable-type disable \
+  --signal-handler-parameters disable \
+  Overview.qml WindowCard.qml SettingsView.qml
+
+bash -n activate-window background-blur-session
+
+omarchy plugin validate .
+
+echo "validate: all checks passed"
