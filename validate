@@ -19,15 +19,11 @@ command -v omarchy >/dev/null || {
 
 QT_QPA_PLATFORM=offscreen "$qt6_bin/qmltestrunner" -input tests
 
-# Quickshell types and the shell's qs.Commons singletons are opaque to
-# qmllint, so the categories they trip on are disabled. Everything else is
-# still reported, and syntax errors fail the run.
+# The shell's runtime-injected types are annotated where they are used so
+# qmllint still catches unrelated missing imports and types.
 "$qt6_bin/qmllint" \
-  --import disable \
+  --max-warnings 0 \
   --unqualified disable \
-  --missing-type disable \
-  --uncreatable-type disable \
-  --signal-handler-parameters disable \
   Overview.qml WindowCard.qml SettingsView.qml
 
 bash -n activate-window background-blur-session

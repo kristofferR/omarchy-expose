@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
-import qs.Commons
+import qs.Commons // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 
@@ -1496,7 +1496,7 @@ Item {
                 }
             }
         }
-        onExited: function (exitCode, exitStatus) {
+        onExited: function (exitCode, exitStatus) { // qmllint disable signal-handler-parameters
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
             if (root.backgroundBlurReleasePhase > 0) {
@@ -1684,13 +1684,13 @@ Item {
 
     // These stay resident while the overview is open. The overview surface is
     // created later on the same layer, so it stacks above the corner strip on
-    // its display and its own HotCornerTarget takes over there; tearing every
-    // screen's strip down and back up on each toggle only added surface churn.
+    // its display and its own HotCornerTarget takes over there. Targets on the
+    // other displays remain disabled until the overview unmounts.
     Variants {
         id: hotCornerInstances
         model: root.hotCornerEnabled ? Quickshell.screens : []
 
-        PanelWindow {
+        PanelWindow { // qmllint disable uncreatable-type
             required property var modelData
             screen: modelData
             visible: true
@@ -1727,6 +1727,8 @@ Item {
             HotCornerTarget {
                 id: closedHotCorner
                 anchors.fill: parent
+                enabled: !root.surfaceMounted
+                    || String(modelData.name || "") === root.effectiveOverviewScreenName
                 onTop: root.hotCornerOnTop
                 onLeft: root.hotCornerOnLeft
                 onEntered: root.triggerHotCorner(String(modelData.name || ""))
@@ -1739,7 +1741,7 @@ Item {
         id: surfaceInstances
         model: root.mountedScreens
 
-        PanelWindow {
+        PanelWindow { // qmllint disable uncreatable-type
             id: overviewWindow
             required property var modelData
             screen: modelData
@@ -1755,7 +1757,7 @@ Item {
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
             HyprlandWindow.opacity: root.motionProgress
-            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0
+            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0 // qmllint disable missing-type
                     && !root.backgroundBlurFailed
                 ? backgroundBlurRegion
                 : null
@@ -1797,25 +1799,25 @@ Item {
             function focusSettingsCategory() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.focusSettingsCategory();
+                    settings.focusSettingsCategory(); // qmllint disable missing-property
             }
 
             function moveSettingsFocus(forward, wrap) {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.moveSettingsFocus(forward, wrap);
+                    settings.moveSettingsFocus(forward, wrap); // qmllint disable missing-property
             }
 
             function focusFirstSettingsControl() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.focusFirstSettingsControl();
+                    settings.focusFirstSettingsControl(); // qmllint disable missing-property
             }
 
             function moveFooterConfirmationFocus(forward, wrap) {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.moveFooterConfirmationFocus(forward, wrap);
+                    settings.moveFooterConfirmationFocus(forward, wrap); // qmllint disable missing-property
             }
 
             onAcceptsKeyboardChanged: {
