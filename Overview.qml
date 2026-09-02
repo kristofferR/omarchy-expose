@@ -1683,9 +1683,13 @@ Item {
         }
     }
 
+    // These stay resident while the overview is open. The overview surface is
+    // created later on the same layer, so it stacks above the corner strip on
+    // its display and its own HotCornerTarget takes over there; tearing every
+    // screen's strip down and back up on each toggle only added surface churn.
     Variants {
         id: hotCornerInstances
-        model: root.hotCornerEnabled && !root.surfaceMounted ? Quickshell.screens : []
+        model: root.hotCornerEnabled ? Quickshell.screens : []
 
         PanelWindow {
             required property var modelData
