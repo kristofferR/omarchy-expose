@@ -1,11 +1,10 @@
 import QtQuick
-import QtQuick.Effects
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
-import qs.Commons
+import qs.Commons // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 
@@ -83,6 +82,7 @@ Item {
         up: {x: 0, y: -1},
         down: {x: 0, y: 1}
     })
+    readonly property var slideDirections: Object.keys(root.slideVectors)
     // {"in", "out"}. A bare string in config is shorthand for both. The slide
     // timing's `separate` flag decides whether "out" is honored or mirrors "in".
     readonly property var slideDirection: {
@@ -113,11 +113,10 @@ Item {
         return isFinite(value) ? Math.max(0, Math.min(90, Math.round(value))) : 6;
     }
     readonly property bool hotCornerEnabled: !root.pluginEntry || root.pluginEntry.hotCornerEnabled !== false
+    readonly property var hotCornerPositions: ["top-left", "top-right", "bottom-left", "bottom-right"]
     readonly property string hotCornerPosition: {
         var position = String((root.pluginEntry && root.pluginEntry.hotCornerPosition) || "top-left");
-        return ["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) !== -1
-            ? position
-            : "top-left";
+        return root.hotCornerPositions.indexOf(position) !== -1 ? position : "top-left";
     }
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
@@ -527,7 +526,7 @@ Item {
 
     function isSlideDirection(value) {
         var direction = String(value === null || value === undefined ? "" : value);
-        return Object.prototype.hasOwnProperty.call(root.slideVectors, direction);
+        return root.slideDirections.indexOf(direction) !== -1;
     }
 
     function normalizeSlideDirection(value) {
@@ -634,8 +633,7 @@ Item {
     }
 
     function setHotCornerPosition(value) {
-        var positions = ["top-left", "top-right", "bottom-left", "bottom-right"];
-        var position = positions.indexOf(value) !== -1 ? value : "top-left";
+        var position = root.hotCornerPositions.indexOf(value) !== -1 ? value : "top-left";
         if (position !== root.hotCornerPosition)
             root.updatePluginSetting("hotCornerPosition", position);
     }
@@ -1498,7 +1496,7 @@ Item {
                 }
             }
         }
-        onExited: function (exitCode, exitStatus) {
+        onExited: function (exitCode, exitStatus) { // qmllint disable signal-handler-parameters
             root.backgroundBlurPrimed = false;
             root.lastRequestedBlur = -1;
             if (root.backgroundBlurReleasePhase > 0) {
@@ -1535,6 +1533,12 @@ Item {
         }
     }
 
+    // IPC rejection text derived from the option list it validates against.
+    function expectedOneOf(options) {
+        var head = options.slice(0, -1).join(", ");
+        return "expected " + head + (options.length > 2 ? ", or " : " or ") + options[options.length - 1];
+    }
+
     IpcHandler {
         target: "expose"
         function open(): string {
@@ -1560,43 +1564,43 @@ Item {
         }
         function windowFooterStyle(style: string): string {
             if (root.windowFooterStyles.indexOf(style) === -1)
-                return "expected floating, integrated, overlay, or centered";
+                return root.expectedOneOf(root.windowFooterStyles);
             root.setWindowFooterStyle(style);
             return style;
         }
         function animationStyle(style: string): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return root.setAnimationStyle(style);
         }
         function animationDuration(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDuration(style, value));
         }
         function animationDurationIn(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDurationIn(style, value));
         }
         function animationDurationOut(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDurationOut(style, value));
         }
         function slideDirection(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirection(direction);
         }
         function slideDirectionIn(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionIn(direction);
         }
         function slideDirectionOut(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionOut(direction);
         }
         function backgroundBlur(value: real): string {
@@ -1623,8 +1627,8 @@ Item {
             return mode;
         }
         function hotCornerPosition(position: string): string {
-            if (["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) === -1)
-                return "expected top-left, top-right, bottom-left, or bottom-right";
+            if (root.hotCornerPositions.indexOf(position) === -1)
+                return root.expectedOneOf(root.hotCornerPositions);
             root.setHotCornerPosition(position);
             return position;
         }
@@ -1678,11 +1682,15 @@ Item {
         }
     }
 
+    // These stay resident while the overview is open. The overview surface is
+    // created later on the same layer, so it stacks above the corner strip on
+    // its display and its own HotCornerTarget takes over there. Targets on the
+    // other displays remain disabled until the overview unmounts.
     Variants {
         id: hotCornerInstances
-        model: root.hotCornerEnabled && !root.surfaceMounted ? Quickshell.screens : []
+        model: root.hotCornerEnabled ? Quickshell.screens : []
 
-        PanelWindow {
+        PanelWindow { // qmllint disable uncreatable-type
             required property var modelData
             screen: modelData
             visible: true
@@ -1719,6 +1727,8 @@ Item {
             HotCornerTarget {
                 id: closedHotCorner
                 anchors.fill: parent
+                enabled: !root.surfaceMounted
+                    || String(modelData.name || "") === root.effectiveOverviewScreenName
                 onTop: root.hotCornerOnTop
                 onLeft: root.hotCornerOnLeft
                 onEntered: root.triggerHotCorner(String(modelData.name || ""))
@@ -1731,7 +1741,7 @@ Item {
         id: surfaceInstances
         model: root.mountedScreens
 
-        PanelWindow {
+        PanelWindow { // qmllint disable uncreatable-type
             id: overviewWindow
             required property var modelData
             screen: modelData
@@ -1747,7 +1757,7 @@ Item {
             WlrLayershell.namespace: "expose-window-overview"
             WlrLayershell.layer: WlrLayer.Overlay
             HyprlandWindow.opacity: root.motionProgress
-            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0
+            BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0 // qmllint disable missing-type
                     && !root.backgroundBlurFailed
                 ? backgroundBlurRegion
                 : null
@@ -1789,25 +1799,25 @@ Item {
             function focusSettingsCategory() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.focusSettingsCategory();
+                    settings.focusSettingsCategory(); // qmllint disable missing-property
             }
 
             function moveSettingsFocus(forward, wrap) {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.moveSettingsFocus(forward, wrap);
+                    settings.moveSettingsFocus(forward, wrap); // qmllint disable missing-property
             }
 
             function focusFirstSettingsControl() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.focusFirstSettingsControl();
+                    settings.focusFirstSettingsControl(); // qmllint disable missing-property
             }
 
             function moveFooterConfirmationFocus(forward, wrap) {
                 var settings = settingsLayerLoader.item;
                 if (settings)
-                    settings.moveFooterConfirmationFocus(forward, wrap);
+                    settings.moveFooterConfirmationFocus(forward, wrap); // qmllint disable missing-property
             }
 
             onAcceptsKeyboardChanged: {
