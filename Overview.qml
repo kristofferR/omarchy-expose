@@ -83,6 +83,7 @@ Item {
         up: {x: 0, y: -1},
         down: {x: 0, y: 1}
     })
+    readonly property var slideDirections: Object.keys(root.slideVectors)
     // {"in", "out"}. A bare string in config is shorthand for both. The slide
     // timing's `separate` flag decides whether "out" is honored or mirrors "in".
     readonly property var slideDirection: {
@@ -113,11 +114,10 @@ Item {
         return isFinite(value) ? Math.max(0, Math.min(90, Math.round(value))) : 6;
     }
     readonly property bool hotCornerEnabled: !root.pluginEntry || root.pluginEntry.hotCornerEnabled !== false
+    readonly property var hotCornerPositions: ["top-left", "top-right", "bottom-left", "bottom-right"]
     readonly property string hotCornerPosition: {
         var position = String((root.pluginEntry && root.pluginEntry.hotCornerPosition) || "top-left");
-        return ["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) !== -1
-            ? position
-            : "top-left";
+        return root.hotCornerPositions.indexOf(position) !== -1 ? position : "top-left";
     }
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
@@ -527,7 +527,7 @@ Item {
 
     function isSlideDirection(value) {
         var direction = String(value === null || value === undefined ? "" : value);
-        return Object.prototype.hasOwnProperty.call(root.slideVectors, direction);
+        return root.slideDirections.indexOf(direction) !== -1;
     }
 
     function normalizeSlideDirection(value) {
@@ -634,8 +634,7 @@ Item {
     }
 
     function setHotCornerPosition(value) {
-        var positions = ["top-left", "top-right", "bottom-left", "bottom-right"];
-        var position = positions.indexOf(value) !== -1 ? value : "top-left";
+        var position = root.hotCornerPositions.indexOf(value) !== -1 ? value : "top-left";
         if (position !== root.hotCornerPosition)
             root.updatePluginSetting("hotCornerPosition", position);
     }
@@ -1535,6 +1534,12 @@ Item {
         }
     }
 
+    // IPC rejection text derived from the option list it validates against.
+    function expectedOneOf(options) {
+        var head = options.slice(0, -1).join(", ");
+        return "expected " + head + (options.length > 2 ? ", or " : " or ") + options[options.length - 1];
+    }
+
     IpcHandler {
         target: "expose"
         function open(): string {
@@ -1560,43 +1565,43 @@ Item {
         }
         function windowFooterStyle(style: string): string {
             if (root.windowFooterStyles.indexOf(style) === -1)
-                return "expected floating, integrated, overlay, or centered";
+                return root.expectedOneOf(root.windowFooterStyles);
             root.setWindowFooterStyle(style);
             return style;
         }
         function animationStyle(style: string): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return root.setAnimationStyle(style);
         }
         function animationDuration(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDuration(style, value));
         }
         function animationDurationIn(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDurationIn(style, value));
         }
         function animationDurationOut(style: string, value: real): string {
             if (root.animationStyles.indexOf(style) === -1)
-                return "expected original, fade, zoom, or slide";
+                return root.expectedOneOf(root.animationStyles);
             return String(root.setAnimationDurationOut(style, value));
         }
         function slideDirection(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirection(direction);
         }
         function slideDirectionIn(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionIn(direction);
         }
         function slideDirectionOut(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return "expected left, right, up, or down";
+                return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionOut(direction);
         }
         function backgroundBlur(value: real): string {
@@ -1623,8 +1628,8 @@ Item {
             return mode;
         }
         function hotCornerPosition(position: string): string {
-            if (["top-left", "top-right", "bottom-left", "bottom-right"].indexOf(position) === -1)
-                return "expected top-left, top-right, bottom-left, or bottom-right";
+            if (root.hotCornerPositions.indexOf(position) === -1)
+                return root.expectedOneOf(root.hotCornerPositions);
             root.setHotCornerPosition(position);
             return position;
         }
