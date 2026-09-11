@@ -105,6 +105,159 @@ TestCase {
         compare(WorkspaceModel.labelFor(result[1]), "3");
     }
 
+    function test_identifiesSpecialWorkspaces() {
+        verify(WorkspaceModel.isSpecial({
+            id: -99,
+            name: "special:scratchpad"
+        }));
+
+        verify(WorkspaceModel.isSpecial({
+            id: -98,
+            name: "special"
+        }));
+
+        verify(!WorkspaceModel.isSpecial({
+            id: -10,
+            name: "Web"
+        }));
+
+        verify(!WorkspaceModel.isSpecial({
+            id: 2,
+            name: "2"
+        }));
+    }
+
+    function test_buildsWorkspaceSelectors() {
+        compare(
+            WorkspaceModel.workspaceSelector({
+                id: 3,
+                name: "3"
+            }),
+            "3"
+        );
+
+        compare(
+            WorkspaceModel.workspaceSelector({
+                id: -10,
+                name: "Web"
+            }),
+            "name:Web"
+        );
+
+        compare(
+            WorkspaceModel.workspaceSelector({
+                id: -11,
+                name: "name:AlreadyPrefixed"
+            }),
+            "name:AlreadyPrefixed"
+        );
+
+        compare(
+            WorkspaceModel.workspaceSelector({
+                id: -99,
+                name: "special:scratchpad"
+            }),
+            ""
+        );
+    }
+
+    function test_overviewWorkspacesExcludeSpecialWorkspaces() {
+        var source = [
+            {id: -99, name: "special:scratchpad"},
+            {id: -10, name: "Web"},
+            {id: 3, name: "3"},
+            {id: 1, name: "1"}
+        ];
+
+        var result = WorkspaceModel.overviewWorkspaces(source);
+
+        compare(result.length, 3);
+        compare(WorkspaceModel.labelFor(result[0]), "1");
+        compare(WorkspaceModel.labelFor(result[1]), "3");
+        compare(WorkspaceModel.labelFor(result[2]), "Web");
+    }
+
+    function test_gridColumns() {
+        compare(WorkspaceModel.gridColumns(0), 1);
+        compare(WorkspaceModel.gridColumns(1), 1);
+        compare(WorkspaceModel.gridColumns(2), 2);
+        compare(WorkspaceModel.gridColumns(4), 2);
+        compare(WorkspaceModel.gridColumns(5), 3);
+        compare(WorkspaceModel.gridColumns(9), 3);
+    }
+
+    function test_movesGridSelectionInCompleteGrid() {
+        var count = 4;
+        var columns = 2;
+
+        compare(
+            WorkspaceModel.moveGridIndex(0, count, columns, 1, 0),
+            1
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(0, count, columns, -1, 0),
+            0
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(0, count, columns, 0, 1),
+            2
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(2, count, columns, 0, -1),
+            0
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(3, count, columns, 1, 0),
+            3
+        );
+    }
+
+    function test_movesGridSelectionInIncompleteFinalRow() {
+        var count = 5;
+        var columns = 3;
+
+        compare(
+            WorkspaceModel.moveGridIndex(2, count, columns, 0, 1),
+            4
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(4, count, columns, 0, -1),
+            1
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(3, count, columns, 1, 0),
+            4
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(4, count, columns, 1, 0),
+            4
+        );
+    }
+
+    function test_gridSelectionHandlesEmptyAndOutOfRangeState() {
+        compare(
+            WorkspaceModel.moveGridIndex(0, 0, 1, 1, 0),
+            0
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(99, 4, 2, 0, 0),
+            3
+        );
+
+        compare(
+            WorkspaceModel.moveGridIndex(-10, 4, 2, 0, 0),
+            0
+        );
+    }
+
     function test_sortDoesNotMutateSource() {
         var source = [
             {id: 2, name: "2"},
