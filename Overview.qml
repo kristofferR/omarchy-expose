@@ -16,14 +16,41 @@ Item {
     readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
     readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
         || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
-    readonly property var pluginEntry: {
-        var config = root.shell && root.shell.shellConfig ? root.shell.shellConfig : null;
-        var plugins = config && Array.isArray(config.plugins) ? config.plugins : [];
-        for (var i = 0; i < plugins.length; i++)
-            if (plugins[i] && String(plugins[i].id || "") === root.pluginId)
-                return plugins[i];
-        return null;
+
+    // root.shell.shellConfig does not exist on this host's PluginShellApi
+    // (it only exposes barConfig/idleConfig, not the raw shell.json), so
+    // pluginEntry can never resolve through it and every persisted setting
+    // -- hotCornerEnabled included -- silently falls back to its default no
+    // matter what's saved. Read shell.json directly instead, the same way
+    // sibling plugins (e.g. omadock) read their own settings files.
+    FileView {
+        id: shellConfigFile
+        path: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+        watchChanges: true
+        onLoaded: root.reloadPluginEntryFromFile()
+        onFileChanged: shellConfigFile.reload()
     }
+
+    property var _pluginEntryFromFile: null
+
+    function reloadPluginEntryFromFile() {
+        var entry = null;
+        try {
+            var parsed = JSON.parse(shellConfigFile.text());
+            var plugins = parsed && Array.isArray(parsed.plugins) ? parsed.plugins : [];
+            for (var i = 0; i < plugins.length; i++) {
+                if (plugins[i] && String(plugins[i].id || "") === root.pluginId) {
+                    entry = plugins[i];
+                    break;
+                }
+            }
+        } catch (e) {
+            entry = null;
+        }
+        root._pluginEntryFromFile = entry;
+    }
+
+    readonly property var pluginEntry: root._pluginEntryFromFile
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     readonly property var windowFooterStyles: ["floating", "integrated", "overlay", "centered"]
     readonly property string windowFooterStyle: {
