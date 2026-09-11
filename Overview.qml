@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import qs.Commons // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "WorkspaceModel.js" as WorkspaceModel
 
 Item {
     id: root
@@ -171,6 +172,8 @@ Item {
     property var sessionToplevels: []
     property var sessionAspectRatios: []
     readonly property var allToplevels: Hyprland.toplevels ? Hyprland.toplevels.values : []
+    readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
+    readonly property var orderedWorkspaces: WorkspaceModel.sorted(root.allWorkspaces)
     readonly property string focusedMonitorName: Hyprland.focusedMonitor
         ? String(Hyprland.focusedMonitor.name || "")
         : ""
