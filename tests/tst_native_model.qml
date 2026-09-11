@@ -69,6 +69,41 @@ TestCase {
         toplevel.destroy();
     }
 
+    function test_matchesWorkspaceIdentityWithoutPinnedExpansion() {
+        var toplevel = createToplevel();
+
+        verify(WindowModel.matchesWorkspaceIdentity(
+            toplevel,
+            {id: 2, name: "2"}
+        ));
+
+        verify(!WindowModel.matchesWorkspaceIdentity(
+            toplevel,
+            {id: 3, name: "3"}
+        ));
+
+        toplevel.lastIpcObject = ({pinned: true});
+
+        // Exact identity deliberately ignores pinned state.
+        verify(WindowModel.matchesWorkspaceIdentity(
+            toplevel,
+            {id: 2, name: "2"}
+        ));
+
+        verify(!WindowModel.matchesWorkspaceIdentity(
+            toplevel,
+            {id: 3, name: "3"}
+        ));
+
+        // Existing Exposé semantics remain unchanged.
+        verify(WindowModel.isOnWorkspace(
+            toplevel,
+            {id: 3, name: "3"}
+        ));
+
+        toplevel.destroy();
+    }
+
     function test_matchesScreenOnlyInPerMonitorMode() {
         var toplevel = createToplevel();
         verify(WindowModel.isOnScreen(toplevel, "DP-1", true));

@@ -38,11 +38,11 @@ function isOnScreen(toplevel, screenName, perMonitor) {
     return Boolean(monitor) && String(monitor.name || "") === String(screenName || "");
 }
 
-function isOnWorkspace(toplevel, workspace) {
+function matchesWorkspaceIdentity(toplevel, workspace) {
     var toplevelWorkspace = toplevel && toplevel.workspace ? toplevel.workspace : null;
     if (!toplevelWorkspace || !workspace)
         return false;
-    if (ipcFor(toplevel).pinned === true || toplevelWorkspace === workspace)
+    if (toplevelWorkspace === workspace)
         return true;
 
     var toplevelId = Number(toplevelWorkspace.id);
@@ -52,6 +52,15 @@ function isOnWorkspace(toplevel, workspace) {
 
     var workspaceName = String(workspace.name || "");
     return Boolean(workspaceName) && String(toplevelWorkspace.name || "") === workspaceName;
+}
+
+function isOnWorkspace(toplevel, workspace) {
+    var toplevelWorkspace = toplevel && toplevel.workspace ? toplevel.workspace : null;
+    if (!toplevelWorkspace || !workspace)
+        return false;
+
+    return ipcFor(toplevel).pinned === true
+        || matchesWorkspaceIdentity(toplevel, workspace);
 }
 
 function aspectRatioFor(toplevel) {
