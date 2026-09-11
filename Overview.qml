@@ -16,13 +16,96 @@ Item {
     readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
     readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
         || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
-    readonly property var pluginEntry: {
-        var config = root.shell && root.shell.shellConfig ? root.shell.shellConfig : null;
-        var plugins = config && Array.isArray(config.plugins) ? config.plugins : [];
-        for (var i = 0; i < plugins.length; i++)
-            if (plugins[i] && String(plugins[i].id || "") === root.pluginId)
-                return plugins[i];
-        return null;
+    readonly property string shellConfigPath:
+        Quickshell.env("HOME") + "/.config/omarchy/shell.json"
+
+    // Third-party plugins receive a capability-scoped PluginShellApi. It can
+    // persist its own inline settings but intentionally does not expose the
+    // host shellConfig object, so keep our own reactive copy of this plugin's
+    // entry from shell.json.
+    property var pluginEntry: ({})
+    property bool pluginSettingsLoaded: false
+
+    function pluginEntryFromConfig(config) {
+        var plugins =
+            config && Array.isArray(config.plugins)
+                ? config.plugins
+                : [];
+
+        for (var i = 0; i < plugins.length; i++) {
+            var candidate = plugins[i];
+
+            if (!candidate
+                    || String(candidate.id || "")
+                        !== root.pluginId) {
+                continue;
+            }
+
+            // Publish a fresh object so QML bindings are notified.
+            var entry = {};
+
+            for (var key in candidate)
+                entry[key] = candidate[key];
+
+            return entry;
+        }
+
+        return {};
+    }
+
+    function loadPluginSettings(raw) {
+        var text = String(raw || "").trim();
+
+        if (!text)
+            return false;
+
+        try {
+            var config = JSON.parse(text);
+
+            root.pluginEntry =
+                root.pluginEntryFromConfig(config);
+
+            root.pluginSettingsLoaded = true;
+
+            return true;
+        } catch (error) {
+            console.warn(
+                root.pluginId
+                    + ": failed to parse shell.json:",
+                error
+            );
+
+            return false;
+        }
+    }
+
+    FileView {
+        id: pluginSettingsFile
+
+        path:
+            root.shellConfigPath
+
+        watchChanges:
+            true
+
+        printErrors:
+            false
+
+        onLoaded:
+            root.loadPluginSettings(text())
+
+        onFileChanged:
+            reload()
+
+        onLoadFailed: function(error) {
+            root.pluginSettingsLoaded = false;
+
+            console.warn(
+                root.pluginId
+                    + ": failed to load shell.json:",
+                error
+            );
+        }
     }
     readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
     readonly property var windowFooterStyles: ["floating", "integrated", "overlay", "centered"]
@@ -418,15 +501,63 @@ Item {
     }
 
     function updatePluginSetting(name, value) {
-        if (!root.shell || typeof root.shell.updateEntryInline !== "function")
-            return;
+        if (!root.shell
+                || typeof root.shell.updateEntryInline
+                    !== "function") {
+            return false;
+        }
+
+        // Do not replace the persisted entry from an unhydrated default
+        // object. FileView normally loads during shell startup, but this also
+        // protects against an unusually early settings interaction.
+        if (!root.pluginSettingsLoaded) {
+            pluginSettingsFile.reload();
+
+            console.warn(
+                root.pluginId
+                    + ": settings write deferred until shell.json is loaded"
+            );
+
+            return false;
+        }
+
         var settings = {};
-        var current = root.pluginEntry || {};
-        for (var key in current)
+        var current =
+            root.pluginEntry || {};
+
+        for (var key in current) {
             if (key !== "id")
                 settings[key] = current[key];
+        }
+
         settings[name] = value;
-        root.shell.updateEntryInline(root.pluginId, settings);
+
+        // Apply locally first so settings react immediately. The persisted
+        // shell.json update then converges back through FileView.
+        var nextEntry = {
+            id: root.pluginId
+        };
+
+        for (var settingName in settings)
+            nextEntry[settingName] = settings[settingName];
+
+        root.pluginEntry = nextEntry;
+
+        var persisted =
+            root.shell.updateEntryInline(
+                root.pluginId,
+                settings
+            );
+
+        // updateEntryInline() returns false when nothing was written or the
+        // scoped host rejected the update. Re-read the authoritative file so
+        // the resident state cannot remain falsely optimistic.
+        if (persisted !== true) {
+            pluginSettingsFile.reload();
+            return false;
+        }
+
+        return true;
     }
 
     function setPreviewPlacement(value) {
