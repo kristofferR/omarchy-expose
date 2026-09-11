@@ -135,6 +135,8 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
+    property string overviewMode: "windows"
+    property int selectedWorkspaceIndex: 0
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
@@ -801,6 +803,40 @@ Item {
         root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
     }
 
+    function workspaceIndex(workspace) {
+        var wanted = WorkspaceModel.keyFor(workspace);
+        if (!wanted)
+            return -1;
+
+        for (var index = 0; index < root.orderedWorkspaces.length; index++) {
+            if (WorkspaceModel.keyFor(root.orderedWorkspaces[index]) === wanted)
+                return index;
+        }
+
+        return -1;
+    }
+
+    function resetWorkspaceSelection() {
+        var index = root.workspaceIndex(Hyprland.focusedWorkspace);
+        root.selectedWorkspaceIndex = index >= 0 ? index : 0;
+    }
+
+    function setOverviewMode(mode) {
+        var next = mode === "workspaces" ? "workspaces" : "windows";
+
+        if (next === root.overviewMode)
+            return next;
+
+        root.clearPreview();
+        root.hoveredIndex = -1;
+        root.overviewMode = next;
+
+        if (next === "workspaces")
+            root.resetWorkspaceSelection();
+
+        return next;
+    }
+
     function refreshHyprlandState() {
         Hyprland.refreshMonitors();
         Hyprland.refreshWorkspaces();
@@ -872,6 +908,14 @@ Item {
             root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
         if (root.previewIndex >= root.filteredToplevels.length)
             root.clearPreview();
+    }
+
+    function activateWorkspace(workspace) {
+        if (!workspace)
+            return;
+
+        workspace.activate();
+        root.dismiss();
     }
 
     function activate(top) {
