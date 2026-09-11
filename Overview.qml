@@ -1090,7 +1090,10 @@ Item {
 
             if (top
                     && WindowModel.isEligible(top)
-                    && root.isOnWorkspace(top, workspace)) {
+                    && WindowModel.matchesWorkspaceIdentity(
+                        top,
+                        workspace
+                    )) {
                 result.push(top);
             }
         }
@@ -2168,15 +2171,14 @@ Item {
                                             && modelData.active
                                         )
 
-                                    windowCount: {
+                                    windowsSource: {
                                         var revision =
                                             root.modelRevision;
 
                                         return root
                                             .toplevelsForWorkspace(
                                                 modelData
-                                            )
-                                            .length;
+                                            );
                                     }
                                 }
                             }
