@@ -24,9 +24,9 @@ QT_QPA_PLATFORM=offscreen "$qt6_bin/qmltestrunner" -input tests
 "$qt6_bin/qmllint" \
   --max-warnings 0 \
   --unqualified disable \
-  Overview.qml WindowCard.qml SettingsView.qml
+  Overview.qml WindowCard.qml WorkspaceCard.qml SettingsView.qml
 
-bash -n activate-window background-blur-session
+bash -n activate-window activate-workspace background-blur-session
 
 omarchy plugin validate .
 

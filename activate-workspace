@@ -1,0 +1,53 @@
+#!/bin/bash
+set -euo pipefail
+
+selector="${1:-}"
+mode="${2:-}"
+
+# Only normal numbered or explicitly named workspaces are accepted.
+# Special workspaces are intentionally excluded by WorkspaceModel.js.
+if [[ $selector =~ ^[1-9][0-9]*$ ]]; then
+  :
+elif [[ $selector == name:* && -n ${selector#name:} ]]; then
+  :
+else
+  exit 2
+fi
+
+# Defense in depth: never place control characters into a dispatcher
+# expression even if the QML-side model validation is bypassed.
+if [[ $selector =~ [[:cntrl:]] ]]; then
+  exit 2
+fi
+
+case "$mode" in
+  lua|legacy)
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+
+lua_long_string() {
+  local value="$1"
+  local equals=""
+
+  while [[ $value == *"]${equals}]"* ]]; do
+    equals+="="
+  done
+
+  printf '[%s[%s]%s]' "$equals" "$value" "$equals"
+}
+
+# Exposé's existing activate-window helper uses the same delay.
+# It prevents final compositor focus from racing layer-shell teardown.
+sleep 0.2
+
+if [[ $mode == "lua" ]]; then
+  literal="$(lua_long_string "$selector")"
+  hyprctl dispatch \
+    "hl.dsp.focus({ workspace = ${literal} })" \
+    >/dev/null
+else
+  hyprctl dispatch workspace "$selector" >/dev/null
+fi

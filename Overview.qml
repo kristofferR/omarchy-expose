@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import qs.Commons // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "WorkspaceModel.js" as WorkspaceModel
 
 Item {
     id: root
@@ -134,6 +135,8 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
+    property string overviewMode: "windows"
+    property int selectedWorkspaceIndex: 0
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
@@ -171,6 +174,16 @@ Item {
     property var sessionToplevels: []
     property var sessionAspectRatios: []
     readonly property var allToplevels: Hyprland.toplevels ? Hyprland.toplevels.values : []
+    readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
+    readonly property var orderedWorkspaces: WorkspaceModel.overviewWorkspaces(root.allWorkspaces)
+    readonly property int workspaceGridColumns:
+        WorkspaceModel.gridColumns(root.orderedWorkspaces.length)
+
+    onOrderedWorkspacesChanged: {
+        if (root.overviewMode === "workspaces")
+            root.resetWorkspaceSelection();
+    }
+
     readonly property string focusedMonitorName: Hyprland.focusedMonitor
         ? String(Hyprland.focusedMonitor.name || "")
         : ""
@@ -242,6 +255,7 @@ Item {
         if (!blurRestoreInFlight)
             root.backgroundBlurReleasePhase = 0;
         root.closeSettings();
+        root.setOverviewMode("windows");
         root.filterText = "";
         root.workspaceScope = "all";
         root.dismissNotifyShell = false;
@@ -798,6 +812,51 @@ Item {
         root.setWorkspaceScope(root.workspaceScope === "all" ? "current" : "all");
     }
 
+    function workspaceIndex(workspace) {
+        var wanted = WorkspaceModel.keyFor(workspace);
+        if (!wanted)
+            return -1;
+
+        for (var index = 0; index < root.orderedWorkspaces.length; index++) {
+            if (WorkspaceModel.keyFor(root.orderedWorkspaces[index]) === wanted)
+                return index;
+        }
+
+        return -1;
+    }
+
+    function resetWorkspaceSelection() {
+        var index = root.workspaceIndex(Hyprland.focusedWorkspace);
+        root.selectedWorkspaceIndex = index >= 0 ? index : 0;
+    }
+
+    function moveWorkspaceSelection(horizontal, vertical) {
+        root.selectedWorkspaceIndex =
+            WorkspaceModel.moveGridIndex(
+                root.selectedWorkspaceIndex,
+                root.orderedWorkspaces.length,
+                root.workspaceGridColumns,
+                horizontal,
+                vertical
+            );
+    }
+
+    function setOverviewMode(mode) {
+        var next = mode === "workspaces" ? "workspaces" : "windows";
+
+        if (next === root.overviewMode)
+            return next;
+
+        root.clearPreview();
+        root.hoveredIndex = -1;
+        root.overviewMode = next;
+
+        if (next === "workspaces")
+            root.resetWorkspaceSelection();
+
+        return next;
+    }
+
     function refreshHyprlandState() {
         Hyprland.refreshMonitors();
         Hyprland.refreshWorkspaces();
@@ -869,6 +928,28 @@ Item {
             root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
         if (root.previewIndex >= root.filteredToplevels.length)
             root.clearPreview();
+    }
+
+    function activateWorkspace(workspace) {
+        if (!workspace)
+            return;
+
+        var selector =
+            WorkspaceModel.workspaceSelector(workspace);
+
+        if (!selector)
+            return;
+
+        // Match the existing activate-window architecture:
+        // dismiss the layer-shell overlay first, then let the helper
+        // take final compositor focus after focus restoration settles.
+        Quickshell.execDetached([
+            root.pluginDir + "/activate-workspace",
+            selector,
+            Hyprland.usingLua ? "lua" : "legacy"
+        ]);
+
+        root.dismiss();
     }
 
     function activate(top) {
@@ -992,6 +1073,29 @@ Item {
 
     function isOnWorkspace(top, workspace) {
         return WindowModel.isOnWorkspace(top, workspace);
+    }
+
+    function toplevelsForWorkspace(workspace) {
+        if (!workspace)
+            return [];
+
+        var source = root.surfaceMounted || root.openingPending
+            ? root.sessionToplevels
+            : root.allToplevels;
+
+        var result = [];
+
+        for (var index = 0; index < source.length; index++) {
+            var top = source[index];
+
+            if (top
+                    && WindowModel.isEligible(top)
+                    && root.isOnWorkspace(top, workspace)) {
+                result.push(top);
+            }
+        }
+
+        return result;
     }
 
     function toplevelsOnScreen(screenName) {
@@ -1323,6 +1427,57 @@ Item {
             }
             return;
         }
+
+        if (event.key === Qt.Key_Tab
+                && Boolean(event.modifiers & Qt.ControlModifier)
+                && !(event.modifiers
+                    & (Qt.AltModifier | Qt.MetaModifier))) {
+
+            if (!event.isAutoRepeat) {
+                root.setOverviewMode(
+                    root.overviewMode === "windows"
+                        ? "workspaces"
+                        : "windows"
+                );
+            }
+
+            event.accepted = true;
+            return;
+        }
+
+        if (root.overviewMode === "workspaces") {
+            if (event.key === Qt.Key_Escape) {
+                root.dismiss();
+
+            } else if (event.key === Qt.Key_Left) {
+                root.moveWorkspaceSelection(-1, 0);
+
+            } else if (event.key === Qt.Key_Right) {
+                root.moveWorkspaceSelection(1, 0);
+
+            } else if (event.key === Qt.Key_Up) {
+                root.moveWorkspaceSelection(0, -1);
+
+            } else if (event.key === Qt.Key_Down) {
+                root.moveWorkspaceSelection(0, 1);
+
+            } else if (event.key === Qt.Key_Return
+                    || event.key === Qt.Key_Enter) {
+
+                root.activateWorkspace(
+                    root.orderedWorkspaces[
+                        root.selectedWorkspaceIndex
+                    ]
+                );
+
+            } else {
+                return;
+            }
+
+            event.accepted = true;
+            return;
+        }
+
         if (event.key === Qt.Key_Escape) {
             if (root.previewIndex >= 0 || root.previewExitIndex >= 0)
                 root.clearPreview();
@@ -1886,6 +2041,7 @@ Item {
 
                     Rectangle {
                         id: searchBar
+                        visible: root.overviewMode === "windows"
                         Layout.alignment: Qt.AlignHCenter
                         Layout.preferredWidth: Math.min(Style.space(760), overviewWindow.width - Style.space(48))
                         Layout.preferredHeight: Style.space(48)
@@ -1976,8 +2132,60 @@ Item {
                             return root.computeWindowLayout(overviewWindow.screenToplevels, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
                         }
 
+                        GridLayout {
+                            id: workspaceWall
+
+                            anchors.fill: parent
+                            anchors.margins: Style.space(32)
+
+                            visible:
+                                root.overviewMode === "workspaces"
+
+                            columns:
+                                root.workspaceGridColumns
+
+                            rowSpacing: Style.spacing.md
+                            columnSpacing: Style.spacing.md
+
+                            Repeater {
+                                model: root.orderedWorkspaces
+
+                                delegate: WorkspaceCard {
+                                    controller: root
+
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+
+                                    Layout.minimumWidth:
+                                        Style.space(120)
+
+                                    Layout.minimumHeight:
+                                        Style.space(90)
+
+                                    currentWorkspace:
+                                        Boolean(
+                                            modelData
+                                            && modelData.active
+                                        )
+
+                                    windowCount: {
+                                        var revision =
+                                            root.modelRevision;
+
+                                        return root
+                                            .toplevelsForWorkspace(
+                                                modelData
+                                            )
+                                            .length;
+                                    }
+                                }
+                            }
+                        }
+
                         Item {
                             id: cardLayer
+                            visible:
+                                root.overviewMode === "windows"
                             anchors.fill: parent
                             // The original style grows the whole arrangement out of the
                             // top-left corner. A single transform does that without
@@ -2004,7 +2212,8 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
-                            visible: overviewWindow.screenToplevels.length === 0
+                            visible: root.overviewMode === "windows"
+                                && overviewWindow.screenToplevels.length === 0
                             text: root.filterText
                                 ? "No matching windows"
                                 : (root.workspaceScope === "current"
@@ -2024,12 +2233,64 @@ Item {
                         visible: root.showFooter
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
+                            text: root.overviewMode === "workspaces"
+                                ? "Hover or click a workspace   Enter open   Ctrl+Tab mode   Esc close"
+                                : "← ↑ ↓ → navigate   Space preview   Tab scope   Ctrl+Tab mode   Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.55
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.bodySmall
+                        }
+
+                        Text {
+                            id: modeControl
+
+                            property bool hovered: false
+
+                            text:
+                                root.overviewMode === "windows"
+                                    ? "Workspaces"
+                                    : "Windows"
+
+                            textFormat: Text.PlainText
+
+                            color: modeControl.hovered
+                                ? Color.menu.selectedText
+                                : Color.menu.text
+
+                            opacity:
+                                modeControl.hovered ? 1 : 0.7
+
+                            font.family:
+                                Style.font.menuFamily
+
+                            font.pixelSize:
+                                Style.font.bodySmall
+
+                            font.bold: true
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+
+                                cursorShape:
+                                    Qt.PointingHandCursor
+
+                                onEntered:
+                                    modeControl.hovered = true
+
+                                onExited:
+                                    modeControl.hovered = false
+
+                                onClicked:
+                                    root.setOverviewMode(
+                                        root.overviewMode
+                                            === "windows"
+                                            ? "workspaces"
+                                            : "windows"
+                                    )
+                            }
                         }
 
                         Text {
