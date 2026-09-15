@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local checks: QML unit tests, qmllint, shell syntax, and the plugin manifest.
+# Local checks: QML unit tests, qmllint, shell checks, and the plugin manifest.
 #
 # The qmltestrunner and qmllint on PATH are Qt 5 builds that exit without
 # doing anything useful for this Qt 6 code, so the Qt 6 binaries are named
@@ -34,7 +34,8 @@ ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
 # Lint the runtime fixture after injecting its host functions and imports.
 ./tests/check-settings-runtime --lint
 
-bash -n activate-window background-blur-session tests/check-theme-runtime tests/check-settings-runtime
+bash -n activate-window background-blur-session tests/check-theme-runtime tests/check-settings-runtime tests/check-blur-lock
+timeout 15s ./tests/check-blur-lock
 
 omarchy plugin validate .
 

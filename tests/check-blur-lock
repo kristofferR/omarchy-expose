@@ -1,0 +1,103 @@
+#!/bin/bash
+# Exercise the real session helper with isolated runtime files and fake hyprctl.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+test_dir=$(mktemp -d)
+pids=()
+cleanup() {
+  if (( ${#pids[@]} )); then
+    kill "${pids[@]}" 2>/dev/null || true
+    wait "${pids[@]}" 2>/dev/null || true
+  fi
+  rm -rf "$test_dir"
+}
+trap cleanup EXIT
+fail() { echo "blur lock check: $*" >&2; exit 1; }
+
+mkdir "$test_dir/bin" "$test_dir/runtime"
+export XDG_RUNTIME_DIR="$test_dir/runtime"
+export BLUR_TEST_LOG="$test_dir/calls"
+export PATH="$test_dir/bin:$PATH"
+cat > "$test_dir/bin/hyprctl" <<'EOF'
+#!/bin/bash
+printf '%s %s\n' "${SESSION_ID:-test}" "$*" >> "$BLUR_TEST_LOG"
+if [[ $1 == --batch ]]; then
+  printf '%s\n' '{"bool":false}' '{"int":8}' '{"float":0.9}'
+fi
+EOF
+chmod +x "$test_dir/bin/hyprctl"
+
+lock_dir="$XDG_RUNTIME_DIR/omarchy-expose-blur-session.lock.d"
+victim="$test_dir/victim"
+printf 'keep this content\n' > "$victim"
+cp "$victim" "$test_dir/expected"
+
+# A stale symlink at the old lock filename must never be opened for writing.
+ln -s "$victim" "$XDG_RUNTIME_DIR/omarchy-expose-blur-session.lock"
+./background-blur-session </dev/null >"$test_dir/output"
+cmp -s "$victim" "$test_dir/expected" || fail "old lock symlink truncated its target"
+[[ -d $lock_dir && ! -L $lock_dir ]] || fail "lock directory was not retained"
+rmdir "$lock_dir"
+rm "$BLUR_TEST_LOG"
+
+# Reject file, dangling, and directory symlinks, plus an ordinary file/FIFO.
+mkdir "$test_dir/other-directory"
+for target in "$victim" "$test_dir/missing" "$test_dir/other-directory"; do
+  ln -s "$target" "$lock_dir"
+  if ./background-blur-session </dev/null >"$test_dir/output" 2>"$test_dir/error"; then
+    fail "accepted symlink to $target"
+  fi
+  [[ ! -e $BLUR_TEST_LOG ]] || fail "called hyprctl with an invalid lock"
+  rm "$lock_dir"
+done
+[[ ! -e $test_dir/missing ]] || fail "created dangling symlink target"
+cmp -s "$victim" "$test_dir/expected" || fail "changed symlink target"
+for kind in file fifo; do
+  if [[ $kind == file ]]; then
+    cp "$victim" "$lock_dir"
+  else
+    mkfifo "$lock_dir"
+  fi
+  if ./background-blur-session </dev/null >"$test_dir/output" 2>"$test_dir/error"; then
+    fail "accepted $kind as lock directory"
+  fi
+  [[ ! -e $BLUR_TEST_LOG ]] || fail "called hyprctl with an invalid lock"
+  if [[ $kind == file ]]; then
+    cmp -s "$lock_dir" "$test_dir/expected" || fail "truncated existing lock file"
+  fi
+  rm "$lock_dir"
+done
+
+wait_for_call() {
+  local pattern=$1 attempt
+  for attempt in {1..100}; do
+    if grep -q -- "$pattern" "$BLUR_TEST_LOG" 2>/dev/null; then return; fi
+    sleep 0.02
+  done
+  fail "timed out waiting for $pattern"
+}
+
+# Keep stdin open to hold a real session, then verify a second session waits
+# until the first restores its saved settings and releases the flock.
+mkfifo "$test_dir/input"
+exec 8<>"$test_dir/input"
+SESSION_ID=first ./background-blur-session <"$test_dir/input" 8>&- >"$test_dir/first-output" &
+pids+=("$!")
+wait_for_call 'first --batch'
+exec 9<"$lock_dir/."
+if flock -n 9; then fail "first session did not hold the directory lock"; fi
+SESSION_ID=second ./background-blur-session </dev/null 8>&- 9>&- >"$test_dir/second-output" &
+pids+=("$!")
+sleep 0.1
+kill -0 "${pids[1]}" || fail "second session exited instead of waiting"
+if grep -q '^second ' "$BLUR_TEST_LOG"; then fail "sessions overlapped"; fi
+exec 8>&-
+wait "${pids[0]}"
+wait "${pids[1]}"
+pids=()
+wait_for_call 'second --batch'
+first_restore=$(grep -n '^first .*enabled = false' "$BLUR_TEST_LOG" | cut -d: -f1)
+second_start=$(grep -n '^second ' "$BLUR_TEST_LOG" | head -1 | cut -d: -f1)
+[[ -n $first_restore && $first_restore -lt $second_start ]] || fail "second session started before restoration"
+flock -n 9 || fail "lock was not released after exit"
+echo "blur lock check: all checks passed"

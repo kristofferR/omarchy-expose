@@ -10,7 +10,17 @@ runtime_dir=${XDG_RUNTIME_DIR:-}
   echo "expose: a user-owned XDG_RUNTIME_DIR is required" >&2
   exit 1
 }
-exec 9>"$runtime_dir/omarchy-expose-blur-session.lock"
+lock_dir="$runtime_dir/omarchy-expose-blur-session.lock.d"
+if ! mkdir -m 700 -- "$lock_dir" 2>/dev/null; then
+  [[ -d $lock_dir && ! -L $lock_dir && -O $lock_dir ]] || {
+    echo "expose: a user-owned blur lock directory (not a symlink) is required" >&2
+    exit 1
+  }
+fi
+# Lock a directory read-only: never create or truncate a file through a planted
+# symlink. The trailing /. also rejects non-directories if the path is replaced.
+# Keep the directory so waiting and future sessions always lock the same inode.
+exec 9<"$lock_dir/."
 flock 9
 
 run_hyprctl() {

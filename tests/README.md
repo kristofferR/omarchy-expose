@@ -1,5 +1,8 @@
 Run `./validate` for the Qt 6 unit tests, QML lint, shell checks, and manifest
 validation, including lint of the assembled runtime fixture.
+`./tests/check-blur-lock` checks the blur helper with a temporary runtime directory
+and fake `hyprctl`: planted symlinks and invalid lock paths cannot damage files or
+change compositor settings, and concurrent sessions serialize through restoration.
 `./tests/check-settings-runtime` additionally runs Quickshell with a
 temporary config and the installed Omarchy host's actual `PluginShellApi`,
 `applyShellConfig`, `persistShellConfig`, and `updateEntryInline` implementations.
