@@ -673,9 +673,9 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [previewPlacementChoices, movePointerToggle],
+            [previewPlacementChoices, movePointerToggle, recoverOffscreenToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
-            [initialWorkspaceScopeChoices, displayModeChoicesControl],
+            [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle, afterWorkspaceMoveChoices, newWorkspaceTileToggle, closeWorkspaceGapsToggle],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
@@ -950,6 +950,19 @@ Item {
                                 onToggled: function (checked) { settingsView.controller.setMoveCursorToWindow(checked); }
                             }
                         }
+
+                        SettingRow {
+                            label: "Recover off-screen windows"
+                            description: "Center a floating window you activate when it sits outside every display."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: recoverOffscreenToggle
+                                checked: settingsView.controller.recoverOffscreenWindows
+                                onToggled: function (checked) { settingsView.controller.setRecoverOffscreenWindows(checked); }
+                            }
+                        }
                     }
 
                     SettingsPage {
@@ -994,7 +1007,7 @@ Item {
 
                     SettingsPage {
                         categoryIndex: 3
-                        title: "Which windows you see"
+                        title: "Which windows you see and where they go"
 
                         SettingRow {
                             label: "Open with"
@@ -1022,6 +1035,78 @@ Item {
                                 Layout.fillWidth: true
                                 value: settingsView.controller.multiMonitorMode
                                 onChosen: function (value) { settingsView.controller.setMultiMonitorMode(value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Workspace strip"
+                            description: "Show a tile for each workspace above the grid. Click a tile to switch to that workspace."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: workspaceStripToggle
+                                checked: settingsView.controller.showWorkspaceStrip
+                                onToggled: function (checked) { settingsView.controller.setShowWorkspaceStrip(checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Drag windows to workspaces"
+                            description: "Drop a window on a workspace tile to move it there. Pinned windows stay put."
+                            enabled: settingsView.controller.showWorkspaceStrip
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: workspaceDragToggle
+                                checked: settingsView.controller.workspaceDragEnabled
+                                onToggled: function (checked) { settingsView.controller.setWorkspaceDragEnabled(checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "After moving a window"
+                            description: "Follow switches to the window's new workspace and closes Exposé. Stay keeps the overview open."
+                            enabled: settingsView.controller.workspaceDragAvailable
+
+                            SettingChoices {
+                                id: afterWorkspaceMoveChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.afterWorkspaceMove
+                                options: [
+                                    { label: "Follow it", value: "follow" },
+                                    { label: "Stay here", value: "stay" }
+                                ]
+                                onChosen: function (value) { settingsView.controller.setAfterWorkspaceMove(value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "New workspace tile"
+                            description: "Add an empty tile that creates the lowest free numbered workspace."
+                            enabled: settingsView.controller.showWorkspaceStrip
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: newWorkspaceTileToggle
+                                checked: settingsView.controller.showNewWorkspaceTile
+                                onToggled: function (checked) { settingsView.controller.setShowNewWorkspaceTile(checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Close numbering gaps"
+                            description: "When a move empties a numbered workspace, renumber the later ones to fill the gap. This renames your workspaces."
+                            enabled: settingsView.controller.workspaceDragAvailable
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: closeWorkspaceGapsToggle
+                                checked: settingsView.controller.closeWorkspaceGaps
+                                onToggled: function (checked) { settingsView.controller.setCloseWorkspaceGaps(checked); }
                             }
                         }
                     }

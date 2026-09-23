@@ -23,6 +23,21 @@ ShellRoot {
         property int hotCornerDelay: 0
         readonly property int effectiveHotCornerDelay: hotCornerDelayPreview >= 0 ? hotCornerDelayPreview : hotCornerDelay
         property bool moveCursorToWindow: true
+        property bool recoverOffscreenWindows: false
+        property bool showWorkspaceStrip: true
+        property bool workspaceDragEnabled: true
+        readonly property bool workspaceDragAvailable: showWorkspaceStrip && workspaceDragEnabled
+        property string afterWorkspaceMove: "follow"
+        property var draggingTop: null
+        property int dragBegins: 0
+        property int dragUpdates: 0
+        property int dragFinishes: 0
+        function beginWindowDrag(top, host, x, y) { draggingTop = top; dragBegins++; }
+        function updateWindowDrag(host, x, y) { dragUpdates++; }
+        function cancelWindowDrag() { draggingTop = null; }
+        function finishWindowDrag(host, x, y) { draggingTop = null; dragFinishes++; }
+        property bool closeWorkspaceGaps: false
+        property bool showNewWorkspaceTile: true
         property string multiMonitorMode: "mirrored"
         property string initialWorkspaceScope: "all"
         property string workspaceLabelStyle: "full"
@@ -88,6 +103,7 @@ ShellRoot {
                 id: card
                 modelData: ({title: "Window preview", lastIpcObject: {class: "example"}, workspace: {id:1,name:"1"}})
                 controller: controller
+                dragHost: window.contentItem
                 screenToplevels: [modelData]
                 acceptsKeyboard: false
                 windowLayout: [Qt.rect(960, 25, 240, 160)]
@@ -113,7 +129,7 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [4, 3, 3, 3, 5, 8];
+        var expectedCounts = [4, 4, 3, 8, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);
@@ -131,6 +147,14 @@ ShellRoot {
         require(items[0].activeFocus, "Tab wraps to the category on page " + index);
         settings.moveSettingsFocus(false, true);
         require(items[items.length - 1].activeFocus, "Backtab wraps to the last control on page " + index);
+        if (index % 6 === 3) {
+            controller.workspaceDragEnabled = false;
+            require(settings.settingsFocusItems().length === 6, "drag-only workspace controls are skipped");
+            controller.showWorkspaceStrip = false;
+            require(settings.settingsFocusItems().length === 4, "workspace strip controls are skipped while the strip is off");
+            controller.showWorkspaceStrip = true;
+            controller.workspaceDragEnabled = true;
+        }
         if (index % 6 === 4) {
             controller.hotCornerEnabled = false;
             require(settings.settingsFocusItems().length === 2, "disabled hot corner controls are skipped");
@@ -146,8 +170,29 @@ ShellRoot {
         }
         settings.focusFirstSettingsControl();
     }
+    function checkCanceledDragStaysCanceled() {
+        require(card.inLayout, "drag test card is laid out");
+        card.pointerPressed(10, 10);
+        card.pointerMoved(12, 10);
+        require(controller.dragBegins === 0, "movement under the threshold does not drag");
+        card.pointerMoved(80, 10);
+        require(controller.dragBegins === 1 && controller.draggingTop === card.modelData, "movement past the threshold starts a drag");
+        card.pointerMoved(90, 10);
+        require(controller.dragUpdates === 1, "later movement updates the drag");
+        controller.cancelWindowDrag();
+        card.pointerMoved(120, 10);
+        card.pointerMoved(160, 10);
+        require(controller.dragBegins === 1 && controller.draggingTop === null, "canceled drag does not restart while the button is held");
+        card.pointerReleased(160, 10);
+        require(controller.dragFinishes === 0, "releasing a canceled drag does not drop the window");
+        card.pointerPressed(10, 10);
+        card.pointerMoved(80, 10);
+        require(controller.dragBegins === 2, "a new press can drag again");
+        card.pointerReleased(80, 10);
+        require(controller.dragFinishes === 1, "releasing an active drag finishes it");
+    }
     function finish() {
-        console.log("PASS: real shell theme tokens, views, compositor window borders, gradients, per-side widths, alpha, zero borders, live reload, settings layout and focus navigation");
+        console.log("PASS: real shell theme tokens, views, compositor window borders, gradients, per-side widths, alpha, zero borders, live reload, settings layout and focus navigation, workspace drag cancellation");
         Qt.quit();
     }
     function require(condition, message) {
@@ -232,6 +277,7 @@ ShellRoot {
                 }
                 test.phase++;
             } else if (test.phase === 23) {
+                checkCanceledDragStaysCanceled();
                 finish();
             }
         }

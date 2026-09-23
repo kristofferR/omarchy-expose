@@ -1,0 +1,87 @@
+#!/bin/bash
+set -euo pipefail
+
+address=${1:-}
+workspace_id=${2:-}
+workspace_name=${3:-}
+monitor_name=${4:-}
+new_workspace=${5:-false}
+source_id=${6:-0}
+follow=${7:-true}
+close_gaps=${8:-false}
+
+[[ $address =~ ^0x[0-9a-fA-F]+$ ]] || exit 2
+[[ $workspace_id =~ ^-?[0-9]+$ ]] || exit 2
+[[ -n $workspace_name && -n $monitor_name ]] || exit 2
+[[ $new_workspace == true || $new_workspace == false ]] || exit 2
+[[ $source_id =~ ^-?[0-9]+$ ]] || exit 2
+[[ $follow == true || $follow == false ]] || exit 2
+[[ $close_gaps == true || $close_gaps == false ]] || exit 2
+[[ $workspace_name != *$'\n'* && $workspace_name != *$'\r'* ]] || exit 2
+[[ $monitor_name != *$'\n'* && $monitor_name != *$'\r'* ]] || exit 2
+
+# Special workspaces are addressed by their own "special:<name>" selector.
+if (( workspace_id > 0 )); then
+  workspace_selector=$workspace_id
+elif [[ $workspace_name == special || $workspace_name == special:* ]]; then
+  workspace_selector=$workspace_name
+else
+  workspace_selector="name:$workspace_name"
+fi
+
+lua_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '"%s"' "$value"
+}
+
+workspace_literal=$(lua_quote "$workspace_selector")
+window_literal=$(lua_quote "address:$address")
+monitor_literal=$(lua_quote "$monitor_name")
+
+hyprctl eval "hl.dispatch(hl.dsp.window.move({ workspace = $workspace_literal, window = $window_literal, follow = false }))" >/dev/null
+
+# A new numeric workspace may initially attach to whichever monitor the
+# compositor currently focuses, which can differ from Exposé's display.
+if [[ $new_workspace == true ]]; then
+  hyprctl eval "hl.dispatch(hl.dsp.workspace.move({ workspace = $workspace_literal, monitor = $monitor_literal }))" >/dev/null
+fi
+
+# Switching away also lets Hyprland remove an empty active source workspace.
+if [[ $follow == true ]]; then
+  hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $workspace_literal }))" >/dev/null
+fi
+
+# Hyprland removes a nonpersistent workspace when its last window leaves.
+# When enabled, close that numeric gap. Renaming in ascending order always
+# moves into the ID vacated by the preceding rename.
+if [[ $close_gaps == true ]] && (( source_id > 0 && source_id != workspace_id )); then
+  workspaces_json=""
+  for attempt in 1 2 3 4; do
+    workspaces_json=$(hyprctl -j workspaces) || break
+    if ! jq -e --argjson source "$source_id" 'any(.[]; .id == $source)' <<< "$workspaces_json" >/dev/null; then
+      vacant_id=$source_id
+      mapfile -t later_ids < <(jq -r --argjson source "$source_id" '
+        [.[] | select(.id > $source and .name == (.id | tostring))] | sort_by(.id) | .[].id
+      ' <<< "$workspaces_json")
+      for current_id in "${later_ids[@]}"; do
+        if hyprctl eval "hl.dispatch(hl.dsp.workspace.change_id({ workspace = \"$current_id\", id = $vacant_id }))" >/dev/null; then
+          if (( current_id == workspace_id )); then
+            workspace_selector=$vacant_id
+          fi
+          vacant_id=$current_id
+        else
+          echo "expose: could not close the workspace numbering gap" >&2
+          break
+        fi
+      done
+      workspace_literal=$(lua_quote "$workspace_selector")
+      if [[ $follow == true && $workspace_selector != "$workspace_id" ]]; then
+        hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $workspace_literal }))" >/dev/null
+      fi
+      break
+    fi
+    sleep 0.05
+  done
+fi

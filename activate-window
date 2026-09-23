@@ -5,6 +5,7 @@ address="${1:-}"
 app_id="${2:-}"
 title="${3:-}"
 move_cursor="${4:-false}"
+recover_offscreen="${5:-false}"
 
 if [[ ! $address =~ ^0x[0-9a-fA-F]+$ ]]; then
   address=$(hyprctl -j clients | jq -r --arg app "${app_id,,}" --arg title "$title" '
@@ -15,8 +16,9 @@ fi
 
 [[ $address =~ ^0x[0-9a-fA-F]+$ ]] || exit 2
 
-# Let the layer-shell surface unmap before taking final compositor focus.
-sleep 0.2
+# The shell restores the previously focused client just after Exposé hides.
+# Let that handoff finish before selecting the clicked window.
+sleep 0.08
 
 if [[ $move_cursor != "true" ]]; then
   cursor_position=$(hyprctl cursorpos 2>/dev/null || true)
@@ -31,7 +33,59 @@ if [[ $move_cursor != "true" ]]; then
   fi
 fi
 
-hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$address' }))" >/dev/null
+# Optionally recover floating windows stranded outside the current monitor
+# layout. Missing or malformed geometry leaves activation unchanged.
+clients_json=""
+monitors_json=""
+if [[ $recover_offscreen == true ]]; then
+  clients_json=$(hyprctl -j clients 2>/dev/null) || clients_json=""
+  monitors_json=$(hyprctl -j monitors 2>/dev/null) || monitors_json=""
+fi
+if [[ -n $clients_json && -n $monitors_json ]]; then
+  offscreen=$(jq -nr --arg address "$address" \
+    --argjson clients "$clients_json" --argjson monitors "$monitors_json" '
+    try (
+      ($clients | map(select(.address == $address)) | .[0]) as $window
+      | if $window == null or $window.floating != true
+          or ([$window.at[0], $window.at[1], $window.size[0], $window.size[1]]
+              | any(.[]; type != "number"))
+          or $window.size[0] <= 0 or $window.size[1] <= 0
+        then false
+        else
+          # Monitor width and height are the unrotated mode in physical
+          # pixels; window geometry is logical. Convert each monitor to its
+          # logical box: swap for 90/270 degree transforms, divide by scale.
+          ($monitors | map(select(.disabled != true
+            and ([.x, .y, .width, .height] | all(.[]; type == "number"))
+            and .width > 0 and .height > 0
+            and ((.scale // 1) | type == "number" and . > 0)
+            and ((.transform // 0) | type == "number"))
+            | (.scale // 1) as $scale
+            | ((.transform // 0) % 2 == 1) as $rotated
+            | {x, y,
+               width: ((if $rotated then .height else .width end) / $scale),
+               height: ((if $rotated then .width else .height end) / $scale)})) as $active
+          | if ($active | length) == 0 then false
+            else
+              any($active[];
+                (([($window.at[0] + $window.size[0]), (.x + .width)] | min)
+                  - ([$window.at[0], .x] | max))
+                    >= ([64, $window.size[0], .width] | min)
+                and
+                (([($window.at[1] + $window.size[1]), (.y + .height)] | min)
+                  - ([$window.at[1], .y] | max))
+                    >= ([48, $window.size[1], .height] | min)) | not
+            end
+        end
+    ) catch false
+  ' 2>/dev/null) || offscreen=""
+  if [[ $offscreen == true ]]; then
+    hyprctl eval "hl.dispatch(hl.dsp.window.center({ window = 'address:$address' }))" >/dev/null || true
+  fi
+fi
+
+# Focusing a floating window does not necessarily put it above its peers.
+hyprctl eval "hl.dispatch(hl.dsp.focus({ window = 'address:$address' })); hl.dispatch(hl.dsp.window.bring_to_top())" >/dev/null
 
 if [[ -n ${cursor_x:-} && -n ${cursor_y:-} ]]; then
   hyprctl eval "hl.dispatch(hl.dsp.cursor.move({ x = $cursor_x, y = $cursor_y }))" >/dev/null

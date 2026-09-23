@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+
+workspace_id=${1:-}
+workspace_name=${2:-}
+monitor_name=${3:-}
+new_workspace=${4:-false}
+
+[[ $workspace_id =~ ^-?[0-9]+$ ]] || exit 2
+[[ -n $workspace_name && -n $monitor_name ]] || exit 2
+[[ $new_workspace == true || $new_workspace == false ]] || exit 2
+[[ $workspace_name != *$'\n'* && $workspace_name != *$'\r'* ]] || exit 2
+[[ $monitor_name != *$'\n'* && $monitor_name != *$'\r'* ]] || exit 2
+if [[ $new_workspace == true && $workspace_id -le 0 ]]; then
+  exit 2
+fi
+
+# Special workspaces are addressed by their own "special:<name>" selector.
+if (( workspace_id > 0 )); then
+  workspace_selector=$workspace_id
+elif [[ $workspace_name == special || $workspace_name == special:* ]]; then
+  workspace_selector=$workspace_name
+else
+  workspace_selector="name:$workspace_name"
+fi
+
+lua_quote() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '"%s"' "$value"
+}
+
+workspace_literal=$(lua_quote "$workspace_selector")
+
+# A new workspace belongs on the display whose tile was clicked.
+if [[ $new_workspace == true ]]; then
+  monitor_literal=$(lua_quote "$monitor_name")
+  hyprctl eval "hl.dispatch(hl.dsp.focus({ monitor = $monitor_literal }))" >/dev/null
+fi
+
+hyprctl eval "hl.dispatch(hl.dsp.focus({ workspace = $workspace_literal }))" >/dev/null

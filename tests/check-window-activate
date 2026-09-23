@@ -1,0 +1,125 @@
+#!/bin/bash
+set -euo pipefail
+
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+mkdir -p "$test_dir/bin"
+export ACTIVATE_TEST_LOG="$test_dir/calls"
+
+cat > "$test_dir/bin/hyprctl" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$ACTIVATE_TEST_LOG"
+case "$*" in
+  '-j clients') printf '%s\n' "$ACTIVATE_TEST_CLIENTS" ;;
+  '-j monitors') printf '%s\n' "$ACTIVATE_TEST_MONITORS" ;;
+  cursorpos) printf '123, 456\n' ;;
+esac
+EOF
+chmod +x "$test_dir/bin/hyprctl"
+export PATH="$test_dir/bin:$PATH"
+
+helper="$(dirname "$0")/../activate-window"
+monitor='[{"x":0,"y":0,"width":1920,"height":1080,"disabled":false}]'
+
+check_case() {
+  local name=$1 clients=$2 monitors=$3 expect_center=$4 move_cursor=$5 recover=${6:-true}
+  : > "$ACTIVATE_TEST_LOG"
+  ACTIVATE_TEST_CLIENTS=$clients ACTIVATE_TEST_MONITORS=$monitors \
+    "$helper" 0xabc app title "$move_cursor" "$recover"
+
+  local -a dispatches=()
+  local call
+  while IFS= read -r call; do
+    if [[ $call == eval\ * ]]; then
+      dispatches+=("$call")
+    fi
+  done < "$ACTIVATE_TEST_LOG"
+
+  local index=0
+  if [[ $expect_center == true ]]; then
+    [[ ${dispatches[index]:-} == *'hl.dsp.window.center({ window = '\''address:0xabc'\'' })'* ]] || {
+      echo "$name: missing center command" >&2
+      exit 1
+    }
+    ((index += 1))
+  fi
+  [[ ${dispatches[index]:-} == *'hl.dsp.focus({ window = '\''address:0xabc'\'' })'* ]] || {
+    echo "$name: missing focus command" >&2
+    exit 1
+  }
+  [[ ${dispatches[index]} == *'hl.dsp.window.bring_to_top()'* ]] || {
+    echo "$name: missing raise command" >&2
+    exit 1
+  }
+  ((index += 1))
+  if [[ $move_cursor == false ]]; then
+    [[ ${dispatches[index]:-} == *'hl.dsp.cursor.move({ x = 123, y = 456 })'* ]] || {
+      echo "$name: pointer position was not restored" >&2
+      exit 1
+    }
+    ((index += 1))
+  fi
+  [[ ${#dispatches[@]} == "$index" ]] || {
+    echo "$name: unexpected dispatcher command" >&2
+    exit 1
+  }
+}
+
+check_case offscreen \
+  '[{"address":"0xabc","floating":true,"at":[-4500,100],"size":[600,400]}]' \
+  "$monitor" true false
+check_case onscreen \
+  '[{"address":"0xabc","floating":true,"at":[100,100],"size":[600,400]}]' \
+  "$monitor" false false
+check_case negative_monitor \
+  '[{"address":"0xabc","floating":true,"at":[-2900,100],"size":[600,400]}]' \
+  '[{"x":-3000,"y":0,"width":1920,"height":1080,"disabled":false}]' false false
+check_case tiled \
+  '[{"address":"0xabc","floating":false,"at":[-4500,100],"size":[600,400]}]' \
+  "$monitor" false false
+check_case missing_geometry \
+  '[{"address":"0xabc","floating":true}]' \
+  "$monitor" false false
+check_case malformed_geometry \
+  'not json' "$monitor" false false
+check_case missing_monitors \
+  '[{"address":"0xabc","floating":true,"at":[-4500,100],"size":[600,400]}]' \
+  '[]' false false
+check_case narrow_overlap \
+  '[{"address":"0xabc","floating":true,"at":[-550,100],"size":[600,400]}]' \
+  "$monitor" true false
+check_case usable_overlap \
+  '[{"address":"0xabc","floating":true,"at":[-530,100],"size":[600,400]}]' \
+  "$monitor" false false
+check_case move_cursor \
+  '[{"address":"0xabc","floating":true,"at":[-4500,100],"size":[600,400]}]' \
+  "$monitor" true true
+# A 4K display at 200% is 1920 logical pixels wide.
+scaled_monitor='[{"x":0,"y":0,"width":3840,"height":2160,"scale":2,"transform":0,"disabled":false}]'
+check_case scaled_beyond_logical_edge \
+  '[{"address":"0xabc","floating":true,"at":[2000,100],"size":[600,400]}]' \
+  "$scaled_monitor" true false
+check_case scaled_onscreen \
+  '[{"address":"0xabc","floating":true,"at":[1200,600],"size":[600,400]}]' \
+  "$scaled_monitor" false false
+# Rotated 90 degrees, a 1920x1080 mode is 1080 wide and 1920 tall.
+rotated_monitor='[{"x":0,"y":0,"width":1920,"height":1080,"scale":1,"transform":1,"disabled":false}]'
+check_case rotated_beyond_logical_edge \
+  '[{"address":"0xabc","floating":true,"at":[1200,100],"size":[600,400]}]' \
+  "$rotated_monitor" true false
+check_case rotated_onscreen \
+  '[{"address":"0xabc","floating":true,"at":[100,1400],"size":[600,400]}]' \
+  "$rotated_monitor" false false
+check_case fractional_scale \
+  '[{"address":"0xabc","floating":true,"at":[1580,100],"size":[600,400]}]' \
+  '[{"x":0,"y":0,"width":2560,"height":1440,"scale":1.6,"transform":0,"disabled":false}]' true false
+
+check_case recovery_off \
+  '[{"address":"0xabc","floating":true,"at":[-4500,100],"size":[600,400]}]' \
+  "$monitor" false false false
+if grep -Fxq -- '-j clients' "$ACTIVATE_TEST_LOG"; then
+  echo "recovery_off: queried clients without recovery enabled" >&2
+  exit 1
+fi
+
+echo "window activate helper: passed"

@@ -20,6 +20,9 @@ command -v omarchy >/dev/null || {
 QT_QPA_PLATFORM=offscreen "$qt6_bin/qmltestrunner" -input tests
 ./tests/check-hot-corner-runtime
 ./tests/check-theme-runtime
+./tests/check-workspace-move
+./tests/check-workspace-activate
+./tests/check-window-activate
 
 # Make the installed UI component types visible to qmllint. Commons' dynamic
 # singleton objects remain runtime-injected, as in the shell itself.
@@ -36,7 +39,7 @@ ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
 # Lint the runtime fixture after injecting its host functions and imports.
 ./tests/check-settings-runtime --lint
 
-bash -n activate-window background-blur-session tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-blur-lock
+bash -n activate-window activate-workspace move-window-to-workspace background-blur-session tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-blur-lock tests/check-workspace-move tests/check-workspace-activate tests/check-window-activate
 timeout 15s ./tests/check-blur-lock
 
 omarchy plugin validate .

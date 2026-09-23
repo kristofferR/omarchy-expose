@@ -9,6 +9,7 @@ import qs.Ui as Ui // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 import "ScreenLayout.js" as ScreenLayout
+import "WorkspaceModel.js" as WorkspaceModel
 
 Item {
     id: root
@@ -174,11 +175,35 @@ Item {
         ? "per-monitor"
         : "mirrored"
     readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
+    // The workspace strip and everything it enables are opt-in, so a default
+    // install keeps the plain window grid.
+    readonly property bool showWorkspaceStrip: !!root.pluginEntry && root.pluginEntry.showWorkspaceStrip === true
+    readonly property bool workspaceDragEnabled: !root.pluginEntry || root.pluginEntry.workspaceDragEnabled !== false
+    readonly property bool workspaceDragAvailable: root.showWorkspaceStrip && root.workspaceDragEnabled
+    // "follow" switches to the destination and closes Exposé; "stay" keeps
+    // the overview open on the current workspace.
+    readonly property string afterWorkspaceMove: root.pluginEntry && root.pluginEntry.afterWorkspaceMove === "stay"
+        ? "stay"
+        : "follow"
+    readonly property bool closeWorkspaceGaps: !!root.pluginEntry && root.pluginEntry.closeWorkspaceGaps === true
+    readonly property bool showNewWorkspaceTile: !root.pluginEntry || root.pluginEntry.showNewWorkspaceTile !== false
+    readonly property bool recoverOffscreenWindows: !!root.pluginEntry && root.pluginEntry.recoverOffscreenWindows === true
     property bool opened: false
+    onWorkspaceDragAvailableChanged: {
+        if (!root.workspaceDragAvailable)
+            root.cancelWindowDrag();
+    }
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
     property string filterText: ""
-    property string workspaceScope: "all"
+    property string workspaceScope: "current"
+    property var draggingTop: null
+    property var dragHost: null
+    property real dragX: 0
+    property real dragY: 0
+    property var dragTarget: null
+    property string workspaceMoveMessage: ""
+    property var pendingActivation: null
     property int selectedIndex: 0
     property int hoveredIndex: -1
     property int previewIndex: -1
@@ -294,6 +319,10 @@ Item {
 
     function open(payload) {
         windowBorders.refresh();
+        root.cancelWindowDrag();
+        // Reopening before the close finished abandons its queued activation.
+        root.pendingActivation = null;
+        root.workspaceMoveMessage = "";
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
             root.backgroundBlurReleasePhase = 0;
@@ -340,6 +369,7 @@ Item {
     }
 
     function startDismiss(notifyShell) {
+        root.cancelWindowDrag();
         root.openingPending = false;
         root.closeSettings();
         root.hoveredIndex = -1;
@@ -469,9 +499,13 @@ Item {
 
     function finishDismiss() {
         var notifyShell = root.dismissNotifyShell;
+        var activation = root.pendingActivation;
         root.dismissNotifyShell = false;
+        root.pendingActivation = null;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
             root.shell.hide(root.pluginId);
+        if (activation)
+            Quickshell.execDetached(activation);
     }
 
     function updatePluginSetting(name, value) {
@@ -724,6 +758,43 @@ Item {
             root.updatePluginSetting("moveCursorToWindow", next);
     }
 
+    function setShowWorkspaceStrip(enabled) {
+        var next = enabled === true;
+        if (next !== root.showWorkspaceStrip)
+            root.updatePluginSetting("showWorkspaceStrip", next);
+    }
+
+    function setWorkspaceDragEnabled(enabled) {
+        var next = enabled === true;
+        if (next !== root.workspaceDragEnabled)
+            root.updatePluginSetting("workspaceDragEnabled", next);
+    }
+
+    function setAfterWorkspaceMove(value) {
+        var next = String(value) === "stay" ? "stay" : "follow";
+        if (next !== root.afterWorkspaceMove)
+            root.updatePluginSetting("afterWorkspaceMove", next);
+        return next;
+    }
+
+    function setCloseWorkspaceGaps(enabled) {
+        var next = enabled === true;
+        if (next !== root.closeWorkspaceGaps)
+            root.updatePluginSetting("closeWorkspaceGaps", next);
+    }
+
+    function setShowNewWorkspaceTile(enabled) {
+        var next = enabled === true;
+        if (next !== root.showNewWorkspaceTile)
+            root.updatePluginSetting("showNewWorkspaceTile", next);
+    }
+
+    function setRecoverOffscreenWindows(enabled) {
+        var next = enabled === true;
+        if (next !== root.recoverOffscreenWindows)
+            root.updatePluginSetting("recoverOffscreenWindows", next);
+    }
+
     function setMultiMonitorMode(value) {
         var mode = value === "per-monitor" ? "per-monitor" : "mirrored";
         if (mode !== root.multiMonitorMode)
@@ -884,6 +955,69 @@ Item {
         Hyprland.refreshToplevels();
     }
 
+    function workspaceEntriesForScreen(screenName) {
+        var workspaces = Hyprland.workspaces ? Hyprland.workspaces.values : [];
+        return WorkspaceModel.entries(workspaces, root.sessionToplevels, screenName,
+            root.multiMonitorMode === "per-monitor", root.showNewWorkspaceTile);
+    }
+
+    function beginWindowDrag(top, host, x, y) {
+        if (!top || !host || !root.workspaceDragAvailable || root.settingsOpen || root.previewIndex >= 0)
+            return;
+        root.draggingTop = top;
+        root.dragHost = host;
+        root.updateWindowDrag(host, x, y);
+    }
+
+    function updateWindowDrag(host, x, y) {
+        if (!root.draggingTop || root.dragHost !== host)
+            return;
+        root.dragX = x;
+        root.dragY = y;
+        root.dragTarget = host.workspaceTargetAt(x, y, root.draggingTop);
+    }
+
+    function cancelWindowDrag() {
+        root.draggingTop = null;
+        root.dragHost = null;
+        root.dragTarget = null;
+    }
+
+    function finishWindowDrag(host, x, y) {
+        if (!root.draggingTop || root.dragHost !== host)
+            return;
+        root.updateWindowDrag(host, x, y);
+        var top = root.draggingTop;
+        var target = root.dragTarget;
+        root.cancelWindowDrag();
+        if (!WorkspaceModel.canMove(top, target) || moveWindowProcess.running)
+            return;
+        var address = WindowModel.addressFor(top);
+        if (!address)
+            return;
+        root.workspaceMoveMessage = "";
+        var follow = root.afterWorkspaceMove === "follow";
+        moveWindowProcess.movedWindowAddress = address;
+        moveWindowProcess.command = [root.pluginDir + "/move-window-to-workspace",
+            address, String(target.id), target.name, target.monitorName,
+            target.isNew ? "true" : "false",
+            String(top.workspace ? top.workspace.id : 0),
+            follow ? "true" : "false",
+            root.closeWorkspaceGaps ? "true" : "false"];
+        moveWindowProcess.follow = follow;
+        moveWindowProcess.running = true;
+    }
+
+    function activateWorkspace(target) {
+        if (!target || root.draggingTop || moveWindowProcess.running || root.pendingActivation)
+            return;
+        root.workspaceMoveMessage = "";
+        root.pendingActivation = [root.pluginDir + "/activate-workspace",
+            String(target.id), target.name, target.monitorName,
+            target.isNew ? "true" : "false"];
+        root.dismiss();
+    }
+
     function handleDisplayStateChanged() {
         if (!root.surfaceMounted && !root.openingPending)
             return;
@@ -952,16 +1086,17 @@ Item {
     }
 
     function activate(top) {
-        if (!top)
+        if (!top || root.pendingActivation)
             return;
         var helper = root.pluginDir + "/activate-window";
-        Quickshell.execDetached([
+        root.pendingActivation = [
             helper,
             WindowModel.addressFor(top),
             WindowModel.appIdFor(top),
             String(top.title || ""),
-            root.moveCursorToWindow ? "true" : "false"
-        ]);
+            root.moveCursorToWindow ? "true" : "false",
+            root.recoverOffscreenWindows ? "true" : "false"
+        ];
         root.dismiss();
     }
 
@@ -1395,6 +1530,12 @@ Item {
     }
 
     function handleKey(event, layout) {
+        if (root.draggingTop) {
+            if (event.key === Qt.Key_Escape)
+                root.cancelWindowDrag();
+            event.accepted = true;
+            return;
+        }
         if (root.settingsOpen) {
             if (event.key === Qt.Key_Escape) {
                 if (root.footerHideConfirmationOpen)
@@ -1449,6 +1590,11 @@ Item {
     Connections {
         target: Hyprland.toplevels
         function onValuesChanged() { root.handleToplevelCollectionChanged(); }
+    }
+
+    Connections {
+        target: Hyprland.workspaces
+        function onValuesChanged() { root.modelRevision++; }
     }
 
     Instantiator {
@@ -1525,6 +1671,39 @@ Item {
             if (!root.hotCornerHovered())
                 root.hotCornerArmed = true;
         }
+    }
+
+    Process {
+        id: moveWindowProcess
+        property string errorText: ""
+        property string movedWindowAddress: ""
+        property bool follow: true
+        stderr: SplitParser {
+            onRead: function(line) { moveWindowProcess.errorText += line + " "; }
+        }
+        onExited: function(exitCode) { // qmllint disable signal-handler-parameters
+            if (exitCode !== 0) {
+                root.workspaceMoveMessage = moveWindowProcess.errorText.trim()
+                    || "Could not move the window. Try again.";
+                workspaceMoveMessageTimer.restart();
+            } else if (moveWindowProcess.follow) {
+                root.pendingActivation = [root.pluginDir + "/activate-window",
+                    moveWindowProcess.movedWindowAddress, "", "",
+                    root.moveCursorToWindow ? "true" : "false",
+                    root.recoverOffscreenWindows ? "true" : "false"];
+                root.dismiss();
+            } else {
+                root.refreshHyprlandState();
+            }
+            moveWindowProcess.errorText = "";
+            moveWindowProcess.movedWindowAddress = "";
+        }
+    }
+
+    Timer {
+        id: workspaceMoveMessageTimer
+        interval: 5000
+        onTriggered: root.workspaceMoveMessage = ""
     }
 
     Process {
@@ -1731,6 +1910,41 @@ Item {
             if (mode !== "on" && mode !== "off")
                 return "expected on or off";
             root.setMoveCursorToWindow(mode === "on");
+            return mode;
+        }
+        function workspaceStrip(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setShowWorkspaceStrip(mode === "on");
+            return mode;
+        }
+        function workspaceDrag(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setWorkspaceDragEnabled(mode === "on");
+            return mode;
+        }
+        function afterWorkspaceMove(mode: string): string {
+            if (mode !== "follow" && mode !== "stay")
+                return "expected follow or stay";
+            return root.setAfterWorkspaceMove(mode);
+        }
+        function closeWorkspaceGaps(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setCloseWorkspaceGaps(mode === "on");
+            return mode;
+        }
+        function newWorkspaceTile(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setShowNewWorkspaceTile(mode === "on");
+            return mode;
+        }
+        function recoverOffscreenWindows(mode: string): string {
+            if (mode !== "on" && mode !== "off")
+                return "expected on or off";
+            root.setRecoverOffscreenWindows(mode === "on");
             return mode;
         }
         function multiMonitorMode(mode: string): string {
@@ -1947,6 +2161,10 @@ Item {
                 var revision = root.modelRevision;
                 return root.toplevelsForScreen(String(modelData.name || ""));
             }
+            readonly property var workspaceEntries: {
+                var revision = root.modelRevision;
+                return root.workspaceEntriesForScreen(String(modelData.name || ""));
+            }
             // A Repeater over a JS array rebuilds every delegate when the array
             // is reassigned, and with it every screencopy capture and layer
             // texture. Cards are therefore created from every window on this
@@ -2002,6 +2220,24 @@ Item {
                 anchors.fill: parent
                 focus: overviewWindow.acceptsKeyboard
                 enabled: root.opened
+                function workspaceTargetAt(x, y, top) {
+                    var stripPoint = workspaceStrip.mapFromItem(keyCatcher, x, y);
+                    if (stripPoint.x < 0 || stripPoint.x >= workspaceStrip.width
+                            || stripPoint.y < 0 || stripPoint.y >= workspaceStrip.height)
+                        return null;
+                    for (var index = 0; index < workspaceRepeater.count; index++) {
+                        var tile = workspaceRepeater.itemAt(index);
+                        if (!tile)
+                            continue;
+                        var entry = overviewWindow.workspaceEntries[index];
+                        var point = tile.mapFromItem(keyCatcher, x, y);
+                        if (point.x >= 0 && point.x < tile.width
+                                && point.y >= 0 && point.y < tile.height
+                                && WorkspaceModel.canMove(top, entry))
+                            return entry;
+                    }
+                    return null;
+                }
                 scale: root.animationStyle === "zoom"
                     ? 0.82 + 0.18 * root.motionProgress
                     : (root.animationStyle === "slide"
@@ -2113,6 +2349,175 @@ Item {
                     }
 
                     Item {
+                        id: workspaceBand
+                        visible: root.showWorkspaceStrip
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Style.space(108)
+                        z: 1
+                        readonly property real appListingTop: {
+                            var layout = overviewArea.windowLayout;
+                            if (!layout || layout.length === 0)
+                                return overviewArea.y + overviewArea.height / 2;
+                            var top = Number.MAX_VALUE;
+                            for (var index = 0; index < layout.length; index++) {
+                                if (layout[index])
+                                    top = Math.min(top, layout[index].y);
+                            }
+                            return top === Number.MAX_VALUE
+                                ? overviewArea.y + overviewArea.height / 2
+                                : overviewArea.y + top;
+                        }
+                        transform: Translate {
+                            y: Math.max(0, (searchBar.y + searchBar.height + workspaceBand.appListingTop) / 2
+                                - workspaceBand.y - workspaceBand.height / 2)
+                        }
+
+                        Rectangle {
+                            x: -Style.spacing.sm
+                            width: overviewWindow.width
+                            height: parent.height
+                            color: Color.bar.background
+                            opacity: 0.6
+                        }
+
+                        Flickable {
+                            id: workspaceStrip
+                            anchors.fill: parent
+                            contentWidth: Math.max(width, workspaceRow.width)
+                            contentHeight: height
+                            clip: true
+                            interactive: !root.draggingTop
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            Row {
+                                id: workspaceRow
+                                x: Math.max(0, (workspaceStrip.width - width) / 2)
+                                height: parent.height
+                                spacing: Style.spacing.sm
+
+                                Repeater {
+                                    id: workspaceRepeater
+                                    model: overviewWindow.workspaceEntries
+
+                                    delegate: ThemedControl {
+                                        id: workspaceTile
+                                        required property var modelData
+                                        width: Style.space(148)
+                                        height: Style.space(92)
+                                        y: (parent.height - height) / 2
+                                        selected: modelData.active
+                                        hovered: tileMouse.containsMouse
+                                        focused: root.dragTarget === modelData
+                                        opacity: root.draggingTop && !WorkspaceModel.canMove(root.draggingTop, modelData) ? 0.5 : 1
+
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: Style.spacing.sm
+                                            spacing: Style.spacing.xs
+
+                                            Row {
+                                                width: parent.width
+                                                spacing: Style.spacing.xs
+
+                                                Text {
+                                                    width: parent.width - (monitorLabel.visible ? monitorLabel.width + parent.spacing : 0)
+                                                    text: (workspaceTile.modelData.isNew ? "New workspace " : "Workspace ")
+                                                        + root.formatWorkspaceLabel(workspaceTile.modelData.name)
+                                                    textFormat: Text.PlainText
+                                                    elide: Text.ElideRight
+                                                    color: Color.menu.text
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.bodySmall
+                                                    font.bold: true
+                                                }
+                                                Text {
+                                                    id: monitorLabel
+                                                    visible: root.multiMonitorMode !== "per-monitor"
+                                                    text: workspaceTile.modelData.monitorName
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    opacity: 0.65
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.caption
+                                                }
+                                            }
+
+                                            Rectangle {
+                                                width: parent.width
+                                                height: Style.space(48)
+                                                radius: Math.max(0, Style.cornerRadius - Style.spacing.sm)
+                                                color: Color.background
+                                                clip: true
+
+                                                Row {
+                                                    anchors.centerIn: parent
+                                                    spacing: Style.spacing.xs
+                                                    visible: !workspaceTile.modelData.isNew
+                                                        && workspaceTile.modelData.windows.length > 0
+
+                                                    Repeater {
+                                                        model: Math.min(4, workspaceTile.modelData.windows.length)
+                                                        delegate: Rectangle {
+                                                            required property int index
+                                                            width: Style.space(27)
+                                                            height: Style.space(29)
+                                                            radius: Math.max(0, Style.cornerRadius - Style.spacing.sm)
+                                                            color: Color.menu.background
+                                                            Image {
+                                                                anchors.centerIn: parent
+                                                                width: Style.space(19)
+                                                                height: Style.space(19)
+                                                                source: root.iconFor(workspaceTile.modelData.windows[index])
+                                                                fillMode: Image.PreserveAspectFit
+                                                                asynchronous: true
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    visible: workspaceTile.modelData.isNew
+                                                        || workspaceTile.modelData.windows.length === 0
+                                                    text: workspaceTile.modelData.isNew
+                                                        ? (root.workspaceDragAvailable ? "Click or drop here" : "Click to create")
+                                                        : "Empty"
+                                                    textFormat: Text.PlainText
+                                                    color: Color.menu.text
+                                                    opacity: 0.65
+                                                    font.family: Style.font.menuFamily
+                                                    font.pixelSize: Style.font.caption
+                                                }
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: tileMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (!root.draggingTop)
+                                                    root.activateWorkspace(workspaceTile.modelData);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: !root.showFooter && root.workspaceMoveMessage.length > 0
+                        text: root.workspaceMoveMessage
+                        textFormat: Text.PlainText
+                        color: Color.menu.text
+                        font.family: Style.font.menuFamily
+                        font.pixelSize: Style.font.bodySmall
+                    }
+
+                    Item {
                         id: overviewArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -2141,6 +2546,7 @@ Item {
 
                                 delegate: WindowCard {
                                     controller: root
+                                    dragHost: keyCatcher
                                     screenToplevels: overviewWindow.screenToplevels
                                     acceptsKeyboard: overviewWindow.acceptsKeyboard
                                     windowLayout: overviewArea.windowLayout
@@ -2172,7 +2578,9 @@ Item {
                         visible: root.showFooter
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
+                            text: root.workspaceMoveMessage
+                                || (root.workspaceDragAvailable ? "Drag to a workspace   " : "")
+                                + "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
                             color: Color.menu.text
                             opacity: 0.55
@@ -2198,6 +2606,39 @@ Item {
                                 onExited: settingsControl.hovered = false
                                 onClicked: root.openSettings()
                             }
+                        }
+                    }
+                }
+
+                ThemedControl {
+                    visible: root.draggingTop !== null && root.dragHost === keyCatcher
+                    x: Math.min(keyCatcher.width - width, root.dragX + Style.spacing.md)
+                    y: Math.min(keyCatcher.height - height, root.dragY + Style.spacing.md)
+                    z: 100
+                    width: Style.space(192)
+                    height: Style.space(44)
+                    focused: root.dragTarget !== null
+                    opacity: 0.94
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Style.spacing.sm
+                        anchors.rightMargin: Style.spacing.sm
+                        spacing: Style.spacing.sm
+                        Image {
+                            Layout.preferredWidth: Style.space(25)
+                            Layout.preferredHeight: Style.space(25)
+                            source: root.draggingTop ? root.iconFor(root.draggingTop) : ""
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.draggingTop ? String(root.draggingTop.title || "Window") : ""
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            color: Color.menu.text
+                            font.family: Style.font.menuFamily
+                            font.pixelSize: Style.font.bodySmall
                         }
                     }
                 }

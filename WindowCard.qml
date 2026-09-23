@@ -12,6 +12,7 @@ Ui.BorderSurface {
 
     required property var modelData
     required property var controller
+    required property var dragHost
     required property var screenToplevels
     required property bool acceptsKeyboard
     required property var windowLayout
@@ -64,10 +65,59 @@ Ui.BorderSurface {
     borderSpec: integratedFooter ? outlineSpec : Border.none()
     opacity: card.controller.previewIndex < 0 || previewed ? 1 : 0.28
 
+    // A press starts at most one workspace drag. Once the controller cancels
+    // it (Escape, closing, a settings change), later movement in the same
+    // press must not start another.
+    function pointerPressed(x, y) {
+        pointerArea.pressX = x;
+        pointerArea.pressY = y;
+        pointerArea.wasDrag = false;
+        pointerArea.dragActive = false;
+    }
+
+    function pointerMoved(x, y) {
+        if (!card.inLayout || !card.controller.workspaceDragAvailable)
+            return;
+        var point = pointerArea.mapToItem(card.dragHost, x, y);
+        if (!pointerArea.dragActive) {
+            var dx = x - pointerArea.pressX;
+            var dy = y - pointerArea.pressY;
+            if (dx * dx + dy * dy < Style.space(8) * Style.space(8)
+                    || card.controller.previewIndex >= 0)
+                return;
+            pointerArea.dragActive = true;
+            pointerArea.wasDrag = true;
+            card.controller.beginWindowDrag(card.modelData, card.dragHost, point.x, point.y);
+        } else if (card.controller.draggingTop === card.modelData) {
+            card.controller.updateWindowDrag(card.dragHost, point.x, point.y);
+        }
+    }
+
+    function pointerReleased(x, y) {
+        if (!pointerArea.dragActive)
+            return;
+        pointerArea.dragActive = false;
+        if (card.controller.draggingTop !== card.modelData)
+            return;
+        var point = pointerArea.mapToItem(card.dragHost, x, y);
+        card.controller.finishWindowDrag(card.dragHost, point.x, point.y);
+    }
+
+    function pointerCanceled() {
+        if (pointerArea.dragActive && card.controller.draggingTop === card.modelData)
+            card.controller.cancelWindowDrag();
+        pointerArea.dragActive = false;
+    }
+
     MouseArea {
+        id: pointerArea
         anchors.fill: parent
         enabled: !card.controller.settingsOpen && (card.controller.previewIndex < 0 || card.previewed)
         hoverEnabled: true
+        property real pressX: 0
+        property real pressY: 0
+        property bool dragActive: false
+        property bool wasDrag: false
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
@@ -90,7 +140,16 @@ Ui.BorderSurface {
 
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+        onPressed: function(mouse) { card.pointerPressed(mouse.x, mouse.y); }
+        onPositionChanged: function(mouse) {
+            if (mouse.buttons & Qt.LeftButton)
+                card.pointerMoved(mouse.x, mouse.y);
+        }
+        onReleased: function(mouse) { card.pointerReleased(mouse.x, mouse.y); }
+        onCanceled: card.pointerCanceled()
         onClicked: function(mouse) {
+            if (wasDrag)
+                return;
             if (mouse.button === Qt.MiddleButton)
                 card.controller.requestClose(card.modelData);
             else

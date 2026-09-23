@@ -1,0 +1,104 @@
+#!/bin/bash
+set -euo pipefail
+
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+mkdir -p "$test_dir/bin"
+export MOVE_TEST_LOG="$test_dir/calls"
+
+cat > "$test_dir/bin/hyprctl" <<'EOF'
+#!/bin/bash
+if [[ $1 == -j && $2 == workspaces ]]; then
+  printf '%s\n' "${MOVE_TEST_WORKSPACES:-[]}"
+  exit 0
+fi
+printf '%s\n' "$2" >> "$MOVE_TEST_LOG"
+if [[ ${MOVE_TEST_FAIL_MOVE:-false} == true && $2 == *'hl.dsp.window.move('* ]]; then
+  exit 1
+fi
+EOF
+chmod +x "$test_dir/bin/hyprctl"
+export PATH="$test_dir/bin:$PATH"
+
+helper="$(dirname "$0")/../move-window-to-workspace"
+
+MOVE_TEST_WORKSPACES='[{"id":1,"name":"1"},{"id":2,"name":"2"}]' \
+  "$helper" 0xabc 2 2 DP-1 false 1
+[[ $(wc -l < "$MOVE_TEST_LOG") == 2 ]]
+grep -Fq 'hl.dsp.window.move({ workspace = "2", window = "address:0xabc", follow = false })' "$MOVE_TEST_LOG"
+grep -Fq 'hl.dsp.focus({ workspace = "2" })' "$MOVE_TEST_LOG"
+
+: > "$MOVE_TEST_LOG"
+MOVE_TEST_WORKSPACES='[{"id":3,"name":"3"}]' \
+  "$helper" 0xabc 3 3 HDMI-A-1 true 2 true true
+[[ $(wc -l < "$MOVE_TEST_LOG") == 5 ]]
+grep -Fq 'hl.dsp.workspace.move({ workspace = "3", monitor = "HDMI-A-1" })' "$MOVE_TEST_LOG"
+[[ $(sed -n '3p' "$MOVE_TEST_LOG") == *'hl.dsp.focus({ workspace = "3" })'* ]]
+grep -Fq 'hl.dsp.workspace.change_id({ workspace = "3", id = 2 })' "$MOVE_TEST_LOG"
+grep -Fq 'hl.dsp.focus({ workspace = "2" })' "$MOVE_TEST_LOG"
+
+: > "$MOVE_TEST_LOG"
+MOVE_TEST_WORKSPACES='[{"id":7,"name":"7"},{"id":8,"name":"8"}]' \
+  "$helper" 0xabc 8 8 DP-1 false 6 true true
+[[ $(sed -n '2p' "$MOVE_TEST_LOG") == *'hl.dsp.focus({ workspace = "8" })'* ]]
+grep -Fq 'hl.dsp.workspace.change_id({ workspace = "7", id = 6 })' "$MOVE_TEST_LOG"
+grep -Fq 'hl.dsp.workspace.change_id({ workspace = "8", id = 7 })' "$MOVE_TEST_LOG"
+grep -Fq 'hl.dsp.focus({ workspace = "7" })' "$MOVE_TEST_LOG"
+
+# Gap closing is opt-in.
+: > "$MOVE_TEST_LOG"
+MOVE_TEST_WORKSPACES='[{"id":7,"name":"7"},{"id":8,"name":"8"}]' \
+  "$helper" 0xabc 8 8 DP-1 false 6
+[[ $(wc -l < "$MOVE_TEST_LOG") == 2 ]]
+if grep -Fq 'change_id' "$MOVE_TEST_LOG"; then
+  echo "workspace gaps were closed without being enabled" >&2
+  exit 1
+fi
+
+# Staying in Exposé moves the window without switching workspaces.
+: > "$MOVE_TEST_LOG"
+MOVE_TEST_WORKSPACES='[{"id":1,"name":"1"},{"id":2,"name":"2"}]' \
+  "$helper" 0xabc 2 2 DP-1 false 1 false false
+[[ $(wc -l < "$MOVE_TEST_LOG") == 1 ]]
+grep -Fq 'hl.dsp.window.move(' "$MOVE_TEST_LOG"
+
+: > "$MOVE_TEST_LOG"
+MOVE_TEST_WORKSPACES='[{"id":7,"name":"7"},{"id":8,"name":"8"}]' \
+  "$helper" 0xabc 8 8 DP-1 false 6 false true
+grep -Fq 'hl.dsp.workspace.change_id({ workspace = "7", id = 6 })' "$MOVE_TEST_LOG"
+if grep -Fq 'hl.dsp.focus(' "$MOVE_TEST_LOG"; then
+  echo "staying in Exposé switched workspaces" >&2
+  exit 1
+fi
+
+: > "$MOVE_TEST_LOG"
+if "$helper" 0xabc 2 2 DP-1 false 1 maybe false; then
+  echo "invalid follow flag was accepted" >&2
+  exit 1
+fi
+[[ ! -s $MOVE_TEST_LOG ]]
+
+: > "$MOVE_TEST_LOG"
+"$helper" 0xabc -98 special:scratch DP-1 false 1 false
+grep -Fq 'hl.dsp.window.move({ workspace = "special:scratch", window = "address:0xabc", follow = false })' "$MOVE_TEST_LOG"
+
+: > "$MOVE_TEST_LOG"
+"$helper" 0xabc -4 'team "a"' DP-1 false
+grep -Fq 'workspace = "name:team \"a\""' "$MOVE_TEST_LOG"
+grep -Fq 'hl.dsp.focus({ workspace = "name:team \"a\"" })' "$MOVE_TEST_LOG"
+
+: > "$MOVE_TEST_LOG"
+if MOVE_TEST_FAIL_MOVE=true "$helper" 0xabc 2 2 DP-1 false; then
+  echo "failed move switched workspaces" >&2
+  exit 1
+fi
+[[ $(wc -l < "$MOVE_TEST_LOG") == 1 ]]
+
+: > "$MOVE_TEST_LOG"
+if "$helper" bad-address 2 2 DP-1 false; then
+  echo "invalid window address was accepted" >&2
+  exit 1
+fi
+[[ ! -s $MOVE_TEST_LOG ]]
+
+echo "workspace move helper: passed"

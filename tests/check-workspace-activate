@@ -1,0 +1,52 @@
+#!/bin/bash
+set -euo pipefail
+
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+mkdir -p "$test_dir/bin"
+export ACTIVATE_TEST_LOG="$test_dir/calls"
+
+cat > "$test_dir/bin/hyprctl" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$2" >> "$ACTIVATE_TEST_LOG"
+if [[ ${ACTIVATE_TEST_FAIL:-false} == true ]]; then
+  exit 1
+fi
+EOF
+chmod +x "$test_dir/bin/hyprctl"
+export PATH="$test_dir/bin:$PATH"
+
+helper="$(dirname "$0")/../activate-workspace"
+
+"$helper" 7 7 DP-1 false
+[[ $(wc -l < "$ACTIVATE_TEST_LOG") == 1 ]]
+grep -Fxq 'hl.dispatch(hl.dsp.focus({ workspace = "7" }))' "$ACTIVATE_TEST_LOG"
+
+: > "$ACTIVATE_TEST_LOG"
+"$helper" -3 'team "a"' DP-1 false
+grep -Fxq 'hl.dispatch(hl.dsp.focus({ workspace = "name:team \"a\"" }))' "$ACTIVATE_TEST_LOG"
+
+: > "$ACTIVATE_TEST_LOG"
+"$helper" -98 special:scratch DP-1 false
+grep -Fxq 'hl.dispatch(hl.dsp.focus({ workspace = "special:scratch" }))' "$ACTIVATE_TEST_LOG"
+
+: > "$ACTIVATE_TEST_LOG"
+"$helper" 8 8 HDMI-A-1 true
+[[ $(wc -l < "$ACTIVATE_TEST_LOG") == 2 ]]
+[[ $(sed -n '1p' "$ACTIVATE_TEST_LOG") == 'hl.dispatch(hl.dsp.focus({ monitor = "HDMI-A-1" }))' ]]
+[[ $(sed -n '2p' "$ACTIVATE_TEST_LOG") == 'hl.dispatch(hl.dsp.focus({ workspace = "8" }))' ]]
+
+: > "$ACTIVATE_TEST_LOG"
+if ACTIVATE_TEST_FAIL=true "$helper" 7 7 DP-1 false; then
+  echo "failed workspace focus was accepted" >&2
+  exit 1
+fi
+
+: > "$ACTIVATE_TEST_LOG"
+if "$helper" bad-id bad-id DP-1 false; then
+  echo "invalid workspace ID was accepted" >&2
+  exit 1
+fi
+[[ ! -s $ACTIVATE_TEST_LOG ]]
+
+echo "workspace activate helper: passed"
