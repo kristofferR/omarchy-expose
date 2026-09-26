@@ -37,6 +37,10 @@ ShellRoot {
         property int previewIndex: -1
         property int previewExitIndex: -1
         property int selectedIndex: -1
+        property string selectionScreenName: ""
+        property string previewScreenName: ""
+        property string previewExitScreenName: ""
+        property string hoveredScreenName: ""
         property int hoveredIndex: -1
         property bool opened: false
         property int windowFooterHeight: 40
@@ -89,7 +93,7 @@ ShellRoot {
                 modelData: ({title: "Window preview", lastIpcObject: {class: "example"}, workspace: {id:1,name:"1"}})
                 controller: controller
                 screenToplevels: [modelData]
-                acceptsKeyboard: false
+                screenName: "DP-1"
                 windowLayout: [Qt.rect(960, 25, 240, 160)]
                 layoutAreaWidth: 1240
                 layoutAreaHeight: 1040
@@ -185,7 +189,7 @@ ShellRoot {
                 require(card.outlineSpec.gradient.angle === 45 && Qt.color(card.outlineSpec.gradient.colors[0]).r === Qt.color("#4a9a68").r, "ARGB conversion and angle");
                 card.hovered = false;
                 controller.selectedIndex = 0;
-                card.acceptsKeyboard = true;
+                controller.selectionScreenName = card.screenName;
                 require(card.outlineSpec.widths.top === 2 && card.outlineSpec.gradient.enabled, "keyboard selection keeps window border despite zero control borders");
                 windowBorders.applySnapshot("not json");
                 compositorBorders(-1, "ff000000", "ff000000");

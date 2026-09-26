@@ -52,4 +52,27 @@ TestCase {
         compare(DisplayModel.keyboardTargets(instances), openingTargets);
         compare(DisplayModel.keyboardTargets([instances[0]]).length, 0);
     }
+
+    function test_arrowNavigationCrossesDisplayBoundaries() {
+        var targets = [
+            {screenName: "left", index: 0, x: -1500, y: 200, width: 300, height: 200},
+            {screenName: "left", index: 1, x: -500, y: 200, width: 300, height: 200},
+            {screenName: "right", index: 0, x: 100, y: 220, width: 300, height: 200},
+            {screenName: "right", index: 1, x: 900, y: 220, width: 300, height: 200}
+        ];
+        compare(DisplayModel.directionalTarget(targets, "left", 0, 1, 0, null), targets[1]);
+        compare(DisplayModel.directionalTarget(targets, "left", 1, 1, 0, null), targets[2]);
+        compare(DisplayModel.directionalTarget(targets, "right", 0, -1, 0, null), targets[1]);
+        compare(DisplayModel.directionalTarget(targets, "right", 1, 1, 0, null), null);
+    }
+
+    function test_arrowNavigationUsesScreenCenterWhenItHasNoWindows() {
+        var upper = {screenName: "upper", index: 0, x: 300, y: -800, width: 300, height: 200};
+        var lower = {screenName: "lower", index: 0, x: 300, y: 400, width: 300, height: 200};
+        var targets = [upper, lower];
+        var emptyScreen = {x: 0, y: 0, width: 900, height: 600};
+        compare(DisplayModel.directionalTarget(targets, "empty", 0, 0, -1, emptyScreen), upper);
+        compare(DisplayModel.directionalTarget(targets, "empty", 0, 0, 1, emptyScreen), lower);
+        compare(DisplayModel.directionalTarget(targets, "empty", 0, 1, 0, emptyScreen), null);
+    }
 }

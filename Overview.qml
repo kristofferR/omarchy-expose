@@ -181,9 +181,13 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
+    property string selectedScreenName: ""
     property int selectedIndex: 0
+    property string hoveredScreenName: ""
     property int hoveredIndex: -1
+    property string previewScreenName: ""
     property int previewIndex: -1
+    property string previewExitScreenName: ""
     property int previewExitIndex: -1
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
@@ -268,12 +272,24 @@ Item {
     readonly property var overviewKeyboardTargets: {
         return DisplayModel.keyboardTargets(surfaceInstances.instances);
     }
+    readonly property string selectionScreenName: {
+        if (root.multiMonitorMode === "all-monitors") {
+            for (var index = 0; index < root.mountedScreens.length; index++) {
+                var screen = root.mountedScreens[index];
+                if (screen && String(screen.name || "") === root.selectedScreenName)
+                    return root.selectedScreenName;
+            }
+        }
+        return root.keyboardScreenName;
+    }
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
-        return root.toplevelsForScreen(root.keyboardScreenName);
+        return root.toplevelsForScreen(root.selectionScreenName);
     }
 
     onMultiMonitorModeChanged: {
+        root.selectedScreenName = root.keyboardScreenName;
+        root.hoveredScreenName = "";
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
@@ -315,6 +331,7 @@ Item {
             return;
         if (!root.overviewScreenPinned)
             root.overviewScreenName = root.keyboardScreenName;
+        root.selectedScreenName = root.keyboardScreenName;
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
@@ -673,7 +690,9 @@ Item {
         root.previewSlowMotion = false;
         root.previewNavigationSlowMotion = false;
         root.previewIndex = -1;
+        root.previewScreenName = "";
         root.previewExitIndex = -1;
+        root.previewExitScreenName = "";
     }
 
     function setHotCornerEnabled(enabled) {
@@ -855,6 +874,7 @@ Item {
     function setFilter(value) {
         root.filterText = value;
         root.selectedIndex = 0;
+        root.hoveredScreenName = "";
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
@@ -867,6 +887,7 @@ Item {
         if (next === root.workspaceScope)
             return;
         root.workspaceScope = next;
+        root.hoveredScreenName = "";
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
@@ -889,6 +910,7 @@ Item {
         if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
         var selectedTop = root.filteredToplevels[root.selectedIndex];
+        root.hoveredScreenName = "";
         root.hoveredIndex = -1;
         root.clearPreview();
         root.modelRevision++;
@@ -900,8 +922,10 @@ Item {
         if (!root.surfaceMounted && !root.openingPending)
             return;
         var selectedTop = root.filteredToplevels[root.selectedIndex];
-        var previewTop = root.previewIndex >= 0 ? root.filteredToplevels[root.previewIndex] : null;
-        var previewExitTop = root.previewExitIndex >= 0 ? root.filteredToplevels[root.previewExitIndex] : null;
+        var previewTop = root.previewIndex >= 0
+            ? root.toplevelsForScreen(root.previewScreenName)[root.previewIndex] : null;
+        var previewExitTop = root.previewExitIndex >= 0
+            ? root.toplevelsForScreen(root.previewExitScreenName)[root.previewExitIndex] : null;
         var membershipChanged = root.syncSessionToplevels();
         if (root.openingPending) {
             var sessionIndex = root.sessionToplevels.indexOf(top);
@@ -920,15 +944,16 @@ Item {
         root.selectedIndex = Math.max(0, selectedIndex);
 
         if (previewTop) {
-            var previewIndex = root.filteredToplevels.indexOf(previewTop);
+            var previewIndex = root.toplevelsForScreen(root.previewScreenName).indexOf(previewTop);
             if (previewIndex < 0)
                 root.clearPreview();
             else
                 root.previewIndex = previewIndex;
-        } else if (previewExitTop) {
-            var previewExitIndex = root.filteredToplevels.indexOf(previewExitTop);
+        }
+        if (previewExitTop && root.previewExitIndex >= 0) {
+            var previewExitIndex = root.toplevelsForScreen(root.previewExitScreenName).indexOf(previewExitTop);
             if (previewExitIndex < 0)
-                root.clearPreview();
+                root.previewExitIndex = -1;
             else
                 root.previewExitIndex = previewExitIndex;
         }
@@ -946,7 +971,7 @@ Item {
             root.modelRevision++;
         if (root.selectedIndex >= root.filteredToplevels.length)
             root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-        if (root.previewIndex >= root.filteredToplevels.length)
+        if (root.previewIndex >= root.toplevelsForScreen(root.previewScreenName).length)
             root.clearPreview();
     }
 
@@ -1317,41 +1342,36 @@ Item {
         };
     }
 
-    function moveDirectional(dx, dy, layout, slowMotion) {
-        if (!layout || !layout[root.selectedIndex])
-            return;
-        var current = layout[root.selectedIndex];
-        var currentX = current.x + current.width / 2;
-        var currentY = current.y + current.height / 2;
-        var bestIndex = -1;
-        var bestScore = Number.MAX_VALUE;
-        for (var index = 0; index < layout.length; index++) {
-            if (index === root.selectedIndex || !layout[index])
+    function moveDirectional(dx, dy, slowMotion) {
+        var targets = [];
+        var fallback = null;
+        var surfaces = surfaceInstances.instances;
+        for (var surfaceIndex = 0; surfaceIndex < surfaces.length; surfaceIndex++) {
+            var surface = surfaces[surfaceIndex];
+            if (!surface)
                 continue;
-            var candidate = layout[index];
-            var deltaX = candidate.x + candidate.width / 2 - currentX;
-            var deltaY = candidate.y + candidate.height / 2 - currentY;
-            var primary = dx !== 0 ? deltaX * dx : deltaY * dy;
-            if (primary <= 0)
-                continue;
-            var cross = dx !== 0 ? Math.abs(deltaY) : Math.abs(deltaX);
-            var score = primary + cross * cross / Math.max(1, primary) * 2;
-            if (score < bestScore) {
-                bestScore = score;
-                bestIndex = index;
-            }
+            targets = targets.concat(surface.navigationTargets());
+            if (surface.screenName === root.selectionScreenName)
+                fallback = surface.navigationFallback();
         }
-        if (bestIndex < 0)
+        var next = DisplayModel.directionalTarget(targets, root.selectionScreenName,
+            root.selectedIndex, dx, dy, fallback);
+        if (!next)
             return;
 
         var previousPreviewIndex = root.previewIndex;
-        root.selectedIndex = bestIndex;
+        root.selectedScreenName = next.screenName;
+        root.selectedIndex = next.index;
+        root.hoveredScreenName = "";
+        root.hoveredIndex = -1;
         if (previousPreviewIndex >= 0) {
             root.previewSlowMotion = false;
             root.previewNavigationSlowMotion = slowMotion === true;
             previewExitTimer.stop();
+            root.previewExitScreenName = root.previewScreenName;
             root.previewExitIndex = previousPreviewIndex;
-            root.previewIndex = bestIndex;
+            root.previewScreenName = next.screenName;
+            root.previewIndex = next.index;
             previewExitTimer.restart();
         }
     }
@@ -1360,16 +1380,21 @@ Item {
         root.previewNavigationSlowMotion = false;
         root.previewSlowMotion = slowMotion === true;
         if (root.previewIndex >= 0) {
+            root.previewExitScreenName = root.previewScreenName;
             root.previewExitIndex = root.previewIndex;
             root.previewIndex = -1;
+            root.previewScreenName = "";
             previewExitTimer.restart();
             return;
         }
         previewExitTimer.stop();
         root.previewExitIndex = -1;
-        var target = root.hoveredIndex >= 0 ? root.hoveredIndex : root.selectedIndex;
+        root.previewExitScreenName = "";
+        var target = root.hoveredScreenName === root.selectionScreenName && root.hoveredIndex >= 0
+            ? root.hoveredIndex : root.selectedIndex;
         if (target >= 0 && target < root.filteredToplevels.length) {
             root.selectedIndex = target;
+            root.previewScreenName = root.selectionScreenName;
             root.previewIndex = target;
         }
     }
@@ -1393,7 +1418,7 @@ Item {
         return result;
     }
 
-    function handleKey(event, layout) {
+    function handleKey(event) {
         if (root.settingsOpen) {
             if (event.key === Qt.Key_Escape) {
                 if (root.footerHideConfirmationOpen)
@@ -1421,13 +1446,13 @@ Item {
                 root.toggleWorkspaceScope();
         }
         else if (event.key === Qt.Key_Left)
-            root.moveDirectional(-1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(-1, 0, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Right)
-            root.moveDirectional(1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(1, 0, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Up)
-            root.moveDirectional(0, -1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(0, -1, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Down)
-            root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(0, 1, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             root.activate(root.filteredToplevels[root.selectedIndex]);
         else if (event.key === Qt.Key_Q
@@ -1490,6 +1515,7 @@ Item {
         interval: root.previewAnimationDuration
         onTriggered: {
             root.previewExitIndex = -1;
+            root.previewExitScreenName = "";
             root.previewNavigationSlowMotion = false;
             if (root.previewIndex < 0)
                 root.previewSlowMotion = false;
@@ -1606,9 +1632,19 @@ Item {
         function onActiveToplevelChanged() {
             if (!root.opened)
                 return;
-            var index = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
-            if (index >= 0)
-                root.selectedIndex = index;
+            var active = Hyprland.activeToplevel;
+            if (root.multiMonitorMode === "all-monitors" && active && active.monitor) {
+                var screenName = String(active.monitor.name || "");
+                var screenIndex = root.toplevelsForScreen(screenName).indexOf(active);
+                if (screenIndex >= 0) {
+                    root.selectedScreenName = screenName;
+                    root.selectedIndex = screenIndex;
+                }
+            } else {
+                var index = root.filteredToplevels.indexOf(active);
+                if (index >= 0)
+                    root.selectedIndex = index;
+            }
         }
         function onRawEvent(event) {
             if (event && event.name === "configreloaded")
@@ -1929,6 +1965,7 @@ Item {
 
         OverviewSurface {
             id: overviewWindow
+            readonly property string screenName: String(modelData.name || "")
             readonly property bool acceptsKeyboard: {
                 var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
@@ -1945,6 +1982,34 @@ Item {
             readonly property var screenToplevels: {
                 var revision = root.modelRevision;
                 return root.toplevelsForScreen(String(modelData.name || ""));
+            }
+            function navigationFallback() {
+                var monitor = root.monitorForScreen(overviewWindow.screenName);
+                var screen = overviewWindow.screen;
+                if (!screen)
+                    return null;
+                return { x: monitor ? monitor.x : 0, y: monitor ? monitor.y : 0,
+                    width: screen.width, height: screen.height };
+            }
+
+            function navigationTargets() {
+                var monitor = root.monitorForScreen(overviewWindow.screenName);
+                var origin = overviewArea.mapToItem(keyCatcher, 0, 0);
+                var layout = overviewArea.windowLayout;
+                var result = [];
+                for (var index = 0; index < layout.length; index++) {
+                    var rect = layout[index];
+                    if (rect)
+                        result.push({
+                            screenName: overviewWindow.screenName,
+                            index: index,
+                            x: (monitor ? monitor.x : 0) + origin.x + rect.x,
+                            y: (monitor ? monitor.y : 0) + origin.y + rect.y,
+                            width: rect.width,
+                            height: rect.height
+                        });
+                }
+                return result;
             }
             // A Repeater over a JS array rebuilds every delegate when the array
             // is reassigned, and with it every screencopy capture and layer
@@ -2034,7 +2099,7 @@ Item {
                     }
                     if (root.handleSettingsNavigation(event))
                         return;
-                    root.handleKey(event, overviewArea.windowLayout);
+                    root.handleKey(event);
                 }
 
                 ColumnLayout {
@@ -2149,7 +2214,7 @@ Item {
                                 delegate: WindowCard {
                                     controller: root
                                     screenToplevels: overviewWindow.screenToplevels
-                                    acceptsKeyboard: overviewWindow.acceptsKeyboard
+                                    screenName: overviewWindow.screenName
                                     windowLayout: overviewArea.windowLayout
                                     layoutAreaWidth: overviewArea.width
                                     layoutAreaHeight: overviewArea.height
