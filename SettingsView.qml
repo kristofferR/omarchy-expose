@@ -232,6 +232,11 @@ Item {
                 label: "This display",
                 description: "Only windows on this display",
                 value: "per-monitor"
+            },
+            {
+                label: "Each display",
+                description: "Each display shows its own windows",
+                value: "all-monitors"
             }
         ]
         spacing: 0
@@ -247,13 +252,16 @@ Item {
         Keys.onPressed: function (event) {
             if (settingsView.controller.handleSettingsNavigation(event))
                 return;
-            var current = displayModeChoices.value === "per-monitor" ? 1 : 0;
+            var current = 0;
+            for (var index = 0; index < displayModeChoices.options.length; index++)
+                if (displayModeChoices.options[index].value === displayModeChoices.value)
+                    current = index;
             if (event.key === Qt.Key_Left)
                 displayModeChoices.choose(current - 1);
             else if (event.key === Qt.Key_Right)
                 displayModeChoices.choose(current + 1);
             else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                displayModeChoices.choose(1 - current);
+                displayModeChoices.choose((current + 1) % displayModeChoices.options.length);
             else {
                 event.accepted = false;
                 return;
@@ -1014,7 +1022,7 @@ Item {
 
                         SettingRow {
                             label: "Windows to include"
-                            description: "The grid stays on the display where Exposé opened. With This display and Current, use the workspace active on that display."
+                            description: "Choose one grid on the opening display, or a grid on every display. With Current, each grid uses its display's active workspace."
                             stacked: true
 
                             DisplayModeChoices {
