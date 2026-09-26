@@ -6,6 +6,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons // qmllint disable import
 import qs.Ui as Ui // qmllint disable import
+import "DisplayModel.js" as DisplayModel
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 import "ScreenLayout.js" as ScreenLayout
@@ -170,9 +171,10 @@ Item {
     readonly property int hotCornerReach: Style.space(48)
     readonly property int hotCornerDepth: Style.space(6)
     readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
-    readonly property string multiMonitorMode: root.pluginEntry && root.pluginEntry.multiMonitorMode === "per-monitor"
-        ? "per-monitor"
-        : "mirrored"
+    readonly property string multiMonitorMode: {
+        var mode = root.pluginEntry ? root.pluginEntry.multiMonitorMode : "";
+        return mode === "per-monitor" || mode === "all-monitors" ? mode : "mirrored";
+    }
     readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
     property bool opened: false
     property bool surfaceMounted: false
@@ -253,22 +255,19 @@ Item {
             return String(active.monitor.name || "");
         return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
     }
-    // Only the selected display creates cards and screencopy captures.
+    // Each display gets a grid in all-monitors mode. Per-display filtering
+    // keeps each screencopy capture on exactly one surface.
     readonly property var mountedScreens: {
-        if (!root.surfaceMounted || !root.effectiveOverviewScreen)
-            return [];
-        return [root.effectiveOverviewScreen];
+        return DisplayModel.mountedScreens(Quickshell.screens, root.effectiveOverviewScreen,
+            root.multiMonitorMode, root.surfaceMounted);
     }
     readonly property var backdropScreens: {
-        if (!root.surfaceMounted)
-            return [];
-        return Quickshell.screens.filter(function (screen) {
-            return screen !== root.effectiveOverviewScreen;
-        });
+        return DisplayModel.backdropScreens(Quickshell.screens, root.effectiveOverviewScreen,
+            root.multiMonitorMode, root.surfaceMounted);
     }
-    readonly property var overviewKeyboardTargets: surfaceInstances.instances.length
-        ? surfaceInstances.instances[0].keyboardTargets
-        : []
+    readonly property var overviewKeyboardTargets: {
+        return DisplayModel.keyboardTargets(surfaceInstances.instances);
+    }
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
         return root.toplevelsForScreen(root.keyboardScreenName);
@@ -725,7 +724,7 @@ Item {
     }
 
     function setMultiMonitorMode(value) {
-        var mode = value === "per-monitor" ? "per-monitor" : "mirrored";
+        var mode = value === "per-monitor" || value === "all-monitors" ? value : "mirrored";
         if (mode !== root.multiMonitorMode)
             root.updatePluginSetting("multiMonitorMode", mode);
     }
@@ -1049,7 +1048,7 @@ Item {
     }
 
     function workspaceForScreen(screenName) {
-        if (root.multiMonitorMode === "per-monitor") {
+        if (DisplayModel.usesOwnWindows(root.multiMonitorMode)) {
             var monitor = root.monitorForScreen(screenName);
             if (monitor && monitor.activeWorkspace)
                 return monitor.activeWorkspace;
@@ -1071,7 +1070,7 @@ Item {
     }
 
     function isOnScreen(top, screenName) {
-        return WindowModel.isOnScreen(top, screenName, root.multiMonitorMode === "per-monitor");
+        return WindowModel.isOnScreen(top, screenName, DisplayModel.usesOwnWindows(root.multiMonitorMode));
     }
 
     function isOnWorkspace(top, workspace) {
@@ -1734,8 +1733,8 @@ Item {
             return mode;
         }
         function multiMonitorMode(mode: string): string {
-            if (mode !== "mirrored" && mode !== "per-monitor")
-                return "expected mirrored or per-monitor";
+            if (mode !== "mirrored" && mode !== "per-monitor" && mode !== "all-monitors")
+                return "expected mirrored, per-monitor, or all-monitors";
             root.setMultiMonitorMode(mode);
             return mode;
         }
@@ -1993,8 +1992,16 @@ Item {
             }
 
             onAcceptsKeyboardChanged: {
+                if (acceptsKeyboard && root.opened)
+                    Qt.callLater(root.focusKeyboardWindow);
                 if (acceptsKeyboard && root.settingsOpen)
                     Qt.callLater(overviewWindow.focusSettingsCategory);
+            }
+
+            Item {
+                anchors.fill: parent
+                focus: !overviewWindow.acceptsKeyboard
+                Keys.forwardTo: root.opened ? root.overviewKeyboardTargets : []
             }
 
             Item {
@@ -2169,7 +2176,7 @@ Item {
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
-                        visible: root.showFooter
+                        visible: root.showFooter && overviewWindow.acceptsKeyboard
 
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
@@ -2205,7 +2212,7 @@ Item {
                 Loader {
                     id: settingsLayerLoader
                     anchors.fill: parent
-                    active: root.settingsOpen
+                    active: root.settingsOpen && overviewWindow.acceptsKeyboard
                     z: 200
                     onLoaded: {
                         if (overviewWindow.acceptsKeyboard)

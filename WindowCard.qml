@@ -62,11 +62,12 @@ Ui.BorderSurface {
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Color.menu.background : "transparent"
     borderSpec: integratedFooter ? outlineSpec : Border.none()
-    opacity: card.controller.previewIndex < 0 || previewed ? 1 : 0.28
+    opacity: !card.acceptsKeyboard || card.controller.previewIndex < 0 || previewed ? 1 : 0.28
 
     MouseArea {
         anchors.fill: parent
-        enabled: !card.controller.settingsOpen && (card.controller.previewIndex < 0 || card.previewed)
+        enabled: !card.controller.settingsOpen
+            && (!card.acceptsKeyboard || card.controller.previewIndex < 0 || card.previewed)
         hoverEnabled: true
         onEnabledChanged: {
             if (!enabled) {
