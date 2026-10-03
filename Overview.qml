@@ -120,6 +120,8 @@ Item {
         ? 0.11 * (1 - root.motionProgress)
         : 0
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
+    readonly property string backgroundMode: root.pluginEntry && root.pluginEntry.backgroundMode === "wallpaper"
+        ? "wallpaper" : "desktop"
     readonly property int backgroundBlur: {
         var raw = root.pluginEntry ? root.pluginEntry.backgroundBlur : undefined;
         var value = raw === null || raw === undefined ? NaN : Number(raw);
@@ -197,6 +199,7 @@ Item {
     property real backgroundDimPreview: -1
     property real hotCornerDelayPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
+    readonly property real desktopBackgroundBlur: root.backgroundMode === "desktop" ? root.effectiveBackgroundBlur : 0
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
     readonly property int effectiveHotCornerDelay: root.hotCornerDelayPreview >= 0 ? Math.round(root.hotCornerDelayPreview) : root.hotCornerDelay
     readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
@@ -281,10 +284,10 @@ Item {
         root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
-    onEffectiveBackgroundBlurChanged: {
+    onDesktopBackgroundBlurChanged: {
         if (!root.surfaceMounted)
             return;
-        if (!backgroundBlurSession.running && root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+        if (!backgroundBlurSession.running && root.desktopBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             root.backgroundBlurPrimed = false;
             backgroundBlurSession.running = true;
         } else {
@@ -327,7 +330,7 @@ Item {
         root.clearPreview();
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
-        if (root.effectiveBackgroundBlur > 0) {
+        if (root.desktopBackgroundBlur > 0) {
             if (!blurRestoreInFlight)
                 backgroundBlurSession.running = true;
         } else {
@@ -371,7 +374,7 @@ Item {
     }
 
     function requestedBackgroundBlur() {
-        return Math.max(0, Math.round(root.effectiveBackgroundBlur));
+        return Math.max(0, Math.round(root.desktopBackgroundBlur));
     }
 
     function writeBackgroundBlur(size) {
@@ -386,7 +389,7 @@ Item {
     function prepareOpenSurface() {
         if (!root.openingPending)
             return;
-        if (root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+        if (root.desktopBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             if (!backgroundBlurSession.running) {
                 root.backgroundBlurPrimed = false;
                 backgroundBlurSession.running = true;
@@ -616,6 +619,13 @@ Item {
         root.animationDurationPreviewStyle = "";
         root.animationInDurationPreview = -1;
         root.animationOutDurationPreview = -1;
+    }
+
+    function setBackgroundMode(value) {
+        var next = String(value) === "wallpaper" ? "wallpaper" : "desktop";
+        if (next !== root.backgroundMode)
+            root.updatePluginSetting("backgroundMode", next);
+        return next;
     }
 
     function setBackgroundBlur(value) {
@@ -1504,6 +1514,11 @@ Item {
         onFinished: root.completeMotion()
     }
 
+    WallpaperSource {
+        id: wallpaperSource
+        active: root.backgroundMode === "wallpaper" && (root.openingPending || root.surfaceMounted)
+    }
+
     Timer {
         id: backgroundBlurUpdate
         interval: 16
@@ -1689,6 +1704,11 @@ Item {
                 return root.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionOut(direction);
         }
+        function backgroundMode(value: string): string {
+            if (value !== "desktop" && value !== "wallpaper")
+                return "expected desktop or wallpaper";
+            return root.setBackgroundMode(value);
+        }
         function backgroundBlur(value: real): string {
             return String(root.setBackgroundBlur(value));
         }
@@ -1867,7 +1887,7 @@ Item {
         // Every backdrop must participate so clicks on other displays arrive.
         WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         HyprlandWindow.opacity: root.motionProgress
-        BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0 // qmllint disable missing-type
+        BackgroundEffect.blurRegion: root.desktopBackgroundBlur > 0 // qmllint disable missing-type
                 && !root.backgroundBlurFailed
             ? backgroundBlurRegion
             : null
@@ -1876,6 +1896,17 @@ Item {
         Region {
             id: backgroundBlurRegion
             item: surface.contentItem
+        }
+
+        Loader {
+            anchors.fill: parent
+            active: root.backgroundMode === "wallpaper"
+            sourceComponent: WallpaperBackdrop {
+                source: wallpaperSource.source
+                blur: root.effectiveBackgroundBlur
+                pixelRatio: surface.devicePixelRatio
+                color: Qt.rgba(Color.background.r, Color.background.g, Color.background.b, 1)
+            }
         }
 
         Rectangle {

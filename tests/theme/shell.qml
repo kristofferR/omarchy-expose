@@ -14,6 +14,7 @@ ShellRoot {
         property bool footerHideConfirmationOpen: false
         property bool footerHideAcknowledged: false
         property bool showFooter: true
+        property string backgroundMode: "desktop"
         property int effectiveBackgroundBlur: 4
         property int effectiveBackgroundDim: 6
         property bool hotCornerEnabled: false
@@ -47,6 +48,7 @@ ShellRoot {
         function animationTimingFor(style) { return {"in":190,"out":190,separate:separateTiming}; }
         function focusSettingsItem(item) { item.forceActiveFocus(); return true; }
         function setHotCornerDelay(value) { hotCornerDelay = value; return value; }
+        function setBackgroundMode(value) { backgroundMode = value; return value; }
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
         function aspectRatioFor(model) { return 1.8; }
@@ -113,7 +115,7 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [4, 3, 3, 3, 5, 8];
+        var expectedCounts = [5, 3, 3, 3, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Resolve temporary background links without touching the user's wallpaper.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+cp WallpaperSource.qml "$test_dir/"
+cp tests/runtime/wallpaper.qml "$test_dir/shell.qml"
+cat > "$test_dir/first image #?.svg" <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="red"/></svg>
+EOF
+cp "$test_dir/first image #?.svg" "$test_dir/second.svg"
+ln -s "$test_dir/first image #?.svg" "$test_dir/background"
+
+QT_QPA_PLATFORM=offscreen EXPOSE_WALLPAPER_TEST_DIR="$test_dir" \
+  timeout 15s quickshell --no-color -p "$test_dir/shell.qml" > "$test_dir/output" 2>&1 || {
+    cat "$test_dir/output"
+    exit 1
+  }
+cat "$test_dir/output"
+rg -q 'PASS: wallpaper link resolution' "$test_dir/output"
+if rg -q 'FAIL:|TypeError|ReferenceError|Unable to assign|Binding loop|Failed to load configuration' "$test_dir/output"; then
+  exit 1
+fi

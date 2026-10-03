@@ -100,7 +100,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opening animation: Original (default), Fade, Zoom, or Slide
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
-- Background blur (0–20) and dim (0–90)
+- Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90)
 - Quick Look position: in-place or centered
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
@@ -109,6 +109,12 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off, position (disable the same corner in other hot-corner plugins to avoid overlap), All displays (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
+
+**Wallpaper** covers the original desktop windows with the current Omarchy
+wallpaper on every display, cropped to fill each screen. It follows background
+changes while the overview is open. Blur and dim apply to the wallpaper; Desktop
+keeps the existing translucent backdrop. If the wallpaper is missing or cannot
+be loaded, Wallpaper uses a solid theme background instead.
 
 Every reversible setting is also scriptable:
 
@@ -122,6 +128,7 @@ omarchy-shell expose animationDurationOut original 190 # separate closing speed
 omarchy-shell expose slideDirection left         # left | right | up | down, both halves
 omarchy-shell expose slideDirectionIn left       # separate opening side, also splits slide timing
 omarchy-shell expose slideDirectionOut right     # separate closing side, also splits slide timing
+omarchy-shell expose backgroundMode wallpaper    # desktop | wallpaper
 omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered

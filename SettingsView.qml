@@ -672,7 +672,7 @@ Item {
     function settingsFocusItems() {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
-            [backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
+            [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
             [previewPlacementChoices, movePointerToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl],
@@ -862,8 +862,24 @@ Item {
                         title: "Backdrop and bottom text"
 
                         SettingRow {
+                            label: "Background"
+                            description: "Show the desktop or your current Omarchy wallpaper behind the window cards. Wallpaper covers the original windows."
+
+                            SettingChoices {
+                                id: backgroundModeChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.backgroundMode
+                                options: [
+                                    { label: "Desktop", value: "desktop" },
+                                    { label: "Wallpaper", value: "wallpaper" }
+                                ]
+                                onChosen: function (value) { settingsView.controller.setBackgroundMode(value); }
+                            }
+                        }
+
+                        SettingRow {
                             label: "Background blur"
-                            description: "Soften the desktop behind the overview. Set to 0 for no blur."
+                            description: "Soften the selected background behind the overview. Set to 0 for no blur."
 
                             SettingSlider {
                                 id: backgroundBlurSlider
@@ -882,7 +898,7 @@ Item {
 
                         SettingRow {
                             label: "Background dim"
-                            description: "Darken the desktop behind the overview. Higher values make it darker."
+                            description: "Darken the selected background behind the overview. Higher values make it darker."
 
                             SettingSlider {
                                 id: backgroundDimSlider

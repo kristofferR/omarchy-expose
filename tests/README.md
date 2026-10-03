@@ -1,5 +1,9 @@
 Run `./validate` for the Qt 6 unit tests, QML lint, shell checks, and manifest
 validation, including lint of the assembled runtime fixture.
+`tst_wallpaper_backdrop.qml` checks the opaque fallback, transparent images,
+aspect-ratio cropping, and blur toggling. `./tests/check-wallpaper-runtime`
+checks current-wallpaper symlink replacement, special characters in paths,
+inactive cleanup, missing targets, and recovery using temporary files only.
 The theme runtime check also exercises every settings page at desktop and narrow
 widths, focus traversal and wrapping, disabled hot-corner controls, conditional
 Motion controls, and scrolling focused controls into view. Run
