@@ -69,6 +69,13 @@ var specs = {
             { label: "Each display", description: "Each display shows its own windows", value: "all-monitors" }
         ]
     },
+    backgroundMode: {
+        fallback: "desktop",
+        options: [
+            { label: "Desktop", value: "desktop" },
+            { label: "Wallpaper", value: "wallpaper" }
+        ]
+    },
     backgroundBlur: { fallback: 4, min: 0, max: 20 },
     backgroundDim: { fallback: 6, min: 0, max: 90 },
     hotCornerDelay: { fallback: 0, min: 0, max: 1000 },
