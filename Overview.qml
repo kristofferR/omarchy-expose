@@ -1912,11 +1912,8 @@ Item {
                         Layout.fillHeight: true
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
-                            var screenRatio = overviewWindow.screen && overviewWindow.screen.height > 0
-                                ? overviewWindow.screen.width / overviewWindow.screen.height
-                                : 0;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
-                            return GridLayout.computeLayout(ratios, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
+                            return GridLayout.computeLayout(ratios, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {

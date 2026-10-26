@@ -70,6 +70,29 @@ TestCase {
         }
     }
 
+    function rowCount(rects) {
+        var tops = {};
+        rects.forEach(function (rect) { tops[Math.round(rect.y)] = true; });
+        return Object.keys(tops).length;
+    }
+
+    // Each card's title band and padding make it taller than its preview, so
+    // fewer rows than the previews alone suggest can hold larger cards.
+    function test_fewerLargerRowsWinWhenTheyFit() {
+        var rects = layoutFor([1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6]);
+        compare(rowCount(rects), 2);
+        verify(rects[0].width > 330, "cards " + rects[0].width + " wide");
+    }
+
+    // The most rows the area allows can be the best: one card per row.
+    function test_narrowTallAreaStacksOneColumn() {
+        compare(rowCount(GridLayout.computeLayout([1, 1, 1, 1, 1, 1], 400, 3000, gap, padding, footer)), 6);
+    }
+
+    function test_twoWideWindowsSitSideBySide() {
+        compare(rowCount(layoutFor([2, 2])), 1);
+    }
+
     // A tall, narrow area favours one column; the cards must still fit its width.
     function test_tallAreaStillFitsTheWidth() {
         var rects = GridLayout.computeLayout([1, 1, 1, 1, 1, 1], areaWidth, 3000, gap, padding, footer);
