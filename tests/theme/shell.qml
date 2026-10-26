@@ -30,15 +30,18 @@ ShellRoot {
         property bool separateTiming: false
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
+        property string selectionStyle: "outline"
         property string animationStyle: "original"
         property string animationDurationPreviewStyle: ""
         property int animationInDurationPreview: -1
         property int animationOutDurationPreview: -1
         property var slideDirection: ({"in":"left", "out":"left"})
-        property int previewIndex: -1
-        property int previewExitIndex: -1
-        property int selectedIndex: -1
-        property int hoveredIndex: -1
+        property var previewToplevel: null
+        property var previewExitToplevel: null
+        property var selection: null
+        property var selectedToplevel: null
+        property var hoveredToplevel: null
+        property var originToplevel: null
         property bool opened: false
         property int windowFooterHeight: 40
         property bool motionSettled: true
@@ -47,7 +50,7 @@ ShellRoot {
         property int previewFadeDuration: 130
         function animationTimingFor(style) { return {"in":190,"out":190,separate:separateTiming}; }
         function focusSettingsItem(item) { item.forceActiveFocus(); return true; }
-        function setHotCornerDelay(value) { hotCornerDelay = value; return value; }
+        function setSetting(name, value) { controller[name] = value; return value; }
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
         function aspectRatioFor(model) { return 1.8; }
@@ -114,10 +117,16 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [4, 3, 3, 3, 5, 8];
+        var expectedCounts = [4, 4, 3, 3, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);
+        require(settings.holdsFocus(), "settings report their own focus on page " + index);
+        if (index === 0) {
+            canvas.forceActiveFocus();
+            require(!settings.holdsFocus(), "focus outside settings is not theirs");
+            settings.focusSettingsCategory();
+        }
         for (var i = 1; i < items.length; i++) {
             settings.moveSettingsFocus(true, false);
             require(items[i].activeFocus, "forward focus on page " + index + " control " + i);
@@ -186,9 +195,18 @@ ShellRoot {
                 require(card.outlineSpec.widths.left === 2 && card.outlineSpec.gradient.enabled, "hover uses active compositor gradient without doubling width");
                 require(card.outlineSpec.gradient.angle === 45 && Qt.color(card.outlineSpec.gradient.colors[0]).r === Qt.color("#4a9a68").r, "ARGB conversion and angle");
                 card.hovered = false;
-                controller.selectedIndex = 0;
+                controller.selection = card.modelData;
                 card.acceptsKeyboard = true;
                 require(card.outlineSpec.widths.top === 2 && card.outlineSpec.gradient.enabled, "keyboard selection keeps window border despite zero control borders");
+                controller.selectionStyle = "lift";
+                require(card.lifted && card.outlineSpec.widths.top === 3 && card.outlineSpec.gradient.enabled, "Lift rings and raises the selection");
+                controller.selection = null;
+                card.hovered = true;
+                require(!card.lifted, "Lift does not raise a hovered window");
+                require(!card.outlineSpec.gradient.enabled && card.outlineSpec.widths.top === 2, "Lift leaves a hovered window with the inactive border");
+                card.hovered = false;
+                controller.selection = card.modelData;
+                controller.selectionStyle = "outline";
                 windowBorders.applySnapshot("not json");
                 compositorBorders(-1, "ff000000", "ff000000");
                 compositorBorders(4, "invalid", "ff000000");

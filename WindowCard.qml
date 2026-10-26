@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import "WindowModel.js" as WindowModel
 import qs.Commons
@@ -22,10 +21,11 @@ Ui.BorderSurface {
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
     property bool hovered: false
-    readonly property bool selected: card.acceptsKeyboard && inLayout && slot === card.controller.selectedIndex
-    readonly property bool focusedWindow: modelData === Hyprland.activeToplevel
-    readonly property bool previewed: card.acceptsKeyboard && inLayout && slot === card.controller.previewIndex
-    readonly property bool exitingPreview: card.acceptsKeyboard && inLayout && slot === card.controller.previewExitIndex
+    readonly property bool selected: card.acceptsKeyboard && inLayout && modelData === card.controller.selection
+    // The window the overview was opened from; the overlay holds focus while open.
+    readonly property bool focusedWindow: modelData === card.controller.originToplevel
+    readonly property bool previewed: card.acceptsKeyboard && inLayout && modelData === card.controller.previewToplevel
+    readonly property bool exitingPreview: card.acceptsKeyboard && inLayout && modelData === card.controller.previewExitToplevel
     readonly property bool floatingFooter: card.controller.windowFooterStyle === "floating"
     readonly property bool integratedFooter: card.controller.windowFooterStyle === "integrated"
     readonly property bool overlayFooter: card.controller.windowFooterStyle === "overlay"
@@ -34,8 +34,20 @@ Ui.BorderSurface {
     readonly property string applicationName: WindowModel.appIdFor(modelData) || "Application"
     readonly property string workspaceName: card.controller.workspaceName(modelData)
     readonly property string iconSource: card.controller.iconFor(modelData)
-    readonly property var outlineSpec: hovered || selected || focusedWindow
-        ? controller.windowBorders.activeSpec : controller.windowBorders.inactiveSpec
+    // Lift marks only the selection, which is what Enter opens; the window the
+    // overview was opened from gets a dot instead of sharing the active border.
+    readonly property bool liftSelection: card.controller.selectionStyle === "lift"
+    readonly property bool lifted: liftSelection && selected && !previewed
+    readonly property bool outlined: liftSelection ? selected : (hovered || selected || focusedWindow)
+    readonly property var outlineSpec: !outlined
+        ? controller.windowBorders.inactiveSpec
+        : (liftSelection ? liftRingSpec : controller.windowBorders.activeSpec)
+    readonly property var liftRingSpec: {
+        var active = controller.windowBorders.activeSpec;
+        var ring = Border.flat(active.color, Math.max(3, controller.windowBorders.snapshot.width + 1));
+        ring.gradient = active.gradient;
+        return ring;
+    }
     readonly property color currentColor: Style.selectedStateColor(Commons.Color.menu.text, Commons.Color.accent)
     // An excluded card keeps its last rectangle, so it neither
     // animates toward the origin nor flies back in from it.
@@ -59,35 +71,38 @@ Ui.BorderSurface {
     y: layoutRect.y
     width: layoutRect.width
     height: layoutRect.height
-    z: previewed ? 11 : (exitingPreview ? 10 : 0)
+    z: previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))
+    scale: lifted ? 1.04 : 1
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
     borderSpec: integratedFooter ? outlineSpec : Border.none()
-    opacity: card.controller.previewIndex < 0 || previewed ? 1 : 0.28
+    opacity: card.controller.previewToplevel
+        ? (previewed ? 1 : 0.28)
+        : (liftSelection && !selected ? 0.72 : 1)
 
     MouseArea {
         anchors.fill: parent
-        enabled: !card.controller.settingsOpen && (card.controller.previewIndex < 0 || card.previewed)
+        enabled: !card.controller.settingsOpen && (!card.controller.previewToplevel || card.previewed)
         hoverEnabled: true
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
-                if (card.controller.hoveredIndex === card.slot)
-                    card.controller.hoveredIndex = -1;
+                if (card.controller.hoveredToplevel === card.modelData)
+                    card.controller.hoveredToplevel = null;
 
             }
         }
         onEntered: {
             card.hovered = true;
             if (card.acceptsKeyboard) {
-                card.controller.hoveredIndex = card.slot;
-                card.controller.selectedIndex = card.slot;
+                card.controller.hoveredToplevel = card.modelData;
+                card.controller.selectedToplevel = card.modelData;
             }
         }
         onExited: {
             card.hovered = false;
-            if (card.acceptsKeyboard && card.controller.hoveredIndex === card.slot)
-                card.controller.hoveredIndex = -1;
+            if (card.acceptsKeyboard && card.controller.hoveredToplevel === card.modelData)
+                card.controller.hoveredToplevel = null;
 
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
@@ -107,6 +122,34 @@ Ui.BorderSurface {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
+
+            // Lift's glow behind the selected preview. Its blur layer exists
+            // only while it shows.
+            Rectangle {
+                anchors.fill: previewFrame
+                anchors.margins: -Style.space(4)
+                radius: previewFrame.radius + Style.space(4)
+                color: Commons.Color.accent
+                opacity: card.lifted ? 0.85 : 0
+                visible: opacity > 0
+                layer.enabled: visible
+                layer.effect: MultiEffect {
+                    blurEnabled: true
+                    blur: 1
+                    blurMax: 48
+                    autoPaddingEnabled: true
+                }
+
+                Behavior on opacity {
+                    enabled: card.controller.motionSettled
+
+                    NumberAnimation {
+                        duration: card.controller.previewFadeDuration
+                    }
+
+                }
+
+            }
 
             Rectangle {
                 id: previewFrame
@@ -167,6 +210,20 @@ Ui.BorderSurface {
                 radius: previewFrame.radius
                 color: "transparent"
                 borderSpec: card.outlineSpec
+            }
+
+            Rectangle {
+                anchors.top: previewFrame.top
+                anchors.right: previewFrame.right
+                anchors.margins: Style.spacing.sm
+                z: 6
+                visible: card.liftSelection && card.focusedWindow
+                width: Style.space(12)
+                height: width
+                radius: width / 2
+                color: card.currentColor
+                border.color: Commons.Color.menu.background
+                border.width: Style.space(2)
             }
 
             Rectangle {
@@ -412,6 +469,16 @@ Ui.BorderSurface {
 
         NumberAnimation {
             duration: card.controller.previewFadeDuration
+        }
+
+    }
+
+    Behavior on scale {
+        enabled: card.controller.motionSettled
+
+        NumberAnimation {
+            duration: card.controller.previewFadeDuration
+            easing.type: Easing.OutCubic
         }
 
     }

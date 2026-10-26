@@ -101,6 +101,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background blur (0–20) and dim (0–90)
+- Selection highlight: outline (default) or lift, which raises and lights only the window Enter opens and marks the current one with a dot
 - Quick Look position: in-place or centered
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
@@ -126,21 +127,36 @@ omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
 omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
+omarchy-shell expose selectionStyle outline      # outline | lift
 omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor
 omarchy-shell expose hotCorner on                # on | off
 omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom-left | bottom-right
 omarchy-shell expose hotCornerAllDisplays off    # off: outermost display (default) | on: every display
 omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it fires
 omarchy-shell expose moveCursorToWindow on       # on | off
+omarchy-shell expose initialWorkspaceScope all   # all | current
+omarchy-shell expose workspaceLabelStyle full    # full | slot
+omarchy-shell expose showFooter on               # on | off
 ```
 
-After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, edit `~/.config/omarchy/shell.json` and set `"showFooter": true` in the `expose.window-overview` plugin entry.
+Scripts can also read state and drive an open overview the way its keys do:
+
+```sh
+omarchy-shell expose state                       # JSON: opened, scope, filter, windows, selection (and address), preview
+omarchy-shell expose get backgroundBlur          # any setting above by its stored name
+omarchy-shell expose move right                  # left | right | up | down
+omarchy-shell expose filter term                 # answers the number of matching windows
+omarchy-shell expose preview                     # toggle Quick Look on the selection
+omarchy-shell expose activate                    # open the selected window
+```
+
+After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, run `omarchy-shell expose showFooter on`.
 
 ## Security and system changes
 
 Exposé runs unsandboxed inside Omarchy Shell with your user's permissions.
 
-- Its helpers are plain Bash calling `hyprctl`, `jq`, `sleep`, and `timeout`.
+- Its blur helper is plain Bash calling `hyprctl`, `jq`, `flock`, and `timeout`. Window focus goes through Omarchy Shell's own Hyprland connection.
 - It reads window, workspace, and monitor state from Quickshell's native Hyprland model, activates or closes the windows you select, and temporarily raises Hyprland's blur while open, restoring the previous value on close.
 - Settings writes touch only the plugin's entry in `~/.config/omarchy/shell.json`.
 - No network, no privilege escalation, no package installs, no services.
