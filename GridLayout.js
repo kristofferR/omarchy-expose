@@ -186,7 +186,16 @@ function previewRect(ratio, centered, sourceRect, width, height, padding, footer
     };
 }
 
+// Whether b's centre lies within a's vertical span.
+function centredBeside(a, b) {
+    var centreY = b.y + b.height / 2;
+    return centreY >= a.y && centreY <= a.y + a.height;
+}
+
 // Index of the nearest card from currentIndex in direction (dx, dy), or -1.
+// Rows align cards of different heights to the top, middle, or bottom, so Up
+// and Down skip a card that shares the current card's row (either centre
+// inside the other's vertical span) even when its centre is higher or lower.
 function neighbourIndex(layout, currentIndex, dx, dy) {
     if (!layout || !layout[currentIndex])
         return -1;
@@ -202,7 +211,7 @@ function neighbourIndex(layout, currentIndex, dx, dy) {
         var deltaX = candidate.x + candidate.width / 2 - currentX;
         var deltaY = candidate.y + candidate.height / 2 - currentY;
         var primary = dx !== 0 ? deltaX * dx : deltaY * dy;
-        if (primary <= 0)
+        if (primary <= 0 || (dy !== 0 && (centredBeside(current, candidate) || centredBeside(candidate, current))))
             continue;
         var cross = dx !== 0 ? Math.abs(deltaY) : Math.abs(deltaX);
         var score = primary + cross * cross / Math.max(1, primary) * 2;

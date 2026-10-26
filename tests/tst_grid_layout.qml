@@ -124,6 +124,18 @@ TestCase {
         compare(GridLayout.neighbourIndex(grid, 3, 0, -1), 1);
     }
 
+    // One row of uneven cards: 0 is tall, 1 is short and top-aligned, so its
+    // centre sits higher. Neither is above or below the other.
+    readonly property var unevenRow: [
+        { x: 0, y: 0, width: 100, height: 200 }, { x: 120, y: 0, width: 100, height: 80 }
+    ]
+
+    function test_upAndDownStayOffCardsInTheSameRow() {
+        compare(GridLayout.neighbourIndex(unevenRow, 0, 0, -1), -1);
+        compare(GridLayout.neighbourIndex(unevenRow, 1, 0, 1), -1);
+        compare(GridLayout.neighbourIndex(unevenRow, 0, 1, 0), 1);
+    }
+
     function test_noNeighbourBeyondTheEdge() {
         compare(GridLayout.neighbourIndex(grid, 0, -1, 0), -1);
         compare(GridLayout.neighbourIndex(grid, 0, 0, -1), -1);
