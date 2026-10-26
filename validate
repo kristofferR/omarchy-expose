@@ -39,7 +39,7 @@ ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
 # Lint the runtime fixture after injecting its host functions and imports.
 ./tests/check-settings-runtime --lint
 
-bash -n background-blur-session tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-blur-lock
+bash -n background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-blur-lock
 timeout 15s ./tests/check-blur-lock
 
 omarchy plugin validate .

@@ -132,6 +132,20 @@ omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom
 omarchy-shell expose hotCornerAllDisplays off    # off: outermost display (default) | on: every display
 omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it fires
 omarchy-shell expose moveCursorToWindow on       # on | off
+omarchy-shell expose initialWorkspaceScope all   # all | current
+omarchy-shell expose workspaceLabelStyle full    # full | slot
+omarchy-shell expose showFooter on               # on | off
+```
+
+Scripts can also read state and drive an open overview the way its keys do:
+
+```sh
+omarchy-shell expose state                       # JSON: opened, scope, filter, windows, selection (and address), preview
+omarchy-shell expose get backgroundBlur          # any setting above by its stored name
+omarchy-shell expose move right                  # left | right | up | down
+omarchy-shell expose filter term                 # answers the number of matching windows
+omarchy-shell expose preview                     # toggle Quick Look on the selection
+omarchy-shell expose activate                    # open the selected window
 ```
 
 After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, run `omarchy-shell expose showFooter on`.

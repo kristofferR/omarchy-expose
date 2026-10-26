@@ -718,16 +718,34 @@ Item {
     // open, the window grid otherwise. Every request asks the same question, so
     // a late one from the open sequence cannot pull focus out of settings.
     function focusKeyboardSurface() {
-        for (var i = 0; i < surfaceInstances.instances.length; i++) {
-            var surface = surfaceInstances.instances[i];
-            if (surface && surface.acceptsKeyboard) {
-                if (root.settingsOpen)
-                    surface.focusSettings();
-                else
-                    surface.keyboardItem.forceActiveFocus();
-                return;
-            }
-        }
+        var surface = root.keyboardSurface();
+        if (!surface)
+            return;
+        if (root.settingsOpen)
+            surface.focusSettings();
+        else
+            surface.keyboardItem.forceActiveFocus();
+    }
+
+    // The mounted surface that takes the keyboard, or null while unmounted.
+    function keyboardSurface() {
+        var surfaces = surfaceInstances.instances;
+        for (var index = 0; index < surfaces.length; index++)
+            if (surfaces[index] && surfaces[index].acceptsKeyboard)
+                return surfaces[index];
+        return null;
+    }
+
+    // How IPC names a window: its title, or its application when untitled.
+    function windowLabel(top) {
+        return String(top.title || WindowModel.appIdFor(top));
+    }
+
+    // An arrow key's move, for IPC.
+    function moveFromIpc(dx, dy) {
+        var surface = root.keyboardSurface();
+        if (surface)
+            root.moveDirectional(dx, dy, surface.windowLayout, false);
     }
 
     function focusSettingsItem(item) {
@@ -751,18 +769,15 @@ Item {
         var forward = isTab
             ? event.key !== Qt.Key_Backtab && !(event.modifiers & Qt.ShiftModifier)
             : event.key === Qt.Key_Down || event.key === Qt.Key_Right;
-        for (var index = 0; index < surfaceInstances.instances.length; index++) {
-            var surface = surfaceInstances.instances[index];
-            if (!surface || !surface.acceptsKeyboard)
-                continue;
-            if (root.footerHideConfirmationOpen)
-                surface.moveFooterConfirmationFocus(forward, isTab);
-            else
-                surface.moveSettingsFocus(forward, isTab);
-            event.accepted = true;
-            return true;
-        }
-        return false;
+        var surface = root.keyboardSurface();
+        if (!surface)
+            return false;
+        if (root.footerHideConfirmationOpen)
+            surface.moveFooterConfirmationFocus(forward, isTab);
+        else
+            surface.moveSettingsFocus(forward, isTab);
+        event.accepted = true;
+        return true;
     }
 
     function handleSettingsTab(event) {
@@ -1366,6 +1381,60 @@ Item {
         function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
         function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
+        // What the overview is doing now, as JSON, for scripts and live checks.
+        // The filter, windows, and selection describe the open overview only.
+        function state(): string {
+            var open = root.opened;
+            var top = open ? root.selection : null;
+            return JSON.stringify({
+                opened: open,
+                opening: root.openingPending,
+                mounted: root.surfaceMounted,
+                settingsOpen: root.settingsOpen,
+                scope: root.workspaceScope,
+                filter: open ? root.filterText : "",
+                windows: open ? root.filteredToplevels.length : 0,
+                selection: top ? root.windowLabel(top) : null,
+                selectionAddress: top ? WindowModel.addressFor(top) : null,
+                preview: root.previewToplevel !== null
+            });
+        }
+        function get(name: string): string {
+            if (!SettingsSchema.specs[name])
+                return SettingsSchema.expectedOneOf(Object.keys(SettingsSchema.specs));
+            var value = SettingsSchema.read(root.pluginEntry, name);
+            return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
+        }
+        // The overview's own keys. Each answers "closed" unless it is open.
+        function move(direction: string): string {
+            var step = ({ left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] })[direction];
+            if (!step)
+                return SettingsSchema.expectedOneOf(["left", "right", "up", "down"]);
+            if (!root.opened)
+                return "closed";
+            root.moveFromIpc(step[0], step[1]);
+            return root.selection ? root.windowLabel(root.selection) : "";
+        }
+        function filter(text: string): string {
+            if (!root.opened)
+                return "closed";
+            root.setFilter(text);
+            return String(root.filteredToplevels.length);
+        }
+        function preview(): string {
+            if (!root.opened)
+                return "closed";
+            root.togglePreview(false);
+            return root.previewToplevel ? "on" : "off";
+        }
+        function activate(): string {
+            if (!root.opened)
+                return "closed";
+            if (!root.selection)
+                return "no selection";
+            root.activate(root.selection);
+            return "ok";
+        }
         function settings(mode: string): string {
             if (mode === "open")
                 root.openSettings();
@@ -1591,6 +1660,7 @@ Item {
                 return true;
             }
             property alias keyboardItem: keyCatcher
+            readonly property alias windowLayout: overviewArea.windowLayout
             // Forwarded events don't bubble through the target's parents.
             // Run overview shortcuts first, then the focused settings control.
             readonly property var keyboardTargets: {

@@ -1,0 +1,43 @@
+#!/bin/bash
+# Live IPC checks against the running shell. Install the working tree into
+# ~/.config/omarchy/plugins/expose.window-overview and restart the shell first.
+# Needs at least two windows. Opens and closes the overview, but never sends
+# keys, activates a window, or changes a setting, so it is safe while you type.
+set -u
+E() { omarchy-shell expose "$@"; }
+field() { E state | jq -r --arg key "$1" '.[$key]'; }
+failures=0
+check() {
+  if [[ $2 == "$3" ]]; then
+    echo "PASS: $1"
+  else
+    echo "FAIL: $1: got '$2', expected '$3'"
+    failures=$((failures + 1))
+  fi
+}
+
+E close >/dev/null; sleep 1
+check "state while closed" "$(field opened)" false
+check "move while closed" "$(E move left)" closed
+check "get reads a setting" "$([[ $(E get windowFooterStyle) =~ ^(floating|integrated|overlay|centered)$ ]] && echo yes)" yes
+check "get answers booleans as on or off" "$([[ $(E get showFooter) =~ ^(on|off)$ ]] && echo yes)" yes
+check "get rejects an unknown name" "$(E get nope | cut -c1-9)" "expected "
+check "move rejects an unknown direction" "$(E move sideways)" "expected left, right, up, or down"
+check "a setting rejects an unknown option" "$(E previewPlacement middle)" "expected in-place or centered"
+
+E open >/dev/null; sleep 1.5
+check "state while open" "$(field opened)" true
+# From the origin at least one direction finds another window.
+before=$(field selection)
+for direction in right left down up; do
+  [[ $(E move "$direction") != "$before" ]] && break
+done
+check "move changes the selection" "$([[ $(field selection) != "$before" ]] && echo yes)" yes
+check "filter to nothing" "$(E filter zzzz-no-such-window)" 0
+check "empty filter restores the list" "$(( $(E filter '') >= 2 ))" 1
+check "preview opens" "$(E preview)" on
+check "state shows the preview" "$(field preview)" true
+check "preview closes" "$(E preview)" off
+E close >/dev/null; sleep 1
+check "closed again" "$(field mounted)" false
+exit $((failures > 0))
