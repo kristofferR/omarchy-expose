@@ -49,7 +49,7 @@ ShellRoot {
         property int previewFadeDuration: 130
         function animationTimingFor(style) { return {"in":190,"out":190,separate:separateTiming}; }
         function focusSettingsItem(item) { item.forceActiveFocus(); return true; }
-        function setHotCornerDelay(value) { hotCornerDelay = value; return value; }
+        function setSetting(name, value) { controller[name] = value; return value; }
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
         function aspectRatioFor(model) { return 1.8; }

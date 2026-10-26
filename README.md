@@ -134,7 +134,7 @@ omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it 
 omarchy-shell expose moveCursorToWindow on       # on | off
 ```
 
-After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, edit `~/.config/omarchy/shell.json` and set `"showFooter": true` in the `expose.window-overview` plugin entry.
+After hiding the bottom text, you can restore it while Settings remains open. If you close Settings first, run `omarchy-shell expose showFooter on`.
 
 ## Security and system changes
 

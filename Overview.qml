@@ -11,6 +11,7 @@ import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 import "ScreenLayout.js" as ScreenLayout
+import "SettingsSchema.js" as SettingsSchema
 
 Item {
     id: root
@@ -44,17 +45,10 @@ Item {
         }
         onFileChanged: Qt.callLater(pluginSettingsFile.reload)
     }
-    readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
-    readonly property var windowFooterStyles: ["floating", "integrated", "overlay", "centered"]
-    readonly property string windowFooterStyle: {
-        var style = String((root.pluginEntry && root.pluginEntry.windowFooterStyle) || "floating");
-        return root.windowFooterStyles.indexOf(style) !== -1 ? style : "floating";
-    }
-    readonly property var animationStyles: ["original", "fade", "zoom", "slide"]
-    readonly property string animationStyle: {
-        var style = String((root.pluginEntry && root.pluginEntry.animationStyle) || "original");
-        return root.animationStyles.indexOf(style) !== -1 ? style : "original";
-    }
+    readonly property string previewPlacement: SettingsSchema.read(root.pluginEntry, "previewPlacement")
+    readonly property string windowFooterStyle: SettingsSchema.read(root.pluginEntry, "windowFooterStyle")
+    readonly property var animationStyles: SettingsSchema.values("animationStyle")
+    readonly property string animationStyle: SettingsSchema.read(root.pluginEntry, "animationStyle")
     readonly property var defaultAnimationDurations: ({ original: 190, fade: 400, zoom: 320, slide: 320 })
     readonly property var animationTimings: {
         var configuredTimings = root.pluginEntry && root.pluginEntry.animationTimings
@@ -122,25 +116,14 @@ Item {
         ? 0.11 * (1 - root.motionProgress)
         : 0
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
-    readonly property int backgroundBlur: {
-        var raw = root.pluginEntry ? root.pluginEntry.backgroundBlur : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(20, Math.round(value))) : 4;
-    }
-    readonly property int backgroundDim: {
-        var raw = root.pluginEntry ? root.pluginEntry.backgroundDim : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(90, Math.round(value))) : 6;
-    }
-    readonly property bool hotCornerEnabled: pluginSettings.ready && root.pluginEntry.hotCornerEnabled !== false
-    readonly property var hotCornerPositions: ["top-left", "top-right", "bottom-left", "bottom-right"]
-    readonly property string hotCornerPosition: {
-        var position = String((root.pluginEntry && root.pluginEntry.hotCornerPosition) || "top-left");
-        return root.hotCornerPositions.indexOf(position) !== -1 ? position : "top-left";
-    }
+    readonly property int backgroundBlur: SettingsSchema.read(root.pluginEntry, "backgroundBlur")
+    readonly property int backgroundDim: SettingsSchema.read(root.pluginEntry, "backgroundDim")
+    // Off until settings load, so a saved "off" never flashes the corner on.
+    readonly property bool hotCornerEnabled: pluginSettings.ready && SettingsSchema.read(root.pluginEntry, "hotCornerEnabled")
+    readonly property string hotCornerPosition: SettingsSchema.read(root.pluginEntry, "hotCornerPosition")
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
-    readonly property bool hotCornerAllDisplays: !!root.pluginEntry && root.pluginEntry.hotCornerAllDisplays === true
+    readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
     readonly property var hotCornerScreens: root.hotCornerEnabled
         ? ScreenLayout.hotCornerScreens(Quickshell.screens,
             Hyprland.monitors ? Hyprland.monitors.values : [],
@@ -149,33 +132,21 @@ Item {
     onHotCornerScreensChanged: root.scheduleHotCornerRearm()
     // How long the pointer has to rest in the corner before it fires. Zero
     // keeps the original instant trip; longer dwells stop stray flings.
-    readonly property int hotCornerDelay: {
-        var raw = root.pluginEntry ? root.pluginEntry.hotCornerDelay : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(1000, Math.round(value))) : 0;
-    }
+    readonly property int hotCornerDelay: SettingsSchema.read(root.pluginEntry, "hotCornerDelay")
     // Which windows the overview starts with. "all" keeps every workspace, as
     // before; "current" opens on the active workspace and leaves Tab to widen.
-    readonly property string initialWorkspaceScope: {
-        var raw = root.pluginEntry ? root.pluginEntry.initialWorkspaceScope : undefined;
-        return String(raw) === "current" ? "current" : "all";
-    }
+    readonly property string initialWorkspaceScope: SettingsSchema.read(root.pluginEntry, "initialWorkspaceScope")
     // How a workspace is named on the cards and in the scope indicator. Plugins
     // such as per-monitor-workspaces name a workspace "<monitor description>:<slot>",
     // which is far wider than a card footer; "slot" prints the trailing slot only.
-    readonly property string workspaceLabelStyle: {
-        var raw = root.pluginEntry ? root.pluginEntry.workspaceLabelStyle : undefined;
-        return String(raw) === "slot" ? "slot" : "full";
-    }
+    readonly property string workspaceLabelStyle: SettingsSchema.read(root.pluginEntry, "workspaceLabelStyle")
     // Reach farther along both screen edges than into the desktop. Fast flings
     // are easier to catch without stealing a large square from the bar below.
     readonly property int hotCornerReach: Style.space(48)
     readonly property int hotCornerDepth: Style.space(6)
-    readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
-    readonly property string multiMonitorMode: root.pluginEntry && root.pluginEntry.multiMonitorMode === "per-monitor"
-        ? "per-monitor"
-        : "mirrored"
-    readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
+    readonly property bool moveCursorToWindow: SettingsSchema.read(root.pluginEntry, "moveCursorToWindow")
+    readonly property string multiMonitorMode: SettingsSchema.read(root.pluginEntry, "multiMonitorMode")
+    readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -496,23 +467,24 @@ Item {
         return pluginSettings.update(name, value);
     }
 
-    function setPreviewPlacement(value) {
-        var mode = value === "centered" ? "centered" : "in-place";
-        if (mode !== root.previewPlacement)
-            root.updatePluginSetting("previewPlacement", mode);
+    // Stores a simple setting from the schema; returns the value it now has.
+    function setSetting(name, value) {
+        if (name === "hotCornerEnabled")
+            return root.setHotCornerEnabled(value);
+        var next = SettingsSchema.normalize(name, value, root[name]);
+        if (next !== root[name])
+            root.updatePluginSetting(name, next);
+        return next;
     }
 
-    function setWindowFooterStyle(value) {
-        var style = root.windowFooterStyles.indexOf(value) !== -1 ? value : "floating";
-        if (style !== root.windowFooterStyle)
-            root.updatePluginSetting("windowFooterStyle", style);
-    }
-
-    function setAnimationStyle(value) {
-        var style = root.animationStyles.indexOf(value) !== -1 ? value : "original";
-        if (style !== root.animationStyle)
-            root.updatePluginSetting("animationStyle", style);
-        return style;
+    // IPC form of setSetting: rejects unlisted options and non on/off booleans
+    // with a message, and answers with the stored value as text.
+    function setSettingFromIpc(name, text) {
+        var parsed = SettingsSchema.parseIpc(name, text);
+        if (parsed.error)
+            return parsed.error;
+        var next = root.setSetting(name, parsed.value);
+        return typeof next === "boolean" ? (next ? "on" : "off") : String(next);
     }
 
     function clampAnimationDuration(value) {
@@ -636,26 +608,6 @@ Item {
         root.animationOutDurationPreview = -1;
     }
 
-    function setBackgroundBlur(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.backgroundBlur;
-        var next = Math.max(0, Math.min(20, Math.round(numeric)));
-        if (next !== root.backgroundBlur)
-            root.updatePluginSetting("backgroundBlur", next);
-        return next;
-    }
-
-    function setBackgroundDim(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.backgroundDim;
-        var next = Math.max(0, Math.min(90, Math.round(numeric)));
-        if (next !== root.backgroundDim)
-            root.updatePluginSetting("backgroundDim", next);
-        return next;
-    }
-
     function openSettings() {
         if (!root.surfaceMounted)
             root.open("{}");
@@ -697,52 +649,7 @@ Item {
         // The corner is also disabled while settings load; an early "off"
         // command must still be queued even though the surface is inactive.
         root.updatePluginSetting("hotCornerEnabled", next);
-    }
-
-    function setHotCornerPosition(value) {
-        var position = root.hotCornerPositions.indexOf(value) !== -1 ? value : "top-left";
-        if (position !== root.hotCornerPosition)
-            root.updatePluginSetting("hotCornerPosition", position);
-    }
-
-    function setHotCornerAllDisplays(enabled) {
-        root.updatePluginSetting("hotCornerAllDisplays", enabled === true);
-    }
-
-    function setHotCornerDelay(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.hotCornerDelay;
-        var next = Math.max(0, Math.min(1000, Math.round(numeric)));
-        if (next !== root.hotCornerDelay)
-            root.updatePluginSetting("hotCornerDelay", next);
         return next;
-    }
-
-    function setInitialWorkspaceScope(value) {
-        var next = String(value) === "current" ? "current" : "all";
-        if (next !== root.initialWorkspaceScope)
-            root.updatePluginSetting("initialWorkspaceScope", next);
-        return next;
-    }
-
-    function setWorkspaceLabelStyle(value) {
-        var next = String(value) === "slot" ? "slot" : "full";
-        if (next !== root.workspaceLabelStyle)
-            root.updatePluginSetting("workspaceLabelStyle", next);
-        return next;
-    }
-
-    function setMoveCursorToWindow(enabled) {
-        var next = enabled === true;
-        if (next !== root.moveCursorToWindow)
-            root.updatePluginSetting("moveCursorToWindow", next);
-    }
-
-    function setMultiMonitorMode(value) {
-        var mode = value === "per-monitor" ? "per-monitor" : "mirrored";
-        if (mode !== root.multiMonitorMode)
-            root.updatePluginSetting("multiMonitorMode", mode);
     }
 
     function requestFooterHide() {
@@ -1410,12 +1317,6 @@ Item {
         }
     }
 
-    // IPC rejection text derived from the option list it validates against.
-    function expectedOneOf(options) {
-        var head = options.slice(0, -1).join(", ");
-        return "expected " + head + (options.length > 2 ? ", or " : " or ") + options[options.length - 1];
-    }
-
     IpcHandler {
         target: "expose"
         function open(): string {
@@ -1433,59 +1334,38 @@ Item {
             root.toggle();
             return "ok";
         }
-        function previewPlacement(mode: string): string {
-            if (mode !== "in-place" && mode !== "centered")
-                return "expected in-place or centered";
-            root.setPreviewPlacement(mode);
-            return mode;
-        }
-        function windowFooterStyle(style: string): string {
-            if (root.windowFooterStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.windowFooterStyles);
-            root.setWindowFooterStyle(style);
-            return style;
-        }
-        function animationStyle(style: string): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return root.setAnimationStyle(style);
-        }
         function animationDuration(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDuration(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDuration(style, value));
         }
         function animationDurationIn(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDurationIn(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDurationIn(style, value));
         }
         function animationDurationOut(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDurationOut(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDurationOut(style, value));
         }
         function slideDirection(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirection(direction);
         }
         function slideDirectionIn(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionIn(direction);
         }
         function slideDirectionOut(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionOut(direction);
         }
-        function backgroundBlur(value: real): string {
-            return String(root.setBackgroundBlur(value));
-        }
-        function backgroundDim(value: real): string {
-            return String(root.setBackgroundDim(value));
-        }
+        function previewPlacement(mode: string): string { return root.setSettingFromIpc("previewPlacement", mode); }
+        function windowFooterStyle(style: string): string { return root.setSettingFromIpc("windowFooterStyle", style); }
+        function animationStyle(style: string): string { return root.setSettingFromIpc("animationStyle", style); }
+        function backgroundBlur(value: real): string { return root.setSettingFromIpc("backgroundBlur", value); }
+        function backgroundDim(value: real): string { return root.setSettingFromIpc("backgroundDim", value); }
+        function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
+        function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
+        function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
         function settings(mode: string): string {
             if (mode === "open")
                 root.openSettings();
@@ -1497,39 +1377,12 @@ Item {
                 return "expected open, close, or toggle";
             return mode;
         }
-        function hotCorner(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setHotCornerEnabled(mode === "on");
-            return mode;
-        }
-        function hotCornerPosition(position: string): string {
-            if (root.hotCornerPositions.indexOf(position) === -1)
-                return root.expectedOneOf(root.hotCornerPositions);
-            root.setHotCornerPosition(position);
-            return position;
-        }
-        function hotCornerDelay(value: real): string {
-            return String(root.setHotCornerDelay(value));
-        }
-        function hotCornerAllDisplays(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setHotCornerAllDisplays(mode === "on");
-            return mode;
-        }
-        function moveCursorToWindow(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setMoveCursorToWindow(mode === "on");
-            return mode;
-        }
-        function multiMonitorMode(mode: string): string {
-            if (mode !== "mirrored" && mode !== "per-monitor")
-                return "expected mirrored or per-monitor";
-            root.setMultiMonitorMode(mode);
-            return mode;
-        }
+        function hotCorner(mode: string): string { return root.setSettingFromIpc("hotCornerEnabled", mode); }
+        function hotCornerPosition(position: string): string { return root.setSettingFromIpc("hotCornerPosition", position); }
+        function hotCornerDelay(value: real): string { return root.setSettingFromIpc("hotCornerDelay", value); }
+        function hotCornerAllDisplays(mode: string): string { return root.setSettingFromIpc("hotCornerAllDisplays", mode); }
+        function moveCursorToWindow(mode: string): string { return root.setSettingFromIpc("moveCursorToWindow", mode); }
+        function multiMonitorMode(mode: string): string { return root.setSettingFromIpc("multiMonitorMode", mode); }
     }
 
     component HotCornerTarget: Item {
