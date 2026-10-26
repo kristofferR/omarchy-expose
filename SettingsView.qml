@@ -714,6 +714,17 @@ Item {
         settingsView.revealSettingsItem(items[nextIndex]);
     }
 
+    // Whether keyboard focus is on a visible item inside the settings.
+    function holdsFocus() {
+        var item = settingsView.Window.activeFocusItem;
+        if (!item || !item.visible)
+            return false;
+        for (; item; item = item.parent)
+            if (item === settingsView)
+                return true;
+        return false;
+    }
+
     function focusSettingsCategory() {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         if (categoryButton)

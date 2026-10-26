@@ -120,6 +120,12 @@ ShellRoot {
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);
+        require(settings.holdsFocus(), "settings report their own focus on page " + index);
+        if (index === 0) {
+            canvas.forceActiveFocus();
+            require(!settings.holdsFocus(), "focus outside settings is not theirs");
+            settings.focusSettingsCategory();
+        }
         for (var i = 1; i < items.length; i++) {
             settings.moveSettingsFocus(true, false);
             require(items[i].activeFocus, "forward focus on page " + index + " control " + i);

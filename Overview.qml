@@ -321,7 +321,7 @@ Item {
             root.opened = true;
             root.animateMotionTo(1);
             root.refreshHyprlandState();
-            Qt.callLater(root.focusKeyboardWindow);
+            Qt.callLater(root.focusKeyboardSurface);
             return;
         }
         if (root.openingPending)
@@ -416,7 +416,7 @@ Item {
             root.openingPending = false;
             root.opened = true;
             root.animateMotionTo(1);
-            root.focusKeyboardWindow();
+            root.focusKeyboardSurface();
         });
     }
 
@@ -457,7 +457,7 @@ Item {
         root.motionProgress = root.motionTarget;
         if (root.motionTarget > 0) {
             root.scheduleBackgroundBlurUpdate();
-            Qt.callLater(root.focusKeyboardWindow);
+            Qt.callLater(root.focusKeyboardSurface);
             return;
         }
         backgroundBlurUpdate.stop();
@@ -660,10 +660,7 @@ Item {
         root.hotCornerDelayPreview = -1;
         root.settingsCategoryIndex = 0;
         root.settingsOpen = true;
-        Qt.callLater(function () {
-            if (root.settingsOpen)
-                root.focusSettingsCategory();
-        });
+        Qt.callLater(root.focusKeyboardSurface);
     }
 
     function closeSettings() {
@@ -677,7 +674,7 @@ Item {
         if (restoreKeyboardFocus)
             Qt.callLater(function () {
                 if (root.opened)
-                    root.focusKeyboardWindow();
+                    root.focusKeyboardSurface();
             });
     }
 
@@ -804,21 +801,17 @@ Item {
         }
     }
 
-    function focusKeyboardWindow() {
+    // Keyboard focus goes wherever it belongs now: the settings when they are
+    // open, the window grid otherwise. Every request asks the same question, so
+    // a late one from the open sequence cannot pull focus out of settings.
+    function focusKeyboardSurface() {
         for (var i = 0; i < surfaceInstances.instances.length; i++) {
             var surface = surfaceInstances.instances[i];
             if (surface && surface.acceptsKeyboard) {
-                surface.keyboardItem.forceActiveFocus();
-                return;
-            }
-        }
-    }
-
-    function focusSettingsCategory() {
-        for (var i = 0; i < surfaceInstances.instances.length; i++) {
-            var surface = surfaceInstances.instances[i];
-            if (surface && surface.acceptsKeyboard) {
-                surface.focusSettingsCategory();
+                if (root.settingsOpen)
+                    surface.focusSettings();
+                else
+                    surface.keyboardItem.forceActiveFocus();
                 return;
             }
         }
@@ -1755,6 +1748,13 @@ Item {
             function focusSettingsCategory() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
+                    settings.focusSettingsCategory(); // qmllint disable missing-property
+            }
+
+            // Keeps focus already on a visible settings control; otherwise the category.
+            function focusSettings() {
+                var settings = settingsLayerLoader.item;
+                if (settings && !settings.holdsFocus()) // qmllint disable missing-property
                     settings.focusSettingsCategory(); // qmllint disable missing-property
             }
 
