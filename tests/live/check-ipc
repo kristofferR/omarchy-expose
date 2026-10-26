@@ -28,11 +28,12 @@ check "a setting rejects an unknown option" "$(E previewPlacement middle)" "expe
 E open >/dev/null; sleep 1.5
 check "state while open" "$(field opened)" true
 # From the origin at least one direction finds another window.
-before=$(field selection)
+before=$(field selectionAddress)
 for direction in right left down up; do
-  [[ $(E move "$direction") != "$before" ]] && break
+  E move "$direction" >/dev/null
+  [[ $(field selectionAddress) != "$before" ]] && break
 done
-check "move changes the selection" "$([[ $(field selection) != "$before" ]] && echo yes)" yes
+check "move changes the selection" "$([[ $(field selectionAddress) != "$before" ]] && echo yes)" yes
 check "filter to nothing" "$(E filter zzzz-no-such-window)" 0
 check "empty filter restores the list" "$(( $(E filter '') >= 2 ))" 1
 check "preview opens" "$(E preview)" on

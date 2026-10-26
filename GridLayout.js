@@ -130,7 +130,7 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
 
     var best = null;
     var bestScale = -1;
-    var minimumCardHeight = footerHeight + padding * 2 + footerSpacing + 1;
+    var minimumCardHeight = footerHeight + padding * 2 + footerSpacing;
     var maxRows = Math.max(1, Math.min(count, Math.floor((availableHeight + gap) / (minimumCardHeight + gap))));
     for (var rowCount = 1; rowCount <= maxRows; rowCount++) {
         var rows = assignCompositionRows(entries, rowCount);

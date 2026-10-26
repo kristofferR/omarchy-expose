@@ -89,6 +89,23 @@ TestCase {
         compare(rowCount(GridLayout.computeLayout([1, 1, 1, 1, 1, 1], 400, 3000, gap, padding, footer)), 6);
     }
 
+    function test_crowdedAreaAllowsSubpixelPreviewHeight() {
+        var ratios = [];
+        for (var i = 0; i < 50; i++)
+            ratios.push(1.6);
+        var rects = GridLayout.computeLayout(ratios, 704, areaHeight, gap, padding, footer);
+        compare(rects.length, ratios.length);
+        compare(rowCount(rects), 7);
+        for (var j = 0; j < rects.length; j++) {
+            verify(rects[j].width > padding * 2);
+            verify(rects[j].height > footer + padding * 3);
+            verify(rects[j].x >= 0 && rects[j].x + rects[j].width <= 704);
+            verify(rects[j].y >= 0 && rects[j].y + rects[j].height <= areaHeight);
+            for (var k = j + 1; k < rects.length; k++)
+                verify(!overlaps(rects[j], rects[k]));
+        }
+    }
+
     function test_twoWideWindowsSitSideBySide() {
         compare(rowCount(layoutFor([2, 2])), 1);
     }
