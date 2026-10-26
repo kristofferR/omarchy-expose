@@ -761,6 +761,20 @@ Item {
         return false;
     }
 
+    // A freshly mapped overview gets no pointer enter until the pointer moves,
+    // so until one of its surfaces has seen the pointer it may still be resting
+    // in the corner underneath.
+    function overviewPointerSeen() {
+        var groups = [surfaceInstances, backdropInstances];
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var instances = groups[groupIndex].instances;
+            for (var index = 0; index < instances.length; index++)
+                if (instances[index] && instances[index].pointerInside)
+                    return true;
+        }
+        return false;
+    }
+
     function triggerHotCorner(screenName) {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
@@ -1523,6 +1537,11 @@ Item {
         id: hotCornerRearm
         interval: 100
         onTriggered: {
+            // Hiding the closed corner under the overview reports an exit
+            // even though the pointer never moved. Arming then would let the
+            // first motion out of the corner dismiss the overview again.
+            if (root.surfaceMounted && !root.overviewPointerSeen())
+                return;
             if (!root.hotCornerHovered())
                 root.hotCornerArmed = true;
         }
@@ -1873,6 +1892,7 @@ Item {
             ? backgroundBlurRegion
             : null
         readonly property bool hotCornerHovered: openHotCorner.hovered
+        readonly property bool pointerInside: overviewPointer.hovered
 
         Region {
             id: backgroundBlurRegion
@@ -1896,6 +1916,14 @@ Item {
                     root.dismiss();
             }
             onWheel: function (wheel) { wheel.accepted = true; }
+        }
+
+        HoverHandler {
+            id: overviewPointer
+            onHoveredChanged: {
+                if (hovered)
+                    root.scheduleHotCornerRearm();
+            }
         }
 
         HotCornerTarget {
