@@ -190,6 +190,8 @@ Item {
     // The window the overview was opened from. Hyprland's active window stops
     // matching any card once the overlay holds keyboard focus.
     property var originToplevel: null
+    // Window to focus once the overlay releases the keyboard.
+    property var pendingActivation: null
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
     property bool openingPending: false
@@ -305,6 +307,8 @@ Item {
         // Taken before the overlay takes keyboard focus. Right after a shell
         // restart the active window is not known yet; focus history may be.
         root.originToplevel = Hyprland.activeToplevel || WindowModel.mostRecent(root.allToplevels);
+        // Reopening before the overlay is gone cancels the activation.
+        root.pendingActivation = null;
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
@@ -480,6 +484,8 @@ Item {
     }
 
     function finishDismiss() {
+        if (root.pendingActivation)
+            root.dispatchPendingActivation();
         var notifyShell = root.dismissNotifyShell;
         root.dismissNotifyShell = false;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
@@ -941,15 +947,23 @@ Item {
     function activate(top) {
         if (!top)
             return;
-        var helper = root.pluginDir + "/activate-window";
-        Quickshell.execDetached([
-            helper,
-            WindowModel.addressFor(top),
-            WindowModel.appIdFor(top),
-            String(top.title || ""),
-            root.moveCursorToWindow ? "true" : "false"
-        ]);
+        root.pendingActivation = top;
         root.dismiss();
+    }
+
+    // Runs once a surface has lost the keyboard, or once the surfaces are gone
+    // if none held it. When an exclusive-keyboard layer lets go, Hyprland
+    // returns focus to the previous window, overriding any earlier request.
+    function dispatchPendingActivation() {
+        var address = WindowModel.addressFor(root.pendingActivation);
+        root.pendingActivation = null;
+        if (!address)
+            return;
+        var focus = "hl.dispatch(hl.dsp.focus({ window = 'address:" + address + "' }))";
+        Hyprland.dispatch(root.moveCursorToWindow
+            ? "(function() " + focus + " end)"
+            : "(function() local p = hl.get_cursor_pos(); " + focus
+                + "; hl.dispatch(hl.dsp.cursor.move({ x = p.x, y = p.y })) end)");
     }
 
     function requestClose(top) {
@@ -1659,6 +1673,16 @@ Item {
             anchors.fill: parent
             color: "black"
             opacity: root.effectiveBackgroundDim / 100
+        }
+
+        // Losing the keyboard means Hyprland has already handed focus back,
+        // so the chosen window's focus can be dispatched without waiting for
+        // the closing animation.
+        Item {
+            Window.onActiveChanged: {
+                if (!Window.active && root.pendingActivation)
+                    root.dispatchPendingActivation();
+            }
         }
 
         MouseArea {
