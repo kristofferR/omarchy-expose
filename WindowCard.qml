@@ -14,7 +14,7 @@ Ui.BorderSurface {
     required property var modelData
     required property var controller
     required property var screenToplevels
-    required property bool acceptsKeyboard
+    required property string screenName
     required property var windowLayout
     required property real layoutAreaWidth
     required property real layoutAreaHeight
@@ -22,10 +22,11 @@ Ui.BorderSurface {
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
     property bool hovered: false
-    readonly property bool selected: card.acceptsKeyboard && inLayout && slot === card.controller.selectedIndex
+    readonly property bool selected: inLayout && card.screenName === card.controller.selectionScreenName && slot === card.controller.selectedIndex
     readonly property bool focusedWindow: modelData === Hyprland.activeToplevel
-    readonly property bool previewed: card.acceptsKeyboard && inLayout && slot === card.controller.previewIndex
-    readonly property bool exitingPreview: card.acceptsKeyboard && inLayout && slot === card.controller.previewExitIndex
+    readonly property bool previewed: inLayout && card.screenName === card.controller.previewScreenName && slot === card.controller.previewIndex
+    readonly property bool exitingPreview: inLayout && card.screenName === card.controller.previewExitScreenName && slot === card.controller.previewExitIndex
+    readonly property bool previewOnThisScreen: card.screenName === card.controller.previewScreenName
     readonly property bool floatingFooter: card.controller.windowFooterStyle === "floating"
     readonly property bool integratedFooter: card.controller.windowFooterStyle === "integrated"
     readonly property bool overlayFooter: card.controller.windowFooterStyle === "overlay"
@@ -63,31 +64,38 @@ Ui.BorderSurface {
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
     borderSpec: integratedFooter ? outlineSpec : Border.none()
-    opacity: card.controller.previewIndex < 0 || previewed ? 1 : 0.28
+    opacity: !card.previewOnThisScreen || card.controller.previewIndex < 0 || previewed ? 1 : 0.28
 
     MouseArea {
         anchors.fill: parent
-        enabled: !card.controller.settingsOpen && (card.controller.previewIndex < 0 || card.previewed)
+        enabled: !card.controller.settingsOpen
+            && (!card.previewOnThisScreen || card.controller.previewIndex < 0 || card.previewed)
         hoverEnabled: true
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
-                if (card.controller.hoveredIndex === card.slot)
+                if (card.controller.hoveredScreenName === card.screenName
+                        && card.controller.hoveredIndex === card.slot) {
                     card.controller.hoveredIndex = -1;
+                    card.controller.hoveredScreenName = "";
+                }
 
             }
         }
         onEntered: {
             card.hovered = true;
-            if (card.acceptsKeyboard) {
-                card.controller.hoveredIndex = card.slot;
-                card.controller.selectedIndex = card.slot;
-            }
+            card.controller.selectedScreenName = card.screenName;
+            card.controller.selectedIndex = card.slot;
+            card.controller.hoveredScreenName = card.screenName;
+            card.controller.hoveredIndex = card.slot;
         }
         onExited: {
             card.hovered = false;
-            if (card.acceptsKeyboard && card.controller.hoveredIndex === card.slot)
+            if (card.controller.hoveredScreenName === card.screenName
+                    && card.controller.hoveredIndex === card.slot) {
                 card.controller.hoveredIndex = -1;
+                card.controller.hoveredScreenName = "";
+            }
 
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
@@ -129,10 +137,13 @@ Ui.BorderSurface {
 
                 Item {
                     anchors.centerIn: parent
-                    width: parent.width * 2
-                    height: parent.height * 2
-                    scale: 0.5
-                    layer.enabled: true
+                    // Four displays can exhaust the display GPU when every
+                    // screencopy also keeps a double-resolution layer.
+                    readonly property bool doubleResolution: card.controller.multiMonitorMode !== "all-monitors"
+                    width: parent.width * (doubleResolution ? 2 : 1)
+                    height: parent.height * (doubleResolution ? 2 : 1)
+                    scale: doubleResolution ? 0.5 : 1
+                    layer.enabled: doubleResolution
                     layer.smooth: true
 
                     ScreencopyView {

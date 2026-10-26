@@ -26,6 +26,8 @@ For live multi-display checks, use a second physical or headless Hyprland output
 - Open on either display: both backdrops should blur/dim, with only one grid.
 - Cross to the other display: search, Escape, and settings keyboard controls must
   still reach the grid. A backdrop click must dismiss without reaching an app.
+- In **Each display** mode, use arrows to select a card on another display, then
+  use Space, Enter, and Shift+Q on that card. Try starting on an empty display.
 - Toggle **Hot corner → All displays** and change corner positions; check that
   only the eligible displays activate Exposé, including after rearranging them.
 - Add a display while open, then remove the grid's display: the grid should move
