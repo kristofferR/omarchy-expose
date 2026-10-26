@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
-import Quickshell.Hyprland
 import Quickshell.Wayland
 import "WindowModel.js" as WindowModel
 import qs.Commons
@@ -22,10 +21,11 @@ Ui.BorderSurface {
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
     property bool hovered: false
-    readonly property bool selected: card.acceptsKeyboard && inLayout && slot === card.controller.selectedIndex
-    readonly property bool focusedWindow: modelData === Hyprland.activeToplevel
-    readonly property bool previewed: card.acceptsKeyboard && inLayout && slot === card.controller.previewIndex
-    readonly property bool exitingPreview: card.acceptsKeyboard && inLayout && slot === card.controller.previewExitIndex
+    readonly property bool selected: card.acceptsKeyboard && inLayout && modelData === card.controller.selection
+    // The window the overview was opened from; the overlay holds focus while open.
+    readonly property bool focusedWindow: modelData === card.controller.originToplevel
+    readonly property bool previewed: card.acceptsKeyboard && inLayout && modelData === card.controller.previewToplevel
+    readonly property bool exitingPreview: card.acceptsKeyboard && inLayout && modelData === card.controller.previewExitToplevel
     readonly property bool floatingFooter: card.controller.windowFooterStyle === "floating"
     readonly property bool integratedFooter: card.controller.windowFooterStyle === "integrated"
     readonly property bool overlayFooter: card.controller.windowFooterStyle === "overlay"
@@ -63,31 +63,31 @@ Ui.BorderSurface {
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
     borderSpec: integratedFooter ? outlineSpec : Border.none()
-    opacity: card.controller.previewIndex < 0 || previewed ? 1 : 0.28
+    opacity: !card.controller.previewToplevel || previewed ? 1 : 0.28
 
     MouseArea {
         anchors.fill: parent
-        enabled: !card.controller.settingsOpen && (card.controller.previewIndex < 0 || card.previewed)
+        enabled: !card.controller.settingsOpen && (!card.controller.previewToplevel || card.previewed)
         hoverEnabled: true
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
-                if (card.controller.hoveredIndex === card.slot)
-                    card.controller.hoveredIndex = -1;
+                if (card.controller.hoveredToplevel === card.modelData)
+                    card.controller.hoveredToplevel = null;
 
             }
         }
         onEntered: {
             card.hovered = true;
             if (card.acceptsKeyboard) {
-                card.controller.hoveredIndex = card.slot;
-                card.controller.selectedIndex = card.slot;
+                card.controller.hoveredToplevel = card.modelData;
+                card.controller.selectedToplevel = card.modelData;
             }
         }
         onExited: {
             card.hovered = false;
-            if (card.acceptsKeyboard && card.controller.hoveredIndex === card.slot)
-                card.controller.hoveredIndex = -1;
+            if (card.acceptsKeyboard && card.controller.hoveredToplevel === card.modelData)
+                card.controller.hoveredToplevel = null;
 
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton

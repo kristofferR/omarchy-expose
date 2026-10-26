@@ -181,10 +181,15 @@ Item {
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
-    property int selectedIndex: 0
-    property int hoveredIndex: -1
-    property int previewIndex: -1
-    property int previewExitIndex: -1
+    // Selection state holds windows, not positions in filteredToplevels, so it
+    // survives the list being rebuilt by filtering, scope, or windows closing.
+    property var selectedToplevel: null
+    property var hoveredToplevel: null
+    property var previewToplevel: null
+    property var previewExitToplevel: null
+    // The window the overview was opened from. Hyprland's active window stops
+    // matching any card once the overlay holds keyboard focus.
+    property var originToplevel: null
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
     property bool openingPending: false
@@ -275,12 +280,14 @@ Item {
         var revision = root.modelRevision;
         return root.toplevelsForScreen(root.keyboardScreenName);
     }
+    // What Enter opens.
+    readonly property var selection: WindowModel.selectionFor(root.filteredToplevels, root.selectedToplevel, root.originToplevel)
 
     onMultiMonitorModeChanged: {
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+        root.selectedToplevel = root.originToplevel;
     }
 
     onEffectiveBackgroundBlurChanged: {
@@ -295,6 +302,9 @@ Item {
     }
 
     function open(payload) {
+        // Taken before the overlay takes keyboard focus. Right after a shell
+        // restart the active window is not known yet; focus history may be.
+        root.originToplevel = Hyprland.activeToplevel || WindowModel.mostRecent(root.allToplevels);
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
@@ -324,8 +334,8 @@ Item {
         root.openingPending = true;
         root.refreshHyprlandState();
         root.resetSessionToplevels();
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
-        root.hoveredIndex = -1;
+        root.selectedToplevel = root.originToplevel;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
@@ -344,7 +354,7 @@ Item {
     function startDismiss(notifyShell) {
         root.openingPending = false;
         root.closeSettings();
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.opened = false;
         root.dismissNotifyShell = root.dismissNotifyShell || notifyShell;
@@ -675,8 +685,8 @@ Item {
         previewExitTimer.stop();
         root.previewSlowMotion = false;
         root.previewNavigationSlowMotion = false;
-        root.previewIndex = -1;
-        root.previewExitIndex = -1;
+        root.previewToplevel = null;
+        root.previewExitToplevel = null;
     }
 
     function setHotCornerEnabled(enabled) {
@@ -857,10 +867,10 @@ Item {
 
     function setFilter(value) {
         root.filterText = value;
-        root.selectedIndex = 0;
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
+        root.selectedToplevel = root.filteredToplevels[0] || null;
     }
 
     function setWorkspaceScope(value) {
@@ -870,10 +880,10 @@ Item {
         if (next === root.workspaceScope)
             return;
         root.workspaceScope = next;
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+        root.selectedToplevel = root.originToplevel;
     }
 
     function toggleWorkspaceScope() {
@@ -891,20 +901,17 @@ Item {
             return;
         if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
-        var selectedTop = root.filteredToplevels[root.selectedIndex];
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        var nextIndex = root.filteredToplevels.indexOf(selectedTop);
-        root.selectedIndex = nextIndex >= 0 ? nextIndex : Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     function handleToplevelMetadataChanged(top) {
         if (!root.surfaceMounted && !root.openingPending)
             return;
-        var selectedTop = root.filteredToplevels[root.selectedIndex];
-        var previewTop = root.previewIndex >= 0 ? root.filteredToplevels[root.previewIndex] : null;
-        var previewExitTop = root.previewExitIndex >= 0 ? root.filteredToplevels[root.previewExitIndex] : null;
+        // Focus history arrives with the first refresh after a shell restart.
+        if (!root.originToplevel)
+            root.originToplevel = WindowModel.mostRecent(root.allToplevels);
         var membershipChanged = root.syncSessionToplevels();
         if (root.openingPending) {
             var sessionIndex = root.sessionToplevels.indexOf(top);
@@ -916,41 +923,26 @@ Item {
         }
         if (!membershipChanged)
             root.modelRevision++;
+        root.clearUnlistedPreview();
+    }
 
-        var selectedIndex = root.filteredToplevels.indexOf(selectedTop);
-        if (selectedIndex < 0)
-            selectedIndex = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
-        root.selectedIndex = Math.max(0, selectedIndex);
-
-        if (previewTop) {
-            var previewIndex = root.filteredToplevels.indexOf(previewTop);
-            if (previewIndex < 0)
-                root.clearPreview();
-            else
-                root.previewIndex = previewIndex;
-        } else if (previewExitTop) {
-            var previewExitIndex = root.filteredToplevels.indexOf(previewExitTop);
-            if (previewExitIndex < 0)
-                root.clearPreview();
-            else
-                root.previewExitIndex = previewExitIndex;
-        }
+    function clearUnlistedPreview() {
+        var listed = root.filteredToplevels;
+        if ((root.previewToplevel && listed.indexOf(root.previewToplevel) === -1)
+                || (root.previewExitToplevel && listed.indexOf(root.previewExitToplevel) === -1))
+            root.clearPreview();
     }
 
     function handleToplevelCollectionChanged() {
         if (!root.surfaceMounted && !root.openingPending)
             return;
+        var previous = root.filteredToplevels;
+        var selected = root.selection;
         var membershipChanged = root.syncSessionToplevels();
-        var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
-        if ((membershipChanged || filteredMembershipMayChange)
-                && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
-            root.clearPreview();
-        if (filteredMembershipMayChange)
+        if (!membershipChanged && root.filterText.length > 0)
             root.modelRevision++;
-        if (root.selectedIndex >= root.filteredToplevels.length)
-            root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-        if (root.previewIndex >= root.filteredToplevels.length)
-            root.clearPreview();
+        root.selectedToplevel = WindowModel.successorFor(previous, root.filteredToplevels, selected);
+        root.clearUnlistedPreview();
     }
 
     function activate(top) {
@@ -1135,18 +1127,19 @@ Item {
     }
 
     function moveDirectional(dx, dy, layout, slowMotion) {
-        var bestIndex = GridLayout.neighbourIndex(layout, root.selectedIndex, dx, dy);
+        var bestIndex = GridLayout.neighbourIndex(layout, root.filteredToplevels.indexOf(root.selection), dx, dy);
         if (bestIndex < 0)
             return;
 
-        var previousPreviewIndex = root.previewIndex;
-        root.selectedIndex = bestIndex;
-        if (previousPreviewIndex >= 0) {
+        var previousPreview = root.previewToplevel;
+        var next = root.filteredToplevels[bestIndex];
+        root.selectedToplevel = next;
+        if (previousPreview) {
             root.previewSlowMotion = false;
             root.previewNavigationSlowMotion = slowMotion === true;
             previewExitTimer.stop();
-            root.previewExitIndex = previousPreviewIndex;
-            root.previewIndex = bestIndex;
+            root.previewExitToplevel = previousPreview;
+            root.previewToplevel = next;
             previewExitTimer.restart();
         }
     }
@@ -1154,18 +1147,18 @@ Item {
     function togglePreview(slowMotion) {
         root.previewNavigationSlowMotion = false;
         root.previewSlowMotion = slowMotion === true;
-        if (root.previewIndex >= 0) {
-            root.previewExitIndex = root.previewIndex;
-            root.previewIndex = -1;
+        if (root.previewToplevel) {
+            root.previewExitToplevel = root.previewToplevel;
+            root.previewToplevel = null;
             previewExitTimer.restart();
             return;
         }
         previewExitTimer.stop();
-        root.previewExitIndex = -1;
-        var target = root.hoveredIndex >= 0 ? root.hoveredIndex : root.selectedIndex;
-        if (target >= 0 && target < root.filteredToplevels.length) {
-            root.selectedIndex = target;
-            root.previewIndex = target;
+        root.previewExitToplevel = null;
+        var target = root.hoveredToplevel || root.selection;
+        if (target && root.filteredToplevels.indexOf(target) !== -1) {
+            root.selectedToplevel = target;
+            root.previewToplevel = target;
         }
     }
 
@@ -1202,7 +1195,7 @@ Item {
             return;
         }
         if (event.key === Qt.Key_Escape) {
-            if (root.previewIndex >= 0 || root.previewExitIndex >= 0)
+            if (root.previewToplevel || root.previewExitToplevel)
                 root.clearPreview();
             else
                 root.dismiss();
@@ -1224,12 +1217,12 @@ Item {
         else if (event.key === Qt.Key_Down)
             root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-            root.activate(root.filteredToplevels[root.selectedIndex]);
+            root.activate(root.selection);
         else if (event.key === Qt.Key_Q
                 && Boolean(event.modifiers & Qt.ShiftModifier)
                 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
             if (!event.isAutoRepeat)
-                root.requestClose(root.filteredToplevels[root.selectedIndex]);
+                root.requestClose(root.selection);
         }
         else if (Util.editsFilter(event, root.filterText))
             root.setFilter(Util.editedFilter(event, root.filterText));
@@ -1284,9 +1277,9 @@ Item {
         id: previewExitTimer
         interval: root.previewAnimationDuration
         onTriggered: {
-            root.previewExitIndex = -1;
+            root.previewExitToplevel = null;
             root.previewNavigationSlowMotion = false;
-            if (root.previewIndex < 0)
+            if (!root.previewToplevel)
                 root.previewSlowMotion = false;
         }
     }
@@ -1399,11 +1392,8 @@ Item {
         function onFocusedMonitorChanged() { root.handleDisplayStateChanged(); }
         function onFocusedWorkspaceChanged() { root.handleDisplayStateChanged(); }
         function onActiveToplevelChanged() {
-            if (!root.opened)
-                return;
-            var index = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
-            if (index >= 0)
-                root.selectedIndex = index;
+            if (root.opened && root.filteredToplevels.indexOf(Hyprland.activeToplevel) !== -1)
+                root.selectedToplevel = Hyprland.activeToplevel;
         }
         function onRawEvent(event) {
             if (event && event.name === "configreloaded")
@@ -1683,7 +1673,7 @@ Item {
             acceptedButtons: Qt.AllButtons
             onClicked: {
                 if (surface.modelData === root.effectiveOverviewScreen
-                        && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+                        && (root.previewToplevel || root.previewExitToplevel))
                     root.clearPreview();
                 else
                     root.dismiss();

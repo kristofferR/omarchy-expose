@@ -35,10 +35,12 @@ ShellRoot {
         property int animationInDurationPreview: -1
         property int animationOutDurationPreview: -1
         property var slideDirection: ({"in":"left", "out":"left"})
-        property int previewIndex: -1
-        property int previewExitIndex: -1
-        property int selectedIndex: -1
-        property int hoveredIndex: -1
+        property var previewToplevel: null
+        property var previewExitToplevel: null
+        property var selection: null
+        property var selectedToplevel: null
+        property var hoveredToplevel: null
+        property var originToplevel: null
         property bool opened: false
         property int windowFooterHeight: 40
         property bool motionSettled: true
@@ -186,7 +188,7 @@ ShellRoot {
                 require(card.outlineSpec.widths.left === 2 && card.outlineSpec.gradient.enabled, "hover uses active compositor gradient without doubling width");
                 require(card.outlineSpec.gradient.angle === 45 && Qt.color(card.outlineSpec.gradient.colors[0]).r === Qt.color("#4a9a68").r, "ARGB conversion and angle");
                 card.hovered = false;
-                controller.selectedIndex = 0;
+                controller.selection = card.modelData;
                 card.acceptsKeyboard = true;
                 require(card.outlineSpec.widths.top === 2 && card.outlineSpec.gradient.enabled, "keyboard selection keeps window border despite zero control borders");
                 windowBorders.applySnapshot("not json");
