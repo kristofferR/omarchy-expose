@@ -1402,7 +1402,7 @@ Item {
             });
         }
         function get(name: string): string {
-            if (!SettingsSchema.specs[name])
+            if (!Object.prototype.hasOwnProperty.call(SettingsSchema.specs, name))
                 return SettingsSchema.expectedOneOf(Object.keys(SettingsSchema.specs));
             var value = SettingsSchema.read(root.pluginEntry, name);
             return typeof value === "boolean" ? (value ? "on" : "off") : String(value);

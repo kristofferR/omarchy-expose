@@ -22,6 +22,8 @@ check "move while closed" "$(E move left)" closed
 check "get reads a setting" "$([[ $(E get windowFooterStyle) =~ ^(floating|integrated|overlay|centered)$ ]] && echo yes)" yes
 check "get answers booleans as on or off" "$([[ $(E get showFooter) =~ ^(on|off)$ ]] && echo yes)" yes
 check "get rejects an unknown name" "$(E get nope | cut -c1-9)" "expected "
+check "get rejects constructor" "$(E get constructor | cut -c1-9)" "expected "
+check "get rejects toString" "$(E get toString | cut -c1-9)" "expected "
 check "move rejects an unknown direction" "$(E move sideways)" "expected left, right, up, or down"
 check "a setting rejects an unknown option" "$(E previewPlacement middle)" "expected in-place or centered"
 
