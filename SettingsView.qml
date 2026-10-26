@@ -664,7 +664,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [previewPlacementChoices, movePointerToggle],
+            [selectionStyleChoices, previewPlacementChoices, movePointerToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
@@ -923,6 +923,19 @@ Item {
                     SettingsPage {
                         categoryIndex: 1
                         title: "Quick Look and activation"
+
+                        SettingRow {
+                            label: "Selection highlight"
+                            description: "Outline borders the selected, hovered, and current windows alike. Lift raises only the window Enter opens and marks the current window with a dot."
+
+                            SettingChoices {
+                                id: selectionStyleChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.selectionStyle
+                                options: SettingsSchema.options("selectionStyle")
+                                onChosen: function (value) { settingsView.controller.setSetting("selectionStyle", value); }
+                            }
+                        }
 
                         SettingRow {
                             label: "Quick Look position"

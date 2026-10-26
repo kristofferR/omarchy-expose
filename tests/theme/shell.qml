@@ -30,6 +30,7 @@ ShellRoot {
         property bool separateTiming: false
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
+        property string selectionStyle: "outline"
         property string animationStyle: "original"
         property string animationDurationPreviewStyle: ""
         property int animationInDurationPreview: -1
@@ -116,7 +117,7 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [4, 3, 3, 3, 5, 8];
+        var expectedCounts = [4, 4, 3, 3, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);
@@ -197,6 +198,15 @@ ShellRoot {
                 controller.selection = card.modelData;
                 card.acceptsKeyboard = true;
                 require(card.outlineSpec.widths.top === 2 && card.outlineSpec.gradient.enabled, "keyboard selection keeps window border despite zero control borders");
+                controller.selectionStyle = "lift";
+                require(card.lifted && card.outlineSpec.widths.top === 3 && card.outlineSpec.gradient.enabled, "Lift rings and raises the selection");
+                controller.selection = null;
+                card.hovered = true;
+                require(!card.lifted, "Lift does not raise a hovered window");
+                require(!card.outlineSpec.gradient.enabled && card.outlineSpec.widths.top === 2, "Lift leaves a hovered window with the inactive border");
+                card.hovered = false;
+                controller.selection = card.modelData;
+                controller.selectionStyle = "outline";
                 windowBorders.applySnapshot("not json");
                 compositorBorders(-1, "ff000000", "ff000000");
                 compositorBorders(4, "invalid", "ff000000");

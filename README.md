@@ -101,6 +101,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background blur (0–20) and dim (0–90)
+- Selection highlight: outline (default) or lift, which raises and lights only the window Enter opens and marks the current one with a dot
 - Quick Look position: in-place or centered
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
@@ -126,6 +127,7 @@ omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
 omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
+omarchy-shell expose selectionStyle outline      # outline | lift
 omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor
 omarchy-shell expose hotCorner on                # on | off
 omarchy-shell expose hotCornerPosition top-left  # top-left | top-right | bottom-left | bottom-right

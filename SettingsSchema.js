@@ -22,6 +22,13 @@ var specs = {
             { label: "Centered", value: "centered" }
         ]
     },
+    selectionStyle: {
+        fallback: "outline",
+        options: [
+            { label: "Outline", value: "outline" },
+            { label: "Lift", value: "lift" }
+        ]
+    },
     animationStyle: {
         fallback: "original",
         options: [
