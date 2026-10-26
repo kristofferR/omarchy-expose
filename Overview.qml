@@ -1604,7 +1604,8 @@ Item {
         // the closing animation.
         Item {
             Window.onActiveChanged: {
-                if (!Window.active && root.pendingActivation)
+                if (surface.modelData === root.effectiveOverviewScreen
+                        && !Window.active && root.pendingActivation)
                     root.dispatchPendingActivation();
             }
         }
