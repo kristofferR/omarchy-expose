@@ -5,6 +5,7 @@ import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons // qmllint disable import
+import qs.Commons as Commons // qmllint disable import
 import qs.Ui as Ui // qmllint disable import
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
@@ -15,8 +16,8 @@ Item {
 
     property var shell: null
     property var manifest: null
-    readonly property alias windowBorders: windowBorders
-    WindowBorders { id: windowBorders }
+    readonly property alias windowBorders: compositorBorders
+    WindowBorders { id: compositorBorders }
     readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
     readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
         || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
@@ -293,7 +294,7 @@ Item {
     }
 
     function open(payload) {
-        windowBorders.refresh();
+        compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
             root.backgroundBlurReleasePhase = 0;
@@ -1613,7 +1614,7 @@ Item {
         }
         function onRawEvent(event) {
             if (event && event.name === "configreloaded")
-                windowBorders.refresh();
+                compositorBorders.refresh();
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
         }
@@ -2041,8 +2042,8 @@ Item {
                         Layout.preferredWidth: Math.min(Style.space(760), overviewWindow.width - Style.space(48))
                         Layout.preferredHeight: Style.space(48)
                         radius: Style.cornerRadius
-                        color: Color.menu.background
-                        borderSpec: Border.surfaceSpec("menu", "border", Color.foreground, Style.normalBorderWidth)
+                        color: Commons.Color.menu.background
+                        borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.foreground, Style.normalBorderWidth)
 
                         RowLayout {
                             anchors.fill: parent
@@ -2052,7 +2053,7 @@ Item {
                             Text {
                                 text: "⌕"
                                 textFormat: Text.PlainText
-                                color: Color.menu.text
+                                color: Commons.Color.menu.text
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.heading
                             }
@@ -2060,7 +2061,7 @@ Item {
                                 Layout.fillWidth: true
                                 text: root.filterText || "Type to filter windows…"
                                 textFormat: Text.PlainText
-                                color: Color.menu.text
+                                color: Commons.Color.menu.text
                                 opacity: root.filterText ? 1 : 0.6
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.heading
@@ -2069,7 +2070,7 @@ Item {
                             Text {
                                 text: overviewWindow.screenToplevels.length + " windows"
                                 textFormat: Text.PlainText
-                                color: Color.menu.text
+                                color: Commons.Color.menu.text
                                 opacity: 0.55
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.bodySmall
@@ -2087,7 +2088,7 @@ Item {
                                     ? (root.workspaceScope === "all" ? "All" : "WS " + overviewWindow.screenWorkspaceLabel)
                                     : overviewWindow.screenScopeLabel
                                 textFormat: Text.PlainText
-                                color: Color.accent
+                                color: Commons.Color.accent
                                 font.family: Style.font.menuFamily
                                 font.pixelSize: Style.font.bodySmall
                                 font.bold: true
@@ -2104,7 +2105,7 @@ Item {
                                     anchors.centerIn: parent
                                     text: "Tab"
                                     textFormat: Text.PlainText
-                                    color: Color.menu.text
+                                    color: Commons.Color.menu.text
                                     font.family: Style.font.menuFamily
                                     font.pixelSize: Style.font.caption
                                 }
@@ -2159,7 +2160,7 @@ Item {
                                     ? "No windows on Workspace " + overviewWindow.screenWorkspaceLabel
                                     : "No open windows")
                             textFormat: Text.PlainText
-                            color: Color.menu.text
+                            color: Commons.Color.menu.text
                             opacity: 0.7
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.display
@@ -2174,7 +2175,7 @@ Item {
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
-                            color: Color.menu.text
+                            color: Commons.Color.menu.text
                             opacity: 0.55
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.bodySmall
@@ -2185,7 +2186,7 @@ Item {
                             property bool hovered: false
                             text: "Settings"
                             textFormat: Text.PlainText
-                            color: settingsControl.hovered ? Style.hoverStateColor(Color.menu.text, Color.accent) : Color.menu.text
+                            color: settingsControl.hovered ? Style.hoverStateColor(Commons.Color.menu.text, Commons.Color.accent) : Commons.Color.menu.text
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.bodySmall
                             font.bold: true

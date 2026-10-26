@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 ShellRoot {
     id: test
     property int phase: 0
@@ -59,10 +60,10 @@ ShellRoot {
         visible: true
         width: 1240
         height: 1040
-        color: Color.menu.background
+        color: Commons.Color.menu.background
         Rectangle {
             id: canvas
-            color: Color.menu.background
+            color: Commons.Color.menu.background
             anchors.fill: parent
             Row {
                 id: samples
@@ -167,8 +168,8 @@ ShellRoot {
         repeat: true
         onTriggered: {
             if (test.phase === 0) {
-                Color.loadUserShell("");
-                Color.loadShell('[menu]\nbackground = "#18202b"\ntext = "#eff5ff"\nborder = "#ff6600 #44bbff 45deg"\nborder-width = "2 4 6 8"\nborder-alpha = 0.7\nscrim = "#101a20"\nscrim-alpha = 0.2\n[controls]\nnormal-color = "#b6dfff"\nnormal-fill-alpha = 0.12\nnormal-border = "#ff000080 #00ff0080 90deg"\nnormal-border-width = "1 2 3 4"\nnormal-border-width-left = 0\nnormal-border-alpha = 0.5\nhover-cursor-border-width = 0\nfocus-border-width = 0\nselected-border-width = 0\n[font]\nbase-size = 14\n[spacing]\ncontrol-height = 35\n');
+                Commons.Color.loadUserShell("");
+                Commons.Color.loadShell('[menu]\nbackground = "#18202b"\ntext = "#eff5ff"\nborder = "#ff6600 #44bbff 45deg"\nborder-width = "2 4 6 8"\nborder-alpha = 0.7\nscrim = "#101a20"\nscrim-alpha = 0.2\n[controls]\nnormal-color = "#b6dfff"\nnormal-fill-alpha = 0.12\nnormal-border = "#ff000080 #00ff0080 90deg"\nnormal-border-width = "1 2 3 4"\nnormal-border-width-left = 0\nnormal-border-alpha = 0.5\nhover-cursor-border-width = 0\nfocus-border-width = 0\nselected-border-width = 0\n[font]\nbase-size = 14\n[spacing]\ncontrol-height = 35\n');
                 Style.cornerRadius = 12;
                 compositorBorders(2, "ff4a9a68 ff44bbff 45deg", "aa595959 0deg");
                 test.phase++;
@@ -180,6 +181,7 @@ ShellRoot {
                 require(Border.isNone(hover.borderSpec) && Border.isNone(focus.borderSpec) && Border.isNone(selected.borderSpec), "zero state widths");
                 require(card.outlineSpec.widths.left === 2, "idle window keeps compositor width");
                 require(Math.abs(Qt.color(card.outlineSpec.color).a - 170 / 255) < 0.01, "inactive compositor alpha");
+                require(card.color.a === 0 && Border.isNone(card.borderSpec), "floating footer leaves the card surface transparent");
                 card.hovered = true;
                 require(card.outlineSpec.widths.left === 2 && card.outlineSpec.gradient.enabled, "hover uses active compositor gradient without doubling width");
                 require(card.outlineSpec.gradient.angle === 45 && Qt.color(card.outlineSpec.gradient.colors[0]).r === Qt.color("#4a9a68").r, "ARGB conversion and angle");
@@ -196,7 +198,7 @@ ShellRoot {
                     canvas.grabToImage(function(result) { result.saveToFile(Quickshell.env("EXPOSE_THEME_OUTPUT_DIR") + "/theme-dark.png"); });
                 test.phase++;
             } else if (test.phase === 2) {
-                Color.loadShell('[menu]\nbackground = "#f1f5fa"\ntext = "#172331"\nborder-width = 0\nborder-alpha = 0.3\n[controls]\nnormal-border-width = 0\nhover-cursor-border-width = 0\nfocus-border-width = 0\nselected-border-width = 0\nnormal-color = "#172331"\nnormal-fill-alpha = 0\nhover-cursor-color = "#365ca0"\nhover-cursor-fill-alpha = 0.1\nfocus-color = "#365ca0"\nfocus-fill-alpha = 0.1\nselected-color = "#1a6380"\nselected-fill-alpha = 0.15\n');
+                Commons.Color.loadShell('[menu]\nbackground = "#f1f5fa"\ntext = "#172331"\nborder-width = 0\nborder-alpha = 0.3\n[controls]\nnormal-border-width = 0\nhover-cursor-border-width = 0\nfocus-border-width = 0\nselected-border-width = 0\nnormal-color = "#172331"\nnormal-fill-alpha = 0\nhover-cursor-color = "#365ca0"\nhover-cursor-fill-alpha = 0.1\nfocus-color = "#365ca0"\nfocus-fill-alpha = 0.1\nselected-color = "#1a6380"\nselected-fill-alpha = 0.15\n');
                 Style.cornerRadius = 0;
                 test.phase++;
             } else if (test.phase === 3) {

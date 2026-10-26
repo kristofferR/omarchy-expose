@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui as Ui
 
 Item {
@@ -82,7 +83,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     // The track is value geometry, not a border.
                     height: Style.space(2)
-                    color: Style.normalFillFor(Color.menu.text, Color.accent)
+                    color: Style.normalFillFor(Commons.Color.menu.text, Commons.Color.accent)
                 }
 
                 Rectangle {
@@ -90,7 +91,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width * settingSlider.normalizedValue
                     height: Style.space(3)
-                    color: Style.selectedStateColor(Color.menu.text, Color.accent)
+                    color: Style.selectedStateColor(Commons.Color.menu.text, Commons.Color.accent)
                 }
 
                 ThemedControl {
@@ -294,7 +295,7 @@ Item {
                         Layout.fillWidth: true
                         text: String(displayModeChoice.modelData.description)
                         textFormat: Text.PlainText
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         opacity: 0.45
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.caption
@@ -439,7 +440,7 @@ Item {
                 Layout.preferredWidth: settingRow.stacked ? -1 : Style.space(180)
                 text: settingRow.label
                 textFormat: Text.PlainText
-                color: Color.menu.text
+                color: Commons.Color.menu.text
                 font.family: Style.font.menuFamily
                 font.pixelSize: Style.font.body
                 wrapMode: Text.WordWrap
@@ -457,7 +458,7 @@ Item {
             Layout.fillWidth: true
             text: settingRow.description
             textFormat: Text.PlainText
-            color: Color.menu.text
+            color: Commons.Color.menu.text
             opacity: 0.65
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.caption
@@ -498,7 +499,7 @@ Item {
             width: Style.space(2)
             height: settingsPage.height * settingsPage.visibleArea.heightRatio
             y: settingsPage.height * settingsPage.visibleArea.yPosition
-            color: Color.menu.text
+            color: Commons.Color.menu.text
             opacity: 0.35
             visible: settingsPage.contentHeight > settingsPage.height
         }
@@ -516,7 +517,7 @@ Item {
                     Layout.fillWidth: true
                     text: settingsView.categories[settingsPage.categoryIndex]
                     textFormat: Text.PlainText
-                    color: Color.accent
+                    color: Commons.Color.accent
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.caption
                     font.bold: true
@@ -527,7 +528,7 @@ Item {
                     Layout.fillWidth: true
                     text: settingsPage.title
                     textFormat: Text.PlainText
-                    color: Color.menu.text
+                    color: Commons.Color.menu.text
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.heading
                     font.bold: true
@@ -570,7 +571,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: settingToggle.checked ? "On" : "Off"
             textFormat: Text.PlainText
-            color: Color.menu.text
+            color: Commons.Color.menu.text
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.caption
         }
@@ -638,7 +639,7 @@ Item {
             anchors.centerIn: parent
             text: dialogButton.label
             textFormat: Text.PlainText
-            color: dialogButton.destructive ? Color.urgent : dialogButton.stateColor
+            color: dialogButton.destructive ? Commons.Color.urgent : dialogButton.stateColor
             font.family: Style.font.menuFamily
             font.pixelSize: Style.font.bodySmall
             font.bold: dialogButton.destructive
@@ -747,8 +748,8 @@ Item {
         width: Math.min(Style.space(920), parent.width - Style.space(80))
         height: Math.min(Style.space(narrow ? 720 : 640), parent.height - Style.space(80))
         radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.surfaceSpec("menu", "border", Color.foreground, Style.normalBorderWidth)
+        color: Commons.Color.menu.background
+        borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.foreground, Style.normalBorderWidth)
         enabled: !settingsView.controller.footerHideConfirmationOpen
 
         MouseArea {
@@ -773,7 +774,7 @@ Item {
                     Text {
                         text: "Exposé settings"
                         textFormat: Text.PlainText
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.heading
                         font.bold: true
@@ -785,7 +786,7 @@ Item {
                         visible: !settingsDialog.narrow
                         text: "1–6 section   ↑↓ move   ←→ adjust   Esc close"
                         textFormat: Text.PlainText
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         opacity: 0.5
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.caption
@@ -1282,7 +1283,7 @@ Item {
                     Text {
                         text: "Changes save immediately"
                         textFormat: Text.PlainText
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         opacity: 0.45
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.caption
@@ -1294,7 +1295,7 @@ Item {
                         visible: !settingsDialog.narrow
                         text: "1–6 category   Tab controls"
                         textFormat: Text.PlainText
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         opacity: 0.45
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.caption
@@ -1333,7 +1334,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            color: Color.menu.scrim
+            color: Commons.Color.menu.scrim
         }
 
         Ui.BorderSurface {
@@ -1342,8 +1343,8 @@ Item {
             width: Math.min(Style.space(560), parent.width - Style.space(80))
             height: Math.min(parent.height - Style.space(80), footerHideContent.implicitHeight + Style.space(56))
             radius: Style.cornerRadius
-            color: Color.menu.background
-            borderSpec: Border.surfaceSpec("menu", "border", Color.foreground, Style.normalBorderWidth)
+            color: Commons.Color.menu.background
+            borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.foreground, Style.normalBorderWidth)
 
             MouseArea {
                 anchors.fill: parent
@@ -1360,7 +1361,7 @@ Item {
                     Layout.fillWidth: true
                     text: "Hide bottom text?"
                     textFormat: Text.PlainText
-                    color: Color.menu.text
+                    color: Commons.Color.menu.text
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.heading
                     font.bold: true
@@ -1371,7 +1372,7 @@ Item {
                     text: "This also hides the Settings link. You can turn it back on while this panel remains open."
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
-                    color: Color.menu.text
+                    color: Commons.Color.menu.text
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.body
                 }
@@ -1387,7 +1388,7 @@ Item {
                         text: "After closing Settings, restore it in ~/.config/omarchy/shell.json by setting showFooter to true in the expose.window-overview plugin entry."
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
-                        color: Color.menu.text
+                        color: Commons.Color.menu.text
                         opacity: 0.72
                         font.family: Style.font.menuFamily
                         font.pixelSize: Style.font.caption
@@ -1441,7 +1442,7 @@ Item {
                             text: "I understand that closing Settings while it is hidden requires editing the config."
                             textFormat: Text.PlainText
                             wrapMode: Text.WordWrap
-                            color: Color.menu.text
+                            color: Commons.Color.menu.text
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.bodySmall
                         }

@@ -23,6 +23,8 @@ QT_QPA_PLATFORM=offscreen "$qt6_bin/qmltestrunner" -input tests
 
 # Make the installed UI component types visible to qmllint. Commons' dynamic
 # singleton objects remain runtime-injected, as in the shell itself.
+# The code uses function-scoped var by convention; Qt 6.12 counts its
+# block-scope warning toward --max-warnings without printing it.
 lint_dir=$(mktemp -d)
 trap 'rm -rf "$lint_dir"' EXIT
 mkdir -p "$lint_dir/qs"
@@ -31,6 +33,7 @@ ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
   -I "$lint_dir" \
   --max-warnings 0 \
   --unqualified disable \
+  --block-scope-var-declaration disable \
   Overview.qml WindowCard.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml PluginSettings.qml
 
 # Lint the runtime fixture after injecting its host functions and imports.

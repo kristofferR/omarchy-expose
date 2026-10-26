@@ -37,7 +37,7 @@ for method in applyShellConfig persistShellConfig updateEntryInline; do
 done
 
 if $lint_only; then
-  /usr/lib/qt6/bin/qmllint --max-warnings 0 --unqualified disable "$test_dir/shell.qml"
+  /usr/lib/qt6/bin/qmllint --max-warnings 0 --unqualified disable --block-scope-var-declaration disable "$test_dir/shell.qml"
   exit 0
 fi
 
