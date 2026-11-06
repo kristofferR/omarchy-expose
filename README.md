@@ -113,7 +113,8 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 
 **Wallpaper** covers the original desktop windows with the current Omarchy
 wallpaper on every display, cropped to fill each screen. It follows background
-changes while the overview is open. Blur and dim apply to the wallpaper; Desktop
+changes while the overview is open, and shows a video wallpaper as the same
+still the lock screen uses. Blur and dim apply to the wallpaper; Desktop
 keeps the existing translucent backdrop. If the wallpaper is missing or cannot
 be loaded, Wallpaper uses a solid theme background instead.
 
