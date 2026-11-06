@@ -1756,7 +1756,11 @@ Item {
                 var origin = overviewArea.mapToItem(keyCatcher, 0, 0);
                 var offsetX = (monitor ? monitor.x : 0) + origin.x;
                 var offsetY = (monitor ? monitor.y : 0) + origin.y;
-                return overviewArea.windowLayout.map(function (rect) {
+                // One entry per listed window, so concatenated grids stay paired
+                // with their windows even when a crowded grid has no layout.
+                var layout = overviewArea.windowLayout;
+                return overviewWindow.screenToplevels.map(function (top, index) {
+                    var rect = layout[index];
                     return rect ? Qt.rect(offsetX + rect.x, offsetY + rect.y, rect.width, rect.height) : null;
                 });
             }
