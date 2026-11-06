@@ -43,7 +43,7 @@ Item {
         stdout: StdioCollector {
             onStreamFinished: {
                 if (root.active)
-                    root.resolvedPath = String(text || "").trim();
+                    root.resolvedPath = String(text || "").replace(/\n$/, "");
             }
         }
     }

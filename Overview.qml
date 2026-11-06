@@ -335,6 +335,13 @@ Item {
         root.startDismiss(false);
     }
 
+    // Openings without desktop blur (Wallpaper mode, or blur 0) skip the blur
+    // session, so its layer rule is installed up front as well.
+    function installLayerRule() {
+        Quickshell.execDetached([root.pluginDir + "/background-blur-session", "--layer-rule"]);
+    }
+    Component.onCompleted: root.installLayerRule()
+
     function startDismiss(notifyShell) {
         root.openingPending = false;
         root.closeSettings();
@@ -1393,8 +1400,10 @@ Item {
                 root.selectedToplevel = Hyprland.activeToplevel;
         }
         function onRawEvent(event) {
-            if (event && event.name === "configreloaded")
+            if (event && event.name === "configreloaded") {
                 compositorBorders.refresh();
+                root.installLayerRule();
+            }
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
         }
