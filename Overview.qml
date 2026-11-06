@@ -895,7 +895,7 @@ Item {
             focus = "hl.dispatch(hl.dsp.window.set_prop({ prop = 'no_anim', value = '1', " + target + " })); "
                 + "hl.dispatch(hl.dsp.window.move({ workspace = '" + workspaceId + "', follow = false, " + target + " })); "
                 + focus + "; hl.dispatch(hl.dsp.window.alter_zorder({ mode = 'top', " + target + " }))";
-            restoredAnimationTimer.target = target;
+            restoredAnimationTimer.targets.push(target);
             restoredAnimationTimer.restart();
         }
         Hyprland.dispatch(root.moveCursorToWindow
@@ -904,12 +904,16 @@ Item {
                 + "; hl.dispatch(hl.dsp.cursor.move({ x = p.x, y = p.y })) end)");
     }
 
-    // Gives a restored window its animations back once it has landed.
+    // Keep every restore target when rapid activations restart the delay.
     Timer {
         id: restoredAnimationTimer
-        property string target: ""
+        property var targets: []
         interval: 400
-        onTriggered: Hyprland.dispatch("hl.dsp.window.set_prop({ prop = 'no_anim', value = 'unset', " + target + " })")
+        onTriggered: {
+            for (var index = 0; index < targets.length; index++)
+                Hyprland.dispatch("hl.dsp.window.set_prop({ prop = 'no_anim', value = 'unset', " + targets[index] + " })");
+            targets = [];
+        }
     }
 
     function requestClose(top) {

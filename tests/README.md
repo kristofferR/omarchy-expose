@@ -18,6 +18,10 @@ into an offscreen Qt Quick test. It checks immediate activation, one-shot dwell,
 exit/disable cancellation, and transitions through the overlapping strips in both
 directions. It runs as part of `./validate`.
 
+`./tests/check-activation-runtime` extracts the restore dispatch and timer with a
+fake Hyprland dispatcher. It checks that rapid minimized-window restores clear
+the animation override for every target, without replaying an earlier batch.
+
 `tst_screen_layout.qml` covers outermost-display selection with mixed logical
 sizes, negative coordinates, stacked displays, layout changes, and removal.
 

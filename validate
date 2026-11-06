@@ -24,6 +24,7 @@ unset QSG_RHI_BACKEND QT_QUICK_BACKEND
 # A hanging test fails the run instead of hanging it.
 QT_QPA_PLATFORM=offscreen timeout 300s "$qt6_bin/qmltestrunner" -input tests
 ./tests/check-hot-corner-runtime
+./tests/check-activation-runtime
 ./tests/check-theme-runtime
 
 # Make the installed UI component types visible to qmllint. Commons' dynamic
@@ -46,7 +47,7 @@ ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
 
 # One file per call: bash -n checks only its first argument and hands the
 # rest to that script as arguments.
-for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-blur-lock; do
+for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-activation-runtime tests/check-blur-lock; do
   bash -n "$script"
 done
 timeout 15s ./tests/check-blur-lock
