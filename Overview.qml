@@ -7,6 +7,7 @@ import Quickshell.Wayland
 import qs.Commons // qmllint disable import
 import qs.Commons as Commons // qmllint disable import
 import qs.Ui as Ui // qmllint disable import
+import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
@@ -234,25 +235,30 @@ Item {
             return String(active.monitor.name || "");
         return Quickshell.screens.length ? String(Quickshell.screens[0].name || "") : "";
     }
-    // Only the selected display creates cards and screencopy captures.
+    // Each display gets a grid in all-monitors mode. Per-display filtering
+    // keeps each screencopy capture on exactly one surface.
     readonly property var mountedScreens: {
-        if (!root.surfaceMounted || !root.effectiveOverviewScreen)
-            return [];
-        return [root.effectiveOverviewScreen];
+        return DisplayModel.mountedScreens(Quickshell.screens, root.effectiveOverviewScreen,
+            root.multiMonitorMode, root.surfaceMounted);
     }
     readonly property var backdropScreens: {
-        if (!root.surfaceMounted)
-            return [];
-        return Quickshell.screens.filter(function (screen) {
-            return screen !== root.effectiveOverviewScreen;
-        });
+        return DisplayModel.backdropScreens(Quickshell.screens, root.effectiveOverviewScreen,
+            root.multiMonitorMode, root.surfaceMounted);
     }
-    readonly property var overviewKeyboardTargets: surfaceInstances.instances.length
-        ? surfaceInstances.instances[0].keyboardTargets
-        : []
+    readonly property var overviewKeyboardTargets: {
+        return DisplayModel.keyboardTargets(surfaceInstances.instances);
+    }
+    // Every listed window, which the selection is one of. Each display's grid
+    // in all-monitors mode lists only its own windows, so a window is never
+    // listed twice.
     readonly property var filteredToplevels: {
         var revision = root.modelRevision;
-        return root.toplevelsForScreen(root.keyboardScreenName);
+        if (root.multiMonitorMode !== "all-monitors")
+            return root.toplevelsForScreen(root.keyboardScreenName);
+        var result = [];
+        for (var index = 0; index < root.mountedScreens.length; index++)
+            result = result.concat(root.toplevelsForScreen(String(root.mountedScreens[index].name || "")));
+        return result;
     }
     // What Enter opens.
     readonly property var selection: WindowModel.selectionFor(root.filteredToplevels, root.selectedToplevel, root.originToplevel)
@@ -760,9 +766,7 @@ Item {
 
     // An arrow key's move, for IPC.
     function moveFromIpc(dx, dy) {
-        var surface = root.keyboardSurface();
-        if (surface)
-            root.moveDirectional(dx, dy, surface.windowLayout, false);
+        root.moveDirectional(dx, dy, false);
     }
 
     function focusSettingsItem(item) {
@@ -1014,7 +1018,7 @@ Item {
     }
 
     function workspaceForScreen(screenName) {
-        if (root.multiMonitorMode === "per-monitor") {
+        if (DisplayModel.usesOwnWindows(root.multiMonitorMode)) {
             var monitor = root.monitorForScreen(screenName);
             if (monitor && monitor.activeWorkspace)
                 return monitor.activeWorkspace;
@@ -1036,7 +1040,7 @@ Item {
     }
 
     function isOnScreen(top, screenName) {
-        return WindowModel.isOnScreen(top, screenName, root.multiMonitorMode === "per-monitor");
+        return WindowModel.isOnScreen(top, screenName, DisplayModel.usesOwnWindows(root.multiMonitorMode));
     }
 
     function isOnWorkspace(top, workspace) {
@@ -1097,13 +1101,23 @@ Item {
             sourceRect, width, height, padding, footerHeight);
     }
 
-    function moveDirectional(dx, dy, layout, slowMotion) {
-        var bestIndex = GridLayout.neighbourIndex(layout, root.filteredToplevels.indexOf(root.selection), dx, dy);
+    // Steps to the nearest card in a direction, across every mounted grid.
+    function moveDirectional(dx, dy, slowMotion) {
+        var rects = [];
+        var tops = [];
+        var surfaces = surfaceInstances.instances;
+        for (var index = 0; index < surfaces.length; index++) {
+            if (!surfaces[index])
+                continue;
+            rects = rects.concat(surfaces[index].navigationRects());
+            tops = tops.concat(surfaces[index].screenToplevels);
+        }
+        var bestIndex = GridLayout.neighbourIndex(rects, tops.indexOf(root.selection), dx, dy);
         if (bestIndex < 0)
             return;
 
         var previousPreview = root.previewToplevel;
-        var next = root.filteredToplevels[bestIndex];
+        var next = tops[bestIndex];
         root.selectedToplevel = next;
         if (previousPreview) {
             root.previewSlowMotion = false;
@@ -1152,7 +1166,7 @@ Item {
         return result;
     }
 
-    function handleKey(event, layout) {
+    function handleKey(event) {
         if (root.settingsOpen) {
             if (event.key === Qt.Key_Escape) {
                 if (root.footerHideConfirmationOpen)
@@ -1180,13 +1194,13 @@ Item {
                 root.toggleWorkspaceScope();
         }
         else if (event.key === Qt.Key_Left)
-            root.moveDirectional(-1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(-1, 0, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Right)
-            root.moveDirectional(1, 0, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(1, 0, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Up)
-            root.moveDirectional(0, -1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(0, -1, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Down)
-            root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
+            root.moveDirectional(0, 1, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
             root.activate(root.selection);
         else if (event.key === Qt.Key_Q
@@ -1661,8 +1675,13 @@ Item {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
             onClicked: {
-                if (surface.modelData === root.effectiveOverviewScreen
-                        && (root.previewToplevel || root.previewExitToplevel))
+                // A click beside Quick Look closes the preview, on the display
+                // showing it; anywhere else it dismisses the overview.
+                var preview = root.previewToplevel || root.previewExitToplevel;
+                var previewHere = root.multiMonitorMode === "all-monitors"
+                    ? root.toplevelsForScreen(String(surface.modelData.name || "")).indexOf(preview) !== -1
+                    : surface.modelData === root.effectiveOverviewScreen;
+                if (preview && previewHere)
                     root.clearPreview();
                 else
                     root.dismiss();
@@ -1711,6 +1730,7 @@ Item {
 
         OverviewSurface {
             id: overviewWindow
+            readonly property string screenName: String(modelData.name || "")
             readonly property bool acceptsKeyboard: {
                 var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
@@ -1728,6 +1748,17 @@ Item {
             readonly property var screenToplevels: {
                 var revision = root.modelRevision;
                 return root.toplevelsForScreen(String(modelData.name || ""));
+            }
+            // The grid's cards in desktop coordinates, alongside screenToplevels,
+            // so arrow keys can cross from one display's grid to the next.
+            function navigationRects() {
+                var monitor = root.monitorForScreen(overviewWindow.screenName);
+                var origin = overviewArea.mapToItem(keyCatcher, 0, 0);
+                var offsetX = (monitor ? monitor.x : 0) + origin.x;
+                var offsetY = (monitor ? monitor.y : 0) + origin.y;
+                return overviewArea.windowLayout.map(function (rect) {
+                    return rect ? Qt.rect(offsetX + rect.x, offsetY + rect.y, rect.width, rect.height) : null;
+                });
             }
             // A Repeater over a JS array rebuilds every delegate when the array
             // is reassigned, and with it every screencopy capture and layer
@@ -1782,8 +1813,16 @@ Item {
             }
 
             onAcceptsKeyboardChanged: {
+                if (acceptsKeyboard && root.opened)
+                    Qt.callLater(root.focusKeyboardSurface);
                 if (acceptsKeyboard && root.settingsOpen)
                     Qt.callLater(overviewWindow.focusSettingsCategory);
+            }
+
+            Item {
+                anchors.fill: parent
+                focus: !overviewWindow.acceptsKeyboard
+                Keys.forwardTo: root.opened ? root.overviewKeyboardTargets : []
             }
 
             Item {
@@ -1816,7 +1855,7 @@ Item {
                     }
                     if (root.handleSettingsNavigation(event))
                         return;
-                    root.handleKey(event, overviewArea.windowLayout);
+                    root.handleKey(event);
                 }
 
                 ColumnLayout {
@@ -1929,7 +1968,7 @@ Item {
                                 delegate: WindowCard {
                                     controller: root
                                     screenToplevels: overviewWindow.screenToplevels
-                                    acceptsKeyboard: overviewWindow.acceptsKeyboard
+                                    acceptsKeyboard: overviewWindow.acceptsKeyboard || root.multiMonitorMode === "all-monitors"
                                     windowLayout: overviewArea.windowLayout
                                     layoutAreaWidth: overviewArea.width
                                     layoutAreaHeight: overviewArea.height
@@ -1956,7 +1995,7 @@ Item {
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
-                        visible: root.showFooter
+                        visible: root.showFooter && overviewWindow.acceptsKeyboard
 
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
@@ -1992,7 +2031,7 @@ Item {
                 Loader {
                     id: settingsLayerLoader
                     anchors.fill: parent
-                    active: root.settingsOpen
+                    active: root.settingsOpen && overviewWindow.acceptsKeyboard
                     z: 200
                     onLoaded: {
                         if (overviewWindow.acceptsKeyboard)
