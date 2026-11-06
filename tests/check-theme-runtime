@@ -6,7 +6,7 @@ test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 ln -s /usr/share/omarchy/shell/Commons "$test_dir/Commons"
 ln -s /usr/share/omarchy/shell/Ui "$test_dir/Ui"
-cp WindowCard.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml WindowModel.js "$test_dir/"
+cp WindowCard.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml WindowModel.js SettingsSchema.js "$test_dir/"
 cp tests/theme/shell.qml "$test_dir/shell.qml"
 
 output_dir=${1:-}

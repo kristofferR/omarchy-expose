@@ -80,3 +80,33 @@ function searchTextFor(toplevel) {
     return (appIdFor(toplevel) + " " + String(ipc.class || "") + " "
         + String(ipc.initialClass || "") + " " + String((toplevel && toplevel.title) || "")).toLowerCase();
 }
+
+// The window Hyprland focused last, by focus history; null when none is known.
+function mostRecent(toplevels) {
+    for (var index = 0; index < toplevels.length; index++)
+        if (ipcFor(toplevels[index]).focusHistoryID === 0)
+            return toplevels[index];
+    return null;
+}
+
+// What Enter opens: the chosen window while it is listed, else the window the
+// overview was opened from, else the first listed window.
+function selectionFor(listed, selected, origin) {
+    if (selected && listed.indexOf(selected) !== -1)
+        return selected;
+    if (origin && listed.indexOf(origin) !== -1)
+        return origin;
+    return listed.length ? listed[0] : null;
+}
+
+// The window to select after windows close: the selection while it is still
+// listed, else the window that took its place, so Shift+Q can close several
+// windows in a row.
+function successorFor(previous, listed, selected) {
+    if (!selected || listed.indexOf(selected) !== -1)
+        return selected;
+    var index = previous.indexOf(selected);
+    if (index < 0 || !listed.length)
+        return null;
+    return listed[Math.min(index, listed.length - 1)];
+}

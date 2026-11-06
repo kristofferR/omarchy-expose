@@ -109,6 +109,16 @@ TestCase {
         toplevel.destroy();
     }
 
+    function test_mostRecentIsTheFirstInFocusHistory() {
+        compare(WindowModel.mostRecent([]), null);
+        var only = createToplevel({ lastIpcObject: { focusHistoryID: 0 } });
+        compare(WindowModel.mostRecent([only]), only);
+        var older = createToplevel({ lastIpcObject: { focusHistoryID: 1 } });
+        var newest = createToplevel({ lastIpcObject: { focusHistoryID: 0 } });
+        compare(WindowModel.mostRecent([older, newest]), newest);
+        compare(WindowModel.mostRecent([older, createToplevel({ lastIpcObject: {} })]), null);
+    }
+
     function test_searchesAllNativeIdentityFields() {
         var toplevel = createToplevel();
         verify(WindowModel.searchTextFor(toplevel).includes("wayland.app"));

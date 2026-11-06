@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui as Ui
+import "SettingsSchema.js" as SettingsSchema
 
 Item {
     id: settingsView
@@ -223,18 +224,7 @@ Item {
         Layout.fillWidth: true
         property string value: "mirrored"
         signal chosen(string nextValue)
-        readonly property var options: [
-            {
-                label: "All displays",
-                description: "Windows from every display",
-                value: "mirrored"
-            },
-            {
-                label: "This display",
-                description: "Only windows on this display",
-                value: "per-monitor"
-            }
-        ]
+        readonly property var options: SettingsSchema.options("multiMonitorMode")
         spacing: 0
         activeFocusOnTab: true
 
@@ -674,7 +664,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [previewPlacementChoices, movePointerToggle],
+            [selectionStyleChoices, previewPlacementChoices, movePointerToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
@@ -712,6 +702,17 @@ Item {
             return;
         settingsView.controller.focusSettingsItem(items[nextIndex]);
         settingsView.revealSettingsItem(items[nextIndex]);
+    }
+
+    // Whether keyboard focus is on a visible item inside the settings.
+    function holdsFocus() {
+        var item = settingsView.Window.activeFocusItem;
+        if (!item || !item.visible)
+            return false;
+        for (; item; item = item.parent)
+            if (item === settingsView)
+                return true;
+        return false;
     }
 
     function focusSettingsCategory() {
@@ -869,14 +870,14 @@ Item {
                             SettingSlider {
                                 id: backgroundBlurSlider
                                 Layout.fillWidth: true
-                                from: 0
-                                to: 20
+                                from: SettingsSchema.spec("backgroundBlur").min
+                                to: SettingsSchema.spec("backgroundBlur").max
                                 value: settingsView.controller.effectiveBackgroundBlur
                                 suffix: " px"
                                 onEdited: function (value) { settingsView.controller.backgroundBlurPreview = value; }
                                 onCommitted: function (value) {
                                     settingsView.controller.backgroundBlurPreview = Math.round(value);
-                                    settingsView.controller.setBackgroundBlur(value);
+                                    settingsView.controller.setSetting("backgroundBlur", value);
                                 }
                             }
                         }
@@ -888,14 +889,14 @@ Item {
                             SettingSlider {
                                 id: backgroundDimSlider
                                 Layout.fillWidth: true
-                                from: 0
-                                to: 90
+                                from: SettingsSchema.spec("backgroundDim").min
+                                to: SettingsSchema.spec("backgroundDim").max
                                 value: settingsView.controller.effectiveBackgroundDim
                                 suffix: "%"
                                 onEdited: function (value) { settingsView.controller.backgroundDimPreview = value; }
                                 onCommitted: function (value) {
                                     settingsView.controller.backgroundDimPreview = Math.round(value);
-                                    settingsView.controller.setBackgroundDim(value);
+                                    settingsView.controller.setSetting("backgroundDim", value);
                                 }
                             }
                         }
@@ -911,7 +912,7 @@ Item {
                                 checked: settingsView.controller.showFooter
                                 onToggled: function (checked) {
                                     if (checked)
-                                        settingsView.controller.updatePluginSetting("showFooter", true);
+                                        settingsView.controller.setSetting("showFooter", true);
                                     else
                                         settingsView.controller.requestFooterHide();
                                 }
@@ -924,6 +925,19 @@ Item {
                         title: "Quick Look and activation"
 
                         SettingRow {
+                            label: "Selection highlight"
+                            description: "Outline borders the selected, hovered, and current windows alike. Lift raises only the window Enter opens and marks the current window with a dot."
+
+                            SettingChoices {
+                                id: selectionStyleChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.selectionStyle
+                                options: SettingsSchema.options("selectionStyle")
+                                onChosen: function (value) { settingsView.controller.setSetting("selectionStyle", value); }
+                            }
+                        }
+
+                        SettingRow {
                             label: "Quick Look position"
                             description: "When you press Space, enlarge the preview near its card or at the center of the display."
 
@@ -931,11 +945,8 @@ Item {
                                 id: previewPlacementChoices
                                 Layout.fillWidth: true
                                 value: settingsView.controller.previewPlacement
-                                options: [
-                                    { label: "In place", value: "in-place" },
-                                    { label: "Centered", value: "centered" }
-                                ]
-                                onChosen: function (value) { settingsView.controller.setPreviewPlacement(value); }
+                                options: SettingsSchema.options("previewPlacement")
+                                onChosen: function (value) { settingsView.controller.setSetting("previewPlacement", value); }
                             }
                         }
 
@@ -948,7 +959,7 @@ Item {
                             SettingToggle {
                                 id: movePointerToggle
                                 checked: settingsView.controller.moveCursorToWindow
-                                onToggled: function (checked) { settingsView.controller.setMoveCursorToWindow(checked); }
+                                onToggled: function (checked) { settingsView.controller.setSetting("moveCursorToWindow", checked); }
                             }
                         }
                     }
@@ -966,13 +977,8 @@ Item {
                                 Layout.fillWidth: true
                                 value: settingsView.controller.windowFooterStyle
                                 spacing: Style.spacing.md
-                                options: [
-                                    { label: "Floating", value: "floating" },
-                                    { label: "Rail", value: "integrated" },
-                                    { label: "Overlay", value: "overlay" },
-                                    { label: "Centered", value: "centered" }
-                                ]
-                                onChosen: function (value) { settingsView.controller.setWindowFooterStyle(value); }
+                                options: SettingsSchema.options("windowFooterStyle")
+                                onChosen: function (value) { settingsView.controller.setSetting("windowFooterStyle", value); }
                             }
                         }
 
@@ -984,11 +990,8 @@ Item {
                                 id: workspaceLabelStyleChoices
                                 Layout.fillWidth: true
                                 value: settingsView.controller.workspaceLabelStyle
-                                options: [
-                                    { label: "Full", value: "full" },
-                                    { label: "Slot only", value: "slot" }
-                                ]
-                                onChosen: function (value) { settingsView.controller.setWorkspaceLabelStyle(value); }
+                                options: SettingsSchema.options("workspaceLabelStyle")
+                                onChosen: function (value) { settingsView.controller.setSetting("workspaceLabelStyle", value); }
                             }
                         }
                     }
@@ -1005,11 +1008,8 @@ Item {
                                 id: initialWorkspaceScopeChoices
                                 Layout.fillWidth: true
                                 value: settingsView.controller.initialWorkspaceScope
-                                options: [
-                                    { label: "All workspaces", value: "all" },
-                                    { label: "Current", value: "current" }
-                                ]
-                                onChosen: function (value) { settingsView.controller.setInitialWorkspaceScope(value); }
+                                options: SettingsSchema.options("initialWorkspaceScope")
+                                onChosen: function (value) { settingsView.controller.setSetting("initialWorkspaceScope", value); }
                             }
                         }
 
@@ -1022,7 +1022,7 @@ Item {
                                 id: displayModeChoicesControl
                                 Layout.fillWidth: true
                                 value: settingsView.controller.multiMonitorMode
-                                onChosen: function (value) { settingsView.controller.setMultiMonitorMode(value); }
+                                onChosen: function (value) { settingsView.controller.setSetting("multiMonitorMode", value); }
                             }
                         }
                     }
@@ -1040,7 +1040,7 @@ Item {
                             SettingToggle {
                                 id: hotCornerToggle
                                 checked: settingsView.controller.hotCornerEnabled
-                                onToggled: function (checked) { settingsView.controller.setHotCornerEnabled(checked); }
+                                onToggled: function (checked) { settingsView.controller.setSetting("hotCornerEnabled", checked); }
                             }
                         }
 
@@ -1053,13 +1053,8 @@ Item {
                                 id: hotCornerPositionChoices
                                 Layout.fillWidth: true
                                 value: settingsView.controller.hotCornerPosition
-                                options: [
-                                    { label: "Top left", value: "top-left" },
-                                    { label: "Top right", value: "top-right" },
-                                    { label: "Bottom left", value: "bottom-left" },
-                                    { label: "Bottom right", value: "bottom-right" }
-                                ]
-                                onChosen: function (value) { settingsView.controller.setHotCornerPosition(value); }
+                                options: SettingsSchema.options("hotCornerPosition")
+                                onChosen: function (value) { settingsView.controller.setSetting("hotCornerPosition", value); }
                             }
                         }
 
@@ -1073,7 +1068,7 @@ Item {
                             SettingToggle {
                                 id: hotCornerAllDisplaysToggle
                                 checked: settingsView.controller.hotCornerAllDisplays
-                                onToggled: function (checked) { settingsView.controller.setHotCornerAllDisplays(checked); }
+                                onToggled: function (checked) { settingsView.controller.setSetting("hotCornerAllDisplays", checked); }
                             }
                         }
 
@@ -1085,14 +1080,14 @@ Item {
                             SettingSlider {
                                 id: hotCornerDelaySlider
                                 Layout.fillWidth: true
-                                from: 0
-                                to: 1000
+                                from: SettingsSchema.spec("hotCornerDelay").min
+                                to: SettingsSchema.spec("hotCornerDelay").max
                                 stepSize: 25
                                 value: settingsView.controller.effectiveHotCornerDelay
                                 suffix: " ms"
                                 onEdited: function (value) { settingsView.controller.hotCornerDelayPreview = value; }
                                 onCommitted: function (value) {
-                                    settingsView.controller.hotCornerDelayPreview = settingsView.controller.setHotCornerDelay(value);
+                                    settingsView.controller.hotCornerDelayPreview = settingsView.controller.setSetting("hotCornerDelay", value);
                                 }
                             }
                         }
@@ -1117,15 +1112,10 @@ Item {
                                 id: animationStyleChoices
                                 Layout.fillWidth: true
                                 value: settingsView.controller.animationStyle
-                                options: [
-                                    { label: "Original", value: "original" },
-                                    { label: "Fade", value: "fade" },
-                                    { label: "Zoom", value: "zoom" },
-                                    { label: "Slide", value: "slide" }
-                                ]
+                                options: SettingsSchema.options("animationStyle")
                                 onChosen: function (value) {
                                     settingsView.controller.clearAnimationTimingPreview();
-                                    settingsView.controller.setAnimationStyle(value);
+                                    settingsView.controller.setSetting("animationStyle", value);
                                 }
                             }
                         }
@@ -1385,7 +1375,7 @@ Item {
                         id: recoveryText
                         anchors.fill: parent
                         anchors.margins: Style.space(12)
-                        text: "After closing Settings, restore it in ~/.config/omarchy/shell.json by setting showFooter to true in the expose.window-overview plugin entry."
+                        text: "After closing Settings, restore it by running: omarchy-shell expose showFooter on"
                         textFormat: Text.PlainText
                         wrapMode: Text.WordWrap
                         color: Commons.Color.menu.text
@@ -1439,7 +1429,7 @@ Item {
                         Text {
                             id: acknowledgementText
                             Layout.fillWidth: true
-                            text: "I understand that closing Settings while it is hidden requires editing the config."
+                            text: "I understand that restoring it after closing Settings requires running a command."
                             textFormat: Text.PlainText
                             wrapMode: Text.WordWrap
                             color: Commons.Color.menu.text

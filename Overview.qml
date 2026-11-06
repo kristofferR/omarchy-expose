@@ -7,9 +7,11 @@ import Quickshell.Wayland
 import qs.Commons // qmllint disable import
 import qs.Commons as Commons // qmllint disable import
 import qs.Ui as Ui // qmllint disable import
+import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
 import "ScreenLayout.js" as ScreenLayout
+import "SettingsSchema.js" as SettingsSchema
 
 Item {
     id: root
@@ -43,17 +45,11 @@ Item {
         }
         onFileChanged: Qt.callLater(pluginSettingsFile.reload)
     }
-    readonly property string previewPlacement: root.pluginEntry && root.pluginEntry.previewPlacement === "centered" ? "centered" : "in-place"
-    readonly property var windowFooterStyles: ["floating", "integrated", "overlay", "centered"]
-    readonly property string windowFooterStyle: {
-        var style = String((root.pluginEntry && root.pluginEntry.windowFooterStyle) || "floating");
-        return root.windowFooterStyles.indexOf(style) !== -1 ? style : "floating";
-    }
-    readonly property var animationStyles: ["original", "fade", "zoom", "slide"]
-    readonly property string animationStyle: {
-        var style = String((root.pluginEntry && root.pluginEntry.animationStyle) || "original");
-        return root.animationStyles.indexOf(style) !== -1 ? style : "original";
-    }
+    readonly property string previewPlacement: SettingsSchema.read(root.pluginEntry, "previewPlacement")
+    readonly property string windowFooterStyle: SettingsSchema.read(root.pluginEntry, "windowFooterStyle")
+    readonly property string selectionStyle: SettingsSchema.read(root.pluginEntry, "selectionStyle")
+    readonly property var animationStyles: SettingsSchema.values("animationStyle")
+    readonly property string animationStyle: SettingsSchema.read(root.pluginEntry, "animationStyle")
     readonly property var defaultAnimationDurations: ({ original: 190, fade: 400, zoom: 320, slide: 320 })
     readonly property var animationTimings: {
         var configuredTimings = root.pluginEntry && root.pluginEntry.animationTimings
@@ -121,25 +117,14 @@ Item {
         ? 0.11 * (1 - root.motionProgress)
         : 0
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
-    readonly property int backgroundBlur: {
-        var raw = root.pluginEntry ? root.pluginEntry.backgroundBlur : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(20, Math.round(value))) : 4;
-    }
-    readonly property int backgroundDim: {
-        var raw = root.pluginEntry ? root.pluginEntry.backgroundDim : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(90, Math.round(value))) : 6;
-    }
-    readonly property bool hotCornerEnabled: pluginSettings.ready && root.pluginEntry.hotCornerEnabled !== false
-    readonly property var hotCornerPositions: ["top-left", "top-right", "bottom-left", "bottom-right"]
-    readonly property string hotCornerPosition: {
-        var position = String((root.pluginEntry && root.pluginEntry.hotCornerPosition) || "top-left");
-        return root.hotCornerPositions.indexOf(position) !== -1 ? position : "top-left";
-    }
+    readonly property int backgroundBlur: SettingsSchema.read(root.pluginEntry, "backgroundBlur")
+    readonly property int backgroundDim: SettingsSchema.read(root.pluginEntry, "backgroundDim")
+    // Off until settings load, so a saved "off" never flashes the corner on.
+    readonly property bool hotCornerEnabled: pluginSettings.ready && SettingsSchema.read(root.pluginEntry, "hotCornerEnabled")
+    readonly property string hotCornerPosition: SettingsSchema.read(root.pluginEntry, "hotCornerPosition")
     readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
     readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
-    readonly property bool hotCornerAllDisplays: !!root.pluginEntry && root.pluginEntry.hotCornerAllDisplays === true
+    readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
     readonly property var hotCornerScreens: root.hotCornerEnabled
         ? ScreenLayout.hotCornerScreens(Quickshell.screens,
             Hyprland.monitors ? Hyprland.monitors.values : [],
@@ -148,42 +133,37 @@ Item {
     onHotCornerScreensChanged: root.scheduleHotCornerRearm()
     // How long the pointer has to rest in the corner before it fires. Zero
     // keeps the original instant trip; longer dwells stop stray flings.
-    readonly property int hotCornerDelay: {
-        var raw = root.pluginEntry ? root.pluginEntry.hotCornerDelay : undefined;
-        var value = raw === null || raw === undefined ? NaN : Number(raw);
-        return isFinite(value) ? Math.max(0, Math.min(1000, Math.round(value))) : 0;
-    }
+    readonly property int hotCornerDelay: SettingsSchema.read(root.pluginEntry, "hotCornerDelay")
     // Which windows the overview starts with. "all" keeps every workspace, as
     // before; "current" opens on the active workspace and leaves Tab to widen.
-    readonly property string initialWorkspaceScope: {
-        var raw = root.pluginEntry ? root.pluginEntry.initialWorkspaceScope : undefined;
-        return String(raw) === "current" ? "current" : "all";
-    }
+    readonly property string initialWorkspaceScope: SettingsSchema.read(root.pluginEntry, "initialWorkspaceScope")
     // How a workspace is named on the cards and in the scope indicator. Plugins
     // such as per-monitor-workspaces name a workspace "<monitor description>:<slot>",
     // which is far wider than a card footer; "slot" prints the trailing slot only.
-    readonly property string workspaceLabelStyle: {
-        var raw = root.pluginEntry ? root.pluginEntry.workspaceLabelStyle : undefined;
-        return String(raw) === "slot" ? "slot" : "full";
-    }
+    readonly property string workspaceLabelStyle: SettingsSchema.read(root.pluginEntry, "workspaceLabelStyle")
     // Reach farther along both screen edges than into the desktop. Fast flings
     // are easier to catch without stealing a large square from the bar below.
     readonly property int hotCornerReach: Style.space(48)
     readonly property int hotCornerDepth: Style.space(6)
-    readonly property bool moveCursorToWindow: !root.pluginEntry || root.pluginEntry.moveCursorToWindow !== false
-    readonly property string multiMonitorMode: root.pluginEntry && root.pluginEntry.multiMonitorMode === "per-monitor"
-        ? "per-monitor"
-        : "mirrored"
-    readonly property bool showFooter: !root.pluginEntry || root.pluginEntry.showFooter !== false
+    readonly property bool moveCursorToWindow: SettingsSchema.read(root.pluginEntry, "moveCursorToWindow")
+    readonly property string multiMonitorMode: SettingsSchema.read(root.pluginEntry, "multiMonitorMode")
+    readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
     property string filterText: ""
     property string workspaceScope: "all"
-    property int selectedIndex: 0
-    property int hoveredIndex: -1
-    property int previewIndex: -1
-    property int previewExitIndex: -1
+    // Selection state holds windows, not positions in filteredToplevels, so it
+    // survives the list being rebuilt by filtering, scope, or windows closing.
+    property var selectedToplevel: null
+    property var hoveredToplevel: null
+    property var previewToplevel: null
+    property var previewExitToplevel: null
+    // The window the overview was opened from. Hyprland's active window stops
+    // matching any card once the overlay holds keyboard focus.
+    property var originToplevel: null
+    // Window to focus once the overlay releases the keyboard.
+    property var pendingActivation: null
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
     property bool openingPending: false
@@ -274,12 +254,14 @@ Item {
         var revision = root.modelRevision;
         return root.toplevelsForScreen(root.keyboardScreenName);
     }
+    // What Enter opens.
+    readonly property var selection: WindowModel.selectionFor(root.filteredToplevels, root.selectedToplevel, root.originToplevel)
 
     onMultiMonitorModeChanged: {
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+        root.selectedToplevel = root.originToplevel;
     }
 
     onEffectiveBackgroundBlurChanged: {
@@ -294,6 +276,11 @@ Item {
     }
 
     function open(payload) {
+        // Taken before the overlay takes keyboard focus. Right after a shell
+        // restart the active window is not known yet; focus history may be.
+        root.originToplevel = Hyprland.activeToplevel || WindowModel.mostRecent(root.allToplevels);
+        // Reopening before the overlay is gone cancels the activation.
+        root.pendingActivation = null;
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
@@ -310,7 +297,7 @@ Item {
             root.opened = true;
             root.animateMotionTo(1);
             root.refreshHyprlandState();
-            Qt.callLater(root.focusKeyboardWindow);
+            Qt.callLater(root.focusKeyboardSurface);
             return;
         }
         if (root.openingPending)
@@ -323,8 +310,8 @@ Item {
         root.openingPending = true;
         root.refreshHyprlandState();
         root.resetSessionToplevels();
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
-        root.hoveredIndex = -1;
+        root.selectedToplevel = root.originToplevel;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
@@ -343,7 +330,7 @@ Item {
     function startDismiss(notifyShell) {
         root.openingPending = false;
         root.closeSettings();
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.opened = false;
         root.dismissNotifyShell = root.dismissNotifyShell || notifyShell;
@@ -405,7 +392,7 @@ Item {
             root.openingPending = false;
             root.opened = true;
             root.animateMotionTo(1);
-            root.focusKeyboardWindow();
+            root.focusKeyboardSurface();
         });
     }
 
@@ -446,7 +433,7 @@ Item {
         root.motionProgress = root.motionTarget;
         if (root.motionTarget > 0) {
             root.scheduleBackgroundBlurUpdate();
-            Qt.callLater(root.focusKeyboardWindow);
+            Qt.callLater(root.focusKeyboardSurface);
             return;
         }
         backgroundBlurUpdate.stop();
@@ -469,6 +456,8 @@ Item {
     }
 
     function finishDismiss() {
+        if (root.pendingActivation)
+            root.dispatchPendingActivation();
         var notifyShell = root.dismissNotifyShell;
         root.dismissNotifyShell = false;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
@@ -479,23 +468,24 @@ Item {
         return pluginSettings.update(name, value);
     }
 
-    function setPreviewPlacement(value) {
-        var mode = value === "centered" ? "centered" : "in-place";
-        if (mode !== root.previewPlacement)
-            root.updatePluginSetting("previewPlacement", mode);
+    // Stores a simple setting from the schema; returns the value it now has.
+    function setSetting(name, value) {
+        if (name === "hotCornerEnabled")
+            return root.setHotCornerEnabled(value);
+        var next = SettingsSchema.normalize(name, value, root[name]);
+        if (next !== root[name])
+            root.updatePluginSetting(name, next);
+        return next;
     }
 
-    function setWindowFooterStyle(value) {
-        var style = root.windowFooterStyles.indexOf(value) !== -1 ? value : "floating";
-        if (style !== root.windowFooterStyle)
-            root.updatePluginSetting("windowFooterStyle", style);
-    }
-
-    function setAnimationStyle(value) {
-        var style = root.animationStyles.indexOf(value) !== -1 ? value : "original";
-        if (style !== root.animationStyle)
-            root.updatePluginSetting("animationStyle", style);
-        return style;
+    // IPC form of setSetting: rejects unlisted options and non on/off booleans
+    // with a message, and answers with the stored value as text.
+    function setSettingFromIpc(name, text) {
+        var parsed = SettingsSchema.parseIpc(name, text);
+        if (parsed.error)
+            return parsed.error;
+        var next = root.setSetting(name, parsed.value);
+        return typeof next === "boolean" ? (next ? "on" : "off") : String(next);
     }
 
     function clampAnimationDuration(value) {
@@ -619,26 +609,6 @@ Item {
         root.animationOutDurationPreview = -1;
     }
 
-    function setBackgroundBlur(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.backgroundBlur;
-        var next = Math.max(0, Math.min(20, Math.round(numeric)));
-        if (next !== root.backgroundBlur)
-            root.updatePluginSetting("backgroundBlur", next);
-        return next;
-    }
-
-    function setBackgroundDim(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.backgroundDim;
-        var next = Math.max(0, Math.min(90, Math.round(numeric)));
-        if (next !== root.backgroundDim)
-            root.updatePluginSetting("backgroundDim", next);
-        return next;
-    }
-
     function openSettings() {
         if (!root.surfaceMounted)
             root.open("{}");
@@ -649,10 +619,7 @@ Item {
         root.hotCornerDelayPreview = -1;
         root.settingsCategoryIndex = 0;
         root.settingsOpen = true;
-        Qt.callLater(function () {
-            if (root.settingsOpen)
-                root.focusSettingsCategory();
-        });
+        Qt.callLater(root.focusKeyboardSurface);
     }
 
     function closeSettings() {
@@ -666,7 +633,7 @@ Item {
         if (restoreKeyboardFocus)
             Qt.callLater(function () {
                 if (root.opened)
-                    root.focusKeyboardWindow();
+                    root.focusKeyboardSurface();
             });
     }
 
@@ -674,8 +641,8 @@ Item {
         previewExitTimer.stop();
         root.previewSlowMotion = false;
         root.previewNavigationSlowMotion = false;
-        root.previewIndex = -1;
-        root.previewExitIndex = -1;
+        root.previewToplevel = null;
+        root.previewExitToplevel = null;
     }
 
     function setHotCornerEnabled(enabled) {
@@ -683,52 +650,7 @@ Item {
         // The corner is also disabled while settings load; an early "off"
         // command must still be queued even though the surface is inactive.
         root.updatePluginSetting("hotCornerEnabled", next);
-    }
-
-    function setHotCornerPosition(value) {
-        var position = root.hotCornerPositions.indexOf(value) !== -1 ? value : "top-left";
-        if (position !== root.hotCornerPosition)
-            root.updatePluginSetting("hotCornerPosition", position);
-    }
-
-    function setHotCornerAllDisplays(enabled) {
-        root.updatePluginSetting("hotCornerAllDisplays", enabled === true);
-    }
-
-    function setHotCornerDelay(value) {
-        var numeric = Number(value);
-        if (!isFinite(numeric))
-            return root.hotCornerDelay;
-        var next = Math.max(0, Math.min(1000, Math.round(numeric)));
-        if (next !== root.hotCornerDelay)
-            root.updatePluginSetting("hotCornerDelay", next);
         return next;
-    }
-
-    function setInitialWorkspaceScope(value) {
-        var next = String(value) === "current" ? "current" : "all";
-        if (next !== root.initialWorkspaceScope)
-            root.updatePluginSetting("initialWorkspaceScope", next);
-        return next;
-    }
-
-    function setWorkspaceLabelStyle(value) {
-        var next = String(value) === "slot" ? "slot" : "full";
-        if (next !== root.workspaceLabelStyle)
-            root.updatePluginSetting("workspaceLabelStyle", next);
-        return next;
-    }
-
-    function setMoveCursorToWindow(enabled) {
-        var next = enabled === true;
-        if (next !== root.moveCursorToWindow)
-            root.updatePluginSetting("moveCursorToWindow", next);
-    }
-
-    function setMultiMonitorMode(value) {
-        var mode = value === "per-monitor" ? "per-monitor" : "mirrored";
-        if (mode !== root.multiMonitorMode)
-            root.updatePluginSetting("multiMonitorMode", mode);
     }
 
     function requestFooterHide() {
@@ -793,24 +715,38 @@ Item {
         }
     }
 
-    function focusKeyboardWindow() {
-        for (var i = 0; i < surfaceInstances.instances.length; i++) {
-            var surface = surfaceInstances.instances[i];
-            if (surface && surface.acceptsKeyboard) {
-                surface.keyboardItem.forceActiveFocus();
-                return;
-            }
-        }
+    // Keyboard focus goes wherever it belongs now: the settings when they are
+    // open, the window grid otherwise. Every request asks the same question, so
+    // a late one from the open sequence cannot pull focus out of settings.
+    function focusKeyboardSurface() {
+        var surface = root.keyboardSurface();
+        if (!surface)
+            return;
+        if (root.settingsOpen)
+            surface.focusSettings();
+        else
+            surface.keyboardItem.forceActiveFocus();
     }
 
-    function focusSettingsCategory() {
-        for (var i = 0; i < surfaceInstances.instances.length; i++) {
-            var surface = surfaceInstances.instances[i];
-            if (surface && surface.acceptsKeyboard) {
-                surface.focusSettingsCategory();
-                return;
-            }
-        }
+    // The mounted surface that takes the keyboard, or null while unmounted.
+    function keyboardSurface() {
+        var surfaces = surfaceInstances.instances;
+        for (var index = 0; index < surfaces.length; index++)
+            if (surfaces[index] && surfaces[index].acceptsKeyboard)
+                return surfaces[index];
+        return null;
+    }
+
+    // How IPC names a window: its title, or its application when untitled.
+    function windowLabel(top) {
+        return String(top.title || WindowModel.appIdFor(top));
+    }
+
+    // An arrow key's move, for IPC.
+    function moveFromIpc(dx, dy) {
+        var surface = root.keyboardSurface();
+        if (surface)
+            root.moveDirectional(dx, dy, surface.windowLayout, false);
     }
 
     function focusSettingsItem(item) {
@@ -834,18 +770,15 @@ Item {
         var forward = isTab
             ? event.key !== Qt.Key_Backtab && !(event.modifiers & Qt.ShiftModifier)
             : event.key === Qt.Key_Down || event.key === Qt.Key_Right;
-        for (var index = 0; index < surfaceInstances.instances.length; index++) {
-            var surface = surfaceInstances.instances[index];
-            if (!surface || !surface.acceptsKeyboard)
-                continue;
-            if (root.footerHideConfirmationOpen)
-                surface.moveFooterConfirmationFocus(forward, isTab);
-            else
-                surface.moveSettingsFocus(forward, isTab);
-            event.accepted = true;
-            return true;
-        }
-        return false;
+        var surface = root.keyboardSurface();
+        if (!surface)
+            return false;
+        if (root.footerHideConfirmationOpen)
+            surface.moveFooterConfirmationFocus(forward, isTab);
+        else
+            surface.moveSettingsFocus(forward, isTab);
+        event.accepted = true;
+        return true;
     }
 
     function handleSettingsTab(event) {
@@ -856,10 +789,10 @@ Item {
 
     function setFilter(value) {
         root.filterText = value;
-        root.selectedIndex = 0;
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
+        root.selectedToplevel = root.filteredToplevels[0] || null;
     }
 
     function setWorkspaceScope(value) {
@@ -869,10 +802,10 @@ Item {
         if (next === root.workspaceScope)
             return;
         root.workspaceScope = next;
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        root.selectedIndex = Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
+        root.selectedToplevel = root.originToplevel;
     }
 
     function toggleWorkspaceScope() {
@@ -890,20 +823,17 @@ Item {
             return;
         if (!root.overviewScreenPinned && (!root.surfaceMounted || root.openingPending))
             root.overviewScreenName = root.focusedMonitorName || root.keyboardScreenName;
-        var selectedTop = root.filteredToplevels[root.selectedIndex];
-        root.hoveredIndex = -1;
+        root.hoveredToplevel = null;
         root.clearPreview();
         root.modelRevision++;
-        var nextIndex = root.filteredToplevels.indexOf(selectedTop);
-        root.selectedIndex = nextIndex >= 0 ? nextIndex : Math.max(0, root.filteredToplevels.indexOf(Hyprland.activeToplevel));
     }
 
     function handleToplevelMetadataChanged(top) {
         if (!root.surfaceMounted && !root.openingPending)
             return;
-        var selectedTop = root.filteredToplevels[root.selectedIndex];
-        var previewTop = root.previewIndex >= 0 ? root.filteredToplevels[root.previewIndex] : null;
-        var previewExitTop = root.previewExitIndex >= 0 ? root.filteredToplevels[root.previewExitIndex] : null;
+        // Focus history arrives with the first refresh after a shell restart.
+        if (!root.originToplevel)
+            root.originToplevel = WindowModel.mostRecent(root.allToplevels);
         var membershipChanged = root.syncSessionToplevels();
         if (root.openingPending) {
             var sessionIndex = root.sessionToplevels.indexOf(top);
@@ -915,55 +845,48 @@ Item {
         }
         if (!membershipChanged)
             root.modelRevision++;
+        root.clearUnlistedPreview();
+    }
 
-        var selectedIndex = root.filteredToplevels.indexOf(selectedTop);
-        if (selectedIndex < 0)
-            selectedIndex = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
-        root.selectedIndex = Math.max(0, selectedIndex);
-
-        if (previewTop) {
-            var previewIndex = root.filteredToplevels.indexOf(previewTop);
-            if (previewIndex < 0)
-                root.clearPreview();
-            else
-                root.previewIndex = previewIndex;
-        } else if (previewExitTop) {
-            var previewExitIndex = root.filteredToplevels.indexOf(previewExitTop);
-            if (previewExitIndex < 0)
-                root.clearPreview();
-            else
-                root.previewExitIndex = previewExitIndex;
-        }
+    function clearUnlistedPreview() {
+        var listed = root.filteredToplevels;
+        if ((root.previewToplevel && listed.indexOf(root.previewToplevel) === -1)
+                || (root.previewExitToplevel && listed.indexOf(root.previewExitToplevel) === -1))
+            root.clearPreview();
     }
 
     function handleToplevelCollectionChanged() {
         if (!root.surfaceMounted && !root.openingPending)
             return;
+        var previous = root.filteredToplevels;
+        var selected = root.selection;
         var membershipChanged = root.syncSessionToplevels();
-        var filteredMembershipMayChange = !membershipChanged && root.filterText.length > 0;
-        if ((membershipChanged || filteredMembershipMayChange)
-                && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
-            root.clearPreview();
-        if (filteredMembershipMayChange)
+        if (!membershipChanged && root.filterText.length > 0)
             root.modelRevision++;
-        if (root.selectedIndex >= root.filteredToplevels.length)
-            root.selectedIndex = Math.max(0, root.filteredToplevels.length - 1);
-        if (root.previewIndex >= root.filteredToplevels.length)
-            root.clearPreview();
+        root.selectedToplevel = WindowModel.successorFor(previous, root.filteredToplevels, selected);
+        root.clearUnlistedPreview();
     }
 
     function activate(top) {
         if (!top)
             return;
-        var helper = root.pluginDir + "/activate-window";
-        Quickshell.execDetached([
-            helper,
-            WindowModel.addressFor(top),
-            WindowModel.appIdFor(top),
-            String(top.title || ""),
-            root.moveCursorToWindow ? "true" : "false"
-        ]);
+        root.pendingActivation = top;
         root.dismiss();
+    }
+
+    // Runs once a surface has lost the keyboard, or once the surfaces are gone
+    // if none held it. When an exclusive-keyboard layer lets go, Hyprland
+    // returns focus to the previous window, overriding any earlier request.
+    function dispatchPendingActivation() {
+        var address = WindowModel.addressFor(root.pendingActivation);
+        root.pendingActivation = null;
+        if (!address)
+            return;
+        var focus = "hl.dispatch(hl.dsp.focus({ window = 'address:" + address + "' }))";
+        Hyprland.dispatch(root.moveCursorToWindow
+            ? "(function() " + focus + " end)"
+            : "(function() local p = hl.get_cursor_pos(); " + focus
+                + "; hl.dispatch(hl.dsp.cursor.move({ x = p.x, y = p.y })) end)");
     }
 
     function requestClose(top) {
@@ -1128,232 +1051,25 @@ Item {
         return root.liveAspectRatioFor(top);
     }
 
-    function assignCompositionRows(entries, rowCount) {
-        var rows = [];
-        for (var rowIndex = 0; rowIndex < rowCount; rowIndex++)
-            rows.push({ entries: [], naturalWidth: 0 });
-
-        var ordered = entries.slice();
-        ordered.sort(function (a, b) {
-            var widthA = Math.sqrt(a.weight * a.ratio);
-            var widthB = Math.sqrt(b.weight * b.ratio);
-            if (widthA !== widthB)
-                return widthB - widthA;
-            return a.index - b.index;
-        });
-
-        for (var entryIndex = 0; entryIndex < ordered.length; entryIndex++) {
-            var bestRow = 0;
-            for (var candidateRow = 1; candidateRow < rows.length; candidateRow++) {
-                if (rows[candidateRow].naturalWidth < rows[bestRow].naturalWidth
-                        || (rows[candidateRow].naturalWidth === rows[bestRow].naturalWidth
-                            && rows[candidateRow].entries.length < rows[bestRow].entries.length))
-                    bestRow = candidateRow;
-            }
-            var entry = ordered[entryIndex];
-            rows[bestRow].entries.push(entry);
-            rows[bestRow].naturalWidth += Math.sqrt(entry.weight * entry.ratio);
-        }
-
-        for (var sortRow = 0; sortRow < rows.length; sortRow++)
-            rows[sortRow].entries.sort(function (a, b) { return a.index - b.index; });
-        return rows;
-    }
-
-    function composeRows(rows, scale, width, height, gap, padding, footerHeight) {
-        var measuredRows = [];
-        var totalHeight = 0;
-        var footerSpacing = footerHeight > 0 ? padding : 0;
-        for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-            var entries = rows[rowIndex].entries;
-            var cards = [];
-            var totalWidth = Math.max(0, entries.length - 1) * gap;
-            var rowHeight = 0;
-            for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
-                var entry = entries[entryIndex];
-                var previewWidth = scale * Math.sqrt(entry.weight * entry.ratio);
-                var previewHeight = scale * Math.sqrt(entry.weight / entry.ratio);
-                var card = {
-                    index: entry.index,
-                    width: previewWidth + padding * 2,
-                    height: previewHeight + footerHeight + padding * 2 + footerSpacing
-                };
-                cards.push(card);
-                totalWidth += card.width;
-                rowHeight = Math.max(rowHeight, card.height);
-            }
-            if (totalWidth > width || rowHeight > height)
-                return null;
-            measuredRows.push({ cards: cards, width: totalWidth, height: rowHeight });
-            totalHeight += rowHeight;
-        }
-        totalHeight += Math.max(0, measuredRows.length - 1) * gap;
-        if (totalHeight > height)
-            return null;
-
-        var verticalGap = measuredRows.length > 1 ? gap : 0;
-        var y = (height - totalHeight) / 2;
-        var result = [];
-        for (var outputRow = 0; outputRow < measuredRows.length; outputRow++) {
-            var row = measuredRows[outputRow];
-            var horizontalGap = row.cards.length > 1 ? gap : 0;
-            var x = (width - row.width) / 2;
-            for (var cardIndex = 0; cardIndex < row.cards.length; cardIndex++) {
-                var card = row.cards[cardIndex];
-                var align = ((card.index + outputRow) % 3) / 2;
-                result[card.index] = {
-                    x: x,
-                    y: y + (row.height - card.height) * align,
-                    width: card.width,
-                    height: card.height
-                };
-                x += card.width + horizontalGap;
-            }
-            y += row.height + verticalGap;
-        }
-        return result;
-    }
-
-    function computeWindowLayout(toplevels, width, height, gap, padding, footerHeight, viewportRatioHint) {
-        var count = toplevels.length;
-        if (!count || width <= 0 || height <= 0)
-            return [];
-
-        var edgeInset = gap / 2;
-        var availableWidth = Math.max(1, width - edgeInset * 2);
-        var availableHeight = Math.max(1, height - edgeInset * 2);
-        var entries = [];
-        for (var index = 0; index < count; index++) {
-            var ratio = root.aspectRatioFor(toplevels[index]);
-            var adaptiveWeight = Math.max(0.72, Math.min(1.28, Math.sqrt(ratio / 1.6)));
-            entries.push({
-                index: index,
-                ratio: ratio,
-                weight: adaptiveWeight,
-                extremity: Math.max(ratio, 1 / ratio)
-            });
-        }
-        entries.sort(function (a, b) {
-            if (a.extremity !== b.extremity)
-                return b.extremity - a.extremity;
-            return a.index - b.index;
-        });
-
-        var high = Math.min(availableWidth, availableHeight);
-        var footerSpacing = footerHeight > 0 ? padding : 0;
-        for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
-            var entry = entries[entryIndex];
-            high = Math.min(high,
-                (availableWidth - padding * 2) / Math.sqrt(entry.weight * entry.ratio),
-                (availableHeight - footerHeight - padding * 2 - footerSpacing) / Math.sqrt(entry.weight / entry.ratio));
-        }
-        high = Math.max(1, high);
-
-        var best = null;
-        var bestScale = -1;
-        var minimumCardHeight = footerHeight + padding * 2 + footerSpacing + 1;
-        var maxRows = Math.max(1, Math.min(count, Math.floor((availableHeight + gap) / (minimumCardHeight + gap))));
-        var totalNaturalWidth = 0;
-        var totalNaturalHeight = 0;
-        for (var naturalIndex = 0; naturalIndex < entries.length; naturalIndex++) {
-            totalNaturalWidth += Math.sqrt(entries[naturalIndex].weight * entries[naturalIndex].ratio);
-            totalNaturalHeight += Math.sqrt(entries[naturalIndex].weight / entries[naturalIndex].ratio);
-        }
-        var averageNaturalHeight = totalNaturalHeight / entries.length;
-        var viewportRatio = Number(viewportRatioHint);
-        if (!isFinite(viewportRatio) || viewportRatio <= 0)
-            viewportRatio = availableWidth / availableHeight;
-        var balancedRows = Math.round(Math.sqrt(totalNaturalWidth / Math.max(0.01, viewportRatio * averageNaturalHeight)));
-        var minimumRows = Math.max(1, Math.min(maxRows, balancedRows));
-        for (var rowCount = minimumRows; rowCount <= maxRows; rowCount++) {
-            var rows = root.assignCompositionRows(entries, rowCount);
-            var low = 0;
-            var rowHigh = high;
-            var rowBest = null;
-            for (var iteration = 0; iteration < 12; iteration++) {
-                var scale = (low + rowHigh) / 2;
-                var composed = root.composeRows(rows, scale, availableWidth, availableHeight, gap, padding, footerHeight);
-                if (composed) {
-                    rowBest = composed;
-                    low = scale;
-                } else {
-                    rowHigh = scale;
-                }
-            }
-            if (rowBest && low > bestScale) {
-                best = rowBest;
-                bestScale = low;
-            }
-        }
-        if (!best)
-            best = root.composeRows(root.assignCompositionRows(entries, 1), 1, availableWidth, availableHeight, gap, padding, footerHeight) || [];
-        for (var resultIndex = 0; resultIndex < best.length; resultIndex++) {
-            if (!best[resultIndex])
-                continue;
-            best[resultIndex].x += edgeInset;
-            best[resultIndex].y += edgeInset;
-        }
-        return best;
-    }
-
     function previewRectFor(top, sourceRect, width, height, padding, footerHeight) {
-        var ratio = root.aspectRatioFor(top);
-        var maxWidth = width * 0.84;
-        var maxHeight = height * 0.78;
-        var footerSpacing = footerHeight > 0 ? padding : 0;
-        var previewWidth = Math.max(1, Math.min(maxWidth - padding * 2, (maxHeight - footerHeight - padding * 2 - footerSpacing) * ratio));
-        var previewHeight = Math.max(1, previewWidth / ratio);
-        var cardWidth = previewWidth + padding * 2;
-        var cardHeight = previewHeight + footerHeight + padding * 2 + footerSpacing;
-        var centerX = width / 2;
-        var centerY = height / 2;
-        if (root.previewPlacement === "in-place" && sourceRect) {
-            centerX = sourceRect.x + sourceRect.width / 2;
-            centerY = sourceRect.y + sourceRect.height / 2;
-        }
-        return {
-            x: Math.max(padding, Math.min(width - cardWidth - padding, centerX - cardWidth / 2)),
-            y: Math.max(padding, Math.min(height - cardHeight - padding, centerY - cardHeight / 2)),
-            width: cardWidth,
-            height: cardHeight
-        };
+        return GridLayout.previewRect(root.aspectRatioFor(top), root.previewPlacement === "centered",
+            sourceRect, width, height, padding, footerHeight);
     }
 
     function moveDirectional(dx, dy, layout, slowMotion) {
-        if (!layout || !layout[root.selectedIndex])
-            return;
-        var current = layout[root.selectedIndex];
-        var currentX = current.x + current.width / 2;
-        var currentY = current.y + current.height / 2;
-        var bestIndex = -1;
-        var bestScore = Number.MAX_VALUE;
-        for (var index = 0; index < layout.length; index++) {
-            if (index === root.selectedIndex || !layout[index])
-                continue;
-            var candidate = layout[index];
-            var deltaX = candidate.x + candidate.width / 2 - currentX;
-            var deltaY = candidate.y + candidate.height / 2 - currentY;
-            var primary = dx !== 0 ? deltaX * dx : deltaY * dy;
-            if (primary <= 0)
-                continue;
-            var cross = dx !== 0 ? Math.abs(deltaY) : Math.abs(deltaX);
-            var score = primary + cross * cross / Math.max(1, primary) * 2;
-            if (score < bestScore) {
-                bestScore = score;
-                bestIndex = index;
-            }
-        }
+        var bestIndex = GridLayout.neighbourIndex(layout, root.filteredToplevels.indexOf(root.selection), dx, dy);
         if (bestIndex < 0)
             return;
 
-        var previousPreviewIndex = root.previewIndex;
-        root.selectedIndex = bestIndex;
-        if (previousPreviewIndex >= 0) {
+        var previousPreview = root.previewToplevel;
+        var next = root.filteredToplevels[bestIndex];
+        root.selectedToplevel = next;
+        if (previousPreview) {
             root.previewSlowMotion = false;
             root.previewNavigationSlowMotion = slowMotion === true;
             previewExitTimer.stop();
-            root.previewExitIndex = previousPreviewIndex;
-            root.previewIndex = bestIndex;
+            root.previewExitToplevel = previousPreview;
+            root.previewToplevel = next;
             previewExitTimer.restart();
         }
     }
@@ -1361,18 +1077,18 @@ Item {
     function togglePreview(slowMotion) {
         root.previewNavigationSlowMotion = false;
         root.previewSlowMotion = slowMotion === true;
-        if (root.previewIndex >= 0) {
-            root.previewExitIndex = root.previewIndex;
-            root.previewIndex = -1;
+        if (root.previewToplevel) {
+            root.previewExitToplevel = root.previewToplevel;
+            root.previewToplevel = null;
             previewExitTimer.restart();
             return;
         }
         previewExitTimer.stop();
-        root.previewExitIndex = -1;
-        var target = root.hoveredIndex >= 0 ? root.hoveredIndex : root.selectedIndex;
-        if (target >= 0 && target < root.filteredToplevels.length) {
-            root.selectedIndex = target;
-            root.previewIndex = target;
+        root.previewExitToplevel = null;
+        var target = root.hoveredToplevel || root.selection;
+        if (target && root.filteredToplevels.indexOf(target) !== -1) {
+            root.selectedToplevel = target;
+            root.previewToplevel = target;
         }
     }
 
@@ -1409,7 +1125,7 @@ Item {
             return;
         }
         if (event.key === Qt.Key_Escape) {
-            if (root.previewIndex >= 0 || root.previewExitIndex >= 0)
+            if (root.previewToplevel || root.previewExitToplevel)
                 root.clearPreview();
             else
                 root.dismiss();
@@ -1431,12 +1147,12 @@ Item {
         else if (event.key === Qt.Key_Down)
             root.moveDirectional(0, 1, layout, Boolean(event.modifiers & Qt.ShiftModifier));
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-            root.activate(root.filteredToplevels[root.selectedIndex]);
+            root.activate(root.selection);
         else if (event.key === Qt.Key_Q
                 && Boolean(event.modifiers & Qt.ShiftModifier)
                 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
             if (!event.isAutoRepeat)
-                root.requestClose(root.filteredToplevels[root.selectedIndex]);
+                root.requestClose(root.selection);
         }
         else if (Util.editsFilter(event, root.filterText))
             root.setFilter(Util.editedFilter(event, root.filterText));
@@ -1491,9 +1207,9 @@ Item {
         id: previewExitTimer
         interval: root.previewAnimationDuration
         onTriggered: {
-            root.previewExitIndex = -1;
+            root.previewExitToplevel = null;
             root.previewNavigationSlowMotion = false;
-            if (root.previewIndex < 0)
+            if (!root.previewToplevel)
                 root.previewSlowMotion = false;
         }
     }
@@ -1606,11 +1322,8 @@ Item {
         function onFocusedMonitorChanged() { root.handleDisplayStateChanged(); }
         function onFocusedWorkspaceChanged() { root.handleDisplayStateChanged(); }
         function onActiveToplevelChanged() {
-            if (!root.opened)
-                return;
-            var index = root.filteredToplevels.indexOf(Hyprland.activeToplevel);
-            if (index >= 0)
-                root.selectedIndex = index;
+            if (root.opened && root.filteredToplevels.indexOf(Hyprland.activeToplevel) !== -1)
+                root.selectedToplevel = Hyprland.activeToplevel;
         }
         function onRawEvent(event) {
             if (event && event.name === "configreloaded")
@@ -1618,12 +1331,6 @@ Item {
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
         }
-    }
-
-    // IPC rejection text derived from the option list it validates against.
-    function expectedOneOf(options) {
-        var head = options.slice(0, -1).join(", ");
-        return "expected " + head + (options.length > 2 ? ", or " : " or ") + options[options.length - 1];
     }
 
     IpcHandler {
@@ -1643,58 +1350,92 @@ Item {
             root.toggle();
             return "ok";
         }
-        function previewPlacement(mode: string): string {
-            if (mode !== "in-place" && mode !== "centered")
-                return "expected in-place or centered";
-            root.setPreviewPlacement(mode);
-            return mode;
-        }
-        function windowFooterStyle(style: string): string {
-            if (root.windowFooterStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.windowFooterStyles);
-            root.setWindowFooterStyle(style);
-            return style;
-        }
-        function animationStyle(style: string): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return root.setAnimationStyle(style);
-        }
         function animationDuration(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDuration(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDuration(style, value));
         }
         function animationDurationIn(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDurationIn(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDurationIn(style, value));
         }
         function animationDurationOut(style: string, value: real): string {
-            if (root.animationStyles.indexOf(style) === -1)
-                return root.expectedOneOf(root.animationStyles);
-            return String(root.setAnimationDurationOut(style, value));
+            return SettingsSchema.parseIpc("animationStyle", style).error || String(root.setAnimationDurationOut(style, value));
         }
         function slideDirection(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirection(direction);
         }
         function slideDirectionIn(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionIn(direction);
         }
         function slideDirectionOut(direction: string): string {
             if (!root.isSlideDirection(direction))
-                return root.expectedOneOf(root.slideDirections);
+                return SettingsSchema.expectedOneOf(root.slideDirections);
             return root.setSlideDirectionOut(direction);
         }
-        function backgroundBlur(value: real): string {
-            return String(root.setBackgroundBlur(value));
+        function previewPlacement(mode: string): string { return root.setSettingFromIpc("previewPlacement", mode); }
+        function windowFooterStyle(style: string): string { return root.setSettingFromIpc("windowFooterStyle", style); }
+        function selectionStyle(style: string): string { return root.setSettingFromIpc("selectionStyle", style); }
+        function animationStyle(style: string): string { return root.setSettingFromIpc("animationStyle", style); }
+        function backgroundBlur(value: real): string { return root.setSettingFromIpc("backgroundBlur", value); }
+        function backgroundDim(value: real): string { return root.setSettingFromIpc("backgroundDim", value); }
+        function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
+        function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
+        function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
+        // What the overview is doing now, as JSON, for scripts and live checks.
+        // The filter, windows, and selection describe the open overview only.
+        function state(): string {
+            var open = root.opened;
+            var top = open ? root.selection : null;
+            return JSON.stringify({
+                opened: open,
+                opening: root.openingPending,
+                mounted: root.surfaceMounted,
+                settingsOpen: root.settingsOpen,
+                scope: root.workspaceScope,
+                filter: open ? root.filterText : "",
+                windows: open ? root.filteredToplevels.length : 0,
+                selection: top ? root.windowLabel(top) : null,
+                selectionAddress: top ? WindowModel.addressFor(top) : null,
+                preview: root.previewToplevel !== null
+            });
         }
-        function backgroundDim(value: real): string {
-            return String(root.setBackgroundDim(value));
+        function get(name: string): string {
+            if (!Object.prototype.hasOwnProperty.call(SettingsSchema.specs, name))
+                return SettingsSchema.expectedOneOf(Object.keys(SettingsSchema.specs));
+            var value = SettingsSchema.read(root.pluginEntry, name);
+            return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
+        }
+        // The overview's own keys. Each answers "closed" unless it is open.
+        function move(direction: string): string {
+            var step = ({ left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] })[direction];
+            if (!step)
+                return SettingsSchema.expectedOneOf(["left", "right", "up", "down"]);
+            if (!root.opened)
+                return "closed";
+            root.moveFromIpc(step[0], step[1]);
+            return root.selection ? root.windowLabel(root.selection) : "";
+        }
+        function filter(text: string): string {
+            if (!root.opened)
+                return "closed";
+            root.setFilter(text);
+            return String(root.filteredToplevels.length);
+        }
+        function preview(): string {
+            if (!root.opened)
+                return "closed";
+            root.togglePreview(false);
+            return root.previewToplevel ? "on" : "off";
+        }
+        function activate(): string {
+            if (!root.opened)
+                return "closed";
+            if (!root.selection)
+                return "no selection";
+            root.activate(root.selection);
+            return "ok";
         }
         function settings(mode: string): string {
             if (mode === "open")
@@ -1707,39 +1448,12 @@ Item {
                 return "expected open, close, or toggle";
             return mode;
         }
-        function hotCorner(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setHotCornerEnabled(mode === "on");
-            return mode;
-        }
-        function hotCornerPosition(position: string): string {
-            if (root.hotCornerPositions.indexOf(position) === -1)
-                return root.expectedOneOf(root.hotCornerPositions);
-            root.setHotCornerPosition(position);
-            return position;
-        }
-        function hotCornerDelay(value: real): string {
-            return String(root.setHotCornerDelay(value));
-        }
-        function hotCornerAllDisplays(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setHotCornerAllDisplays(mode === "on");
-            return mode;
-        }
-        function moveCursorToWindow(mode: string): string {
-            if (mode !== "on" && mode !== "off")
-                return "expected on or off";
-            root.setMoveCursorToWindow(mode === "on");
-            return mode;
-        }
-        function multiMonitorMode(mode: string): string {
-            if (mode !== "mirrored" && mode !== "per-monitor")
-                return "expected mirrored or per-monitor";
-            root.setMultiMonitorMode(mode);
-            return mode;
-        }
+        function hotCorner(mode: string): string { return root.setSettingFromIpc("hotCornerEnabled", mode); }
+        function hotCornerPosition(position: string): string { return root.setSettingFromIpc("hotCornerPosition", position); }
+        function hotCornerDelay(value: real): string { return root.setSettingFromIpc("hotCornerDelay", value); }
+        function hotCornerAllDisplays(mode: string): string { return root.setSettingFromIpc("hotCornerAllDisplays", mode); }
+        function moveCursorToWindow(mode: string): string { return root.setSettingFromIpc("moveCursorToWindow", mode); }
+        function multiMonitorMode(mode: string): string { return root.setSettingFromIpc("multiMonitorMode", mode); }
     }
 
     component HotCornerTarget: Item {
@@ -1885,12 +1599,23 @@ Item {
             opacity: root.effectiveBackgroundDim / 100
         }
 
+        // Losing the keyboard means Hyprland has already handed focus back,
+        // so the chosen window's focus can be dispatched without waiting for
+        // the closing animation.
+        Item {
+            Window.onActiveChanged: {
+                if (surface.modelData === root.effectiveOverviewScreen
+                        && !Window.active && root.pendingActivation)
+                    root.dispatchPendingActivation();
+            }
+        }
+
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
             onClicked: {
                 if (surface.modelData === root.effectiveOverviewScreen
-                        && (root.previewIndex >= 0 || root.previewExitIndex >= 0))
+                        && (root.previewToplevel || root.previewExitToplevel))
                     root.clearPreview();
                 else
                     root.dismiss();
@@ -1938,6 +1663,7 @@ Item {
                 return true;
             }
             property alias keyboardItem: keyCatcher
+            readonly property alias windowLayout: overviewArea.windowLayout
             // Forwarded events don't bubble through the target's parents.
             // Run overview shortcuts first, then the focused settings control.
             readonly property var keyboardTargets: {
@@ -1972,6 +1698,13 @@ Item {
             function focusSettingsCategory() {
                 var settings = settingsLayerLoader.item;
                 if (settings)
+                    settings.focusSettingsCategory(); // qmllint disable missing-property
+            }
+
+            // Keeps focus already on a visible settings control; otherwise the category.
+            function focusSettings() {
+                var settings = settingsLayerLoader.item;
+                if (settings && !settings.holdsFocus()) // qmllint disable missing-property
                     settings.focusSettingsCategory(); // qmllint disable missing-property
             }
 
@@ -2119,10 +1852,8 @@ Item {
                         Layout.fillHeight: true
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
-                            var screenRatio = overviewWindow.screen && overviewWindow.screen.height > 0
-                                ? overviewWindow.screen.width / overviewWindow.screen.height
-                                : 0;
-                            return root.computeWindowLayout(overviewWindow.screenToplevels, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight, screenRatio);
+                            var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
+                            return GridLayout.computeLayout(ratios, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {

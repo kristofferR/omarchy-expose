@@ -21,6 +21,11 @@ directions. It runs as part of `./validate`.
 `tst_screen_layout.qml` covers outermost-display selection with mixed logical
 sizes, negative coordinates, stacked displays, layout changes, and removal.
 
+`./tests/live/check-ipc` drives the running shell over IPC after the working tree
+is installed into the plugin directory and the shell restarted. It needs at least
+two windows, opens and closes the overview, and never sends keys, activates a
+window, or changes a setting.
+
 For live multi-display checks, use a second physical or headless Hyprland output:
 
 - Open on either display: both backdrops should blur/dim, with only one grid.
