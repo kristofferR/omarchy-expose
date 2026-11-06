@@ -31,12 +31,26 @@ function workspaceName(toplevel) {
     return workspace ? String(workspace.name || workspace.id || "—") : "—";
 }
 
-// Workspace names are free-form in Hyprland. Plugins that give every monitor its
+// Omarchy parks windows minimized to the dock here.
+var MINIMIZED_WORKSPACE = "special:minimized";
+
+function isMinimized(toplevel) {
+    var workspace = toplevel && toplevel.workspace ? toplevel.workspace : null;
+    return Boolean(workspace) && String(workspace.name || "") === MINIMIZED_WORKSPACE;
+}
+
+// Omarchy gives every monitor its own block of ten workspaces (1-10, 11-20, ...)
+// and the bar numbers each block 1-10, so numeric names print their slot.
+// Workspace names are otherwise free-form. Plugins that give every monitor its
 // own set name them "<monitor description>:<slot>", which is far too wide for a
 // card footer, so "slot" keeps the trailing slot number. Anything else, including
 // "special:scratchpad", is returned unchanged.
 function formatWorkspaceLabel(name, style) {
     var text = String(name === null || name === undefined ? "" : name);
+    if (text === MINIMIZED_WORKSPACE)
+        return "Minimized";
+    if (/^[1-9]\d*$/.test(text))
+        return String((Number(text) - 1) % 10 + 1);
     if (style !== "slot" || text.indexOf("special:") === 0)
         return text;
     var match = text.match(/^.+:(\d+)$/);

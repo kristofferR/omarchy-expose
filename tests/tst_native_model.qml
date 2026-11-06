@@ -44,6 +44,25 @@ TestCase {
         compare(WindowModel.formatWorkspaceLabel(undefined, "slot"), "");
     }
 
+    function test_numbersOmarchyMonitorBlocksLikeTheBar() {
+        compare(WindowModel.formatWorkspaceLabel("14", "full"), "4");
+        compare(WindowModel.formatWorkspaceLabel("20", "full"), "10");
+        compare(WindowModel.formatWorkspaceLabel("21", "slot"), "1");
+        compare(WindowModel.formatWorkspaceLabel(10, "full"), "10");
+    }
+
+    function test_labelsAndDetectsMinimizedWindows() {
+        compare(WindowModel.formatWorkspaceLabel("special:minimized", "full"), "Minimized");
+        compare(WindowModel.formatWorkspaceLabel("special:minimized", "slot"), "Minimized");
+        var toplevel = createToplevel();
+        verify(!WindowModel.isMinimized(toplevel));
+        toplevel.workspace = ({id: -98, name: "special:minimized"});
+        verify(WindowModel.isMinimized(toplevel));
+        toplevel.workspace = null;
+        verify(!WindowModel.isMinimized(toplevel));
+        toplevel.destroy();
+    }
+
     function test_usesStableNativeAddress() {
         var toplevel = createToplevel();
         compare(WindowModel.addressFor(toplevel), "0xabc123");
