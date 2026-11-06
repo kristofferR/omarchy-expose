@@ -55,7 +55,7 @@ TestCase {
     function test_ipcErrorsNameTheOptions() {
         compare(Schema.parseIpc("previewPlacement", "x").error, "expected in-place or centered");
         compare(Schema.parseIpc("windowFooterStyle", "x").error, "expected floating, integrated, overlay, or centered");
-        compare(Schema.parseIpc("multiMonitorMode", "x").error, "expected mirrored or per-monitor");
+        compare(Schema.parseIpc("multiMonitorMode", "x").error, "expected mirrored, per-monitor, or all-monitors");
         compare(Schema.parseIpc("showFooter", "yes").error, "expected on or off");
         compare(Schema.parseIpc("showFooter", "off").value, false);
         compare(Schema.parseIpc("hotCornerPosition", "top-right").value, "top-right");

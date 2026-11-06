@@ -77,13 +77,16 @@ Ui.BorderSurface {
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
     borderSpec: integratedFooter ? outlineSpec : Border.none()
-    opacity: card.controller.previewToplevel
+    // Quick Look dims and locks only the grid it opened on.
+    readonly property bool previewOnThisScreen: card.controller.previewToplevel !== null
+        && card.screenToplevels.indexOf(card.controller.previewToplevel) !== -1
+    opacity: card.previewOnThisScreen
         ? (previewed ? 1 : 0.28)
         : (liftSelection && !selected ? 0.72 : 1)
 
     MouseArea {
         anchors.fill: parent
-        enabled: !card.controller.settingsOpen && (!card.controller.previewToplevel || card.previewed)
+        enabled: !card.controller.settingsOpen && (!card.previewOnThisScreen || card.previewed)
         hoverEnabled: true
         onEnabledChanged: {
             if (!enabled) {
@@ -173,10 +176,13 @@ Ui.BorderSurface {
 
                 Item {
                     anchors.centerIn: parent
-                    width: parent.width * 2
-                    height: parent.height * 2
-                    scale: 0.5
-                    layer.enabled: true
+                    // Four displays can exhaust the display GPU when every
+                    // screencopy also keeps a double-resolution layer.
+                    readonly property bool doubleResolution: card.controller.multiMonitorMode !== "all-monitors"
+                    width: parent.width * (doubleResolution ? 2 : 1)
+                    height: parent.height * (doubleResolution ? 2 : 1)
+                    scale: doubleResolution ? 0.5 : 1
+                    layer.enabled: doubleResolution
                     layer.smooth: true
 
                     ScreencopyView {

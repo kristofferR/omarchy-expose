@@ -65,7 +65,8 @@ var specs = {
         fallback: "mirrored",
         options: [
             { label: "All displays", description: "Windows from every display", value: "mirrored" },
-            { label: "This display", description: "Only windows on this display", value: "per-monitor" }
+            { label: "This display", description: "Only windows on this display", value: "per-monitor" },
+            { label: "Each display", description: "Each display shows its own windows", value: "all-monitors" }
         ]
     },
     backgroundBlur: { fallback: 4, min: 0, max: 20 },
