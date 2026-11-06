@@ -581,7 +581,7 @@ Item {
                 x: settingToggle.checked ? parent.width - width - Style.space(2) : Style.space(2)
                 color: toggleTrack.stateColor
                 radius: Math.min(Style.cornerRadius, height / 2)
-                Behavior on x { NumberAnimation { duration: 100 } }
+                Behavior on x { NumberAnimation { duration: Style.duration(100) } }
             }
         }
 
@@ -1106,7 +1106,9 @@ Item {
 
                         SettingRow {
                             label: "Animation style"
-                            description: "Choose how the overview opens and closes. Each style remembers its own timing."
+                            description: Style.reduceMotion
+                                ? "Omarchy's animations are off, so the overview appears and disappears at once. Turn them on with omarchy toggle animations."
+                                : "Choose how the overview opens and closes. Each style remembers its own timing."
 
                             SettingChoices {
                                 id: animationStyleChoices

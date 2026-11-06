@@ -33,6 +33,7 @@ Ui.BorderSurface {
     readonly property string windowTitle: String(modelData.title || WindowModel.appIdFor(modelData) || "Untitled window")
     readonly property string applicationName: WindowModel.appIdFor(modelData) || "Application"
     readonly property string workspaceName: card.controller.workspaceName(modelData)
+    readonly property bool minimized: WindowModel.isMinimized(modelData)
     readonly property string iconSource: card.controller.iconFor(modelData)
     // Lift marks only the selection, which is what Enter opens; the window the
     // overview was opened from gets a dot instead of sharing the active border.
@@ -289,6 +290,7 @@ Ui.BorderSurface {
 
         CardText {
             Layout.alignment: Qt.AlignRight
+            visible: !card.minimized
             text: "Workspace"
             opacity: 0.55
             font.pixelSize: Style.font.caption
@@ -388,7 +390,7 @@ Ui.BorderSurface {
             FooterTitle { Layout.fillWidth: true }
 
             CardText {
-                text: "WS " + card.workspaceName
+                text: card.minimized ? card.workspaceName : "WS " + card.workspaceName
                 color: card.focusedWindow ? card.currentColor : Commons.Color.menu.text
                 opacity: card.focusedWindow ? 1 : 0.68
                 font.pixelSize: Style.font.caption
@@ -415,7 +417,7 @@ Ui.BorderSurface {
             CardText {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.maximumWidth: Math.max(1, card.width - Style.space(32))
-                text: card.applicationName + "  ·  Workspace " + card.workspaceName
+                text: card.applicationName + (card.minimized ? "  ·  " : "  ·  Workspace ") + card.workspaceName
                 color: card.focusedWindow ? card.currentColor : Commons.Color.menu.text
                 opacity: card.focusedWindow ? 1 : 0.62
                 font.pixelSize: Style.font.caption

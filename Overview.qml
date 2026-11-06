@@ -180,8 +180,8 @@ Item {
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
     readonly property int effectiveHotCornerDelay: root.hotCornerDelayPreview >= 0 ? Math.round(root.hotCornerDelayPreview) : root.hotCornerDelay
-    readonly property int previewAnimationDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190
-    readonly property int previewFadeDuration: root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130
+    readonly property int previewAnimationDuration: Style.duration(root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190)
+    readonly property int previewFadeDuration: Style.duration(root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 130)
     readonly property int previewAnimationEasing: root.previewNavigationSlowMotion ? Easing.InOutCubic : Easing.OutQuart
     property bool backgroundBlurPrimed: false
     property bool backgroundBlurFailed: false
@@ -401,7 +401,9 @@ Item {
         overviewMotionAnimation.stop();
         root.motionTarget = next;
         var distance = Math.abs(next - root.motionProgress);
-        if (distance < 0.001) {
+        // Omarchy's no-animations mode (`omarchy toggle animations`) skips the
+        // transition and lands on the final frame.
+        if (distance < 0.001 || Style.reduceMotion) {
             root.motionProgress = next;
             root.completeMotion();
             return;
@@ -878,15 +880,36 @@ Item {
     // if none held it. When an exclusive-keyboard layer lets go, Hyprland
     // returns focus to the previous window, overriding any earlier request.
     function dispatchPendingActivation() {
-        var address = WindowModel.addressFor(root.pendingActivation);
+        var top = root.pendingActivation;
+        var address = WindowModel.addressFor(top);
         root.pendingActivation = null;
         if (!address)
             return;
-        var focus = "hl.dispatch(hl.dsp.focus({ window = 'address:" + address + "' }))";
+        var target = "window = 'address:" + address + "'";
+        var focus = "hl.dispatch(hl.dsp.focus({ " + target + " }))";
+        // A window minimized to the dock comes back to the workspace in front
+        // of the user, on top and without animating in, as the dock restores it.
+        var monitor = Hyprland.focusedMonitor;
+        var workspaceId = monitor && monitor.activeWorkspace ? Number(monitor.activeWorkspace.id) : -1;
+        if (WindowModel.isMinimized(top) && workspaceId >= 1) {
+            focus = "hl.dispatch(hl.dsp.window.set_prop({ prop = 'no_anim', value = '1', " + target + " })); "
+                + "hl.dispatch(hl.dsp.window.move({ workspace = '" + workspaceId + "', follow = false, " + target + " })); "
+                + focus + "; hl.dispatch(hl.dsp.window.alter_zorder({ mode = 'top', " + target + " }))";
+            restoredAnimationTimer.target = target;
+            restoredAnimationTimer.restart();
+        }
         Hyprland.dispatch(root.moveCursorToWindow
             ? "(function() " + focus + " end)"
             : "(function() local p = hl.get_cursor_pos(); " + focus
                 + "; hl.dispatch(hl.dsp.cursor.move({ x = p.x, y = p.y })) end)");
+    }
+
+    // Gives a restored window its animations back once it has landed.
+    Timer {
+        id: restoredAnimationTimer
+        property string target: ""
+        interval: 400
+        onTriggered: Hyprland.dispatch("hl.dsp.window.set_prop({ prop = 'no_anim', value = 'unset', " + target + " })")
     }
 
     function requestClose(top) {
