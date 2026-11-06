@@ -13,6 +13,7 @@ ShellRoot {
     WallpaperSource {
         id: wallpaper
         backgroundLink: test.testDir + "/background"
+        posterScript: test.testDir + "/poster.sh"
     }
 
     Image { id: image; source: wallpaper.source; asynchronous: true }
@@ -66,8 +67,11 @@ ShellRoot {
                 test.link(test.first);
                 test.phase = 6;
             } else if (test.phase === 6 && wallpaper.resolvedPath === test.first && image.status === Image.Ready) {
+                test.link(test.testDir + "/clip.mp4");
+                test.phase = 7;
+            } else if (test.phase === 7 && wallpaper.resolvedPath === test.second && image.status === Image.Ready) {
                 wallpaper.active = false;
-                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link and recovery");
+                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link, recovery and video still");
                 Qt.quit();
             }
         }

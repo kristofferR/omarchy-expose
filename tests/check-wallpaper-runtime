@@ -11,6 +11,12 @@ cat > "$test_dir/first image #?.svg" <<'EOF'
 EOF
 cp "$test_dir/first image #?.svg" "$test_dir/second.svg"
 ln -s "$test_dir/first image #?.svg" "$test_dir/background"
+# A video background resolves through a stand-in poster helper to a still.
+: > "$test_dir/clip.mp4"
+cat > "$test_dir/poster.sh" <<'POSTER'
+[[ $1 == */clip.mp4 ]] || exit 1
+printf '%s\n' "$EXPOSE_WALLPAPER_TEST_DIR/second.svg"
+POSTER
 
 QT_QPA_PLATFORM=offscreen EXPOSE_WALLPAPER_TEST_DIR="$test_dir" \
   timeout 15s quickshell --no-color -p "$test_dir/shell.qml" > "$test_dir/output" 2>&1 || {
@@ -18,7 +24,7 @@ QT_QPA_PLATFORM=offscreen EXPOSE_WALLPAPER_TEST_DIR="$test_dir" \
     exit 1
   }
 cat "$test_dir/output"
-rg -q 'PASS: wallpaper link resolution' "$test_dir/output"
+rg -q 'PASS: wallpaper link resolution.*video still' "$test_dir/output"
 if rg -q 'FAIL:|TypeError|ReferenceError|Unable to assign|Binding loop|Failed to load configuration' "$test_dir/output"; then
   exit 1
 fi
