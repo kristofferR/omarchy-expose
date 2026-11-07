@@ -64,11 +64,16 @@ function isOnScreen(toplevel, screenName, perMonitor) {
     return Boolean(monitor) && String(monitor.name || "") === String(screenName || "");
 }
 
+// A pinned window shows on every workspace and belongs to none.
+function isPinned(toplevel) {
+    return ipcFor(toplevel).pinned === true;
+}
+
 function isOnWorkspace(toplevel, workspace) {
     var toplevelWorkspace = toplevel && toplevel.workspace ? toplevel.workspace : null;
     if (!toplevelWorkspace || !workspace)
         return false;
-    if (ipcFor(toplevel).pinned === true || toplevelWorkspace === workspace)
+    if (isPinned(toplevel) || toplevelWorkspace === workspace)
         return true;
 
     var toplevelId = Number(toplevelWorkspace.id);

@@ -11,6 +11,7 @@ import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "WorkspaceModel.js" as WorkspaceModel
 import "ScreenLayout.js" as ScreenLayout
 import "SettingsSchema.js" as SettingsSchema
 
@@ -150,6 +151,10 @@ Item {
     readonly property bool moveCursorToWindow: SettingsSchema.read(root.pluginEntry, "moveCursorToWindow")
     readonly property string multiMonitorMode: SettingsSchema.read(root.pluginEntry, "multiMonitorMode")
     readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
+    readonly property bool closeButton: SettingsSchema.read(root.pluginEntry, "closeButton")
+    readonly property bool workspaceStrip: SettingsSchema.read(root.pluginEntry, "workspaceStrip")
+    readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
+    readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -164,8 +169,17 @@ Item {
     // The window the overview was opened from. Hyprland's active window stops
     // matching any card once the overlay holds keyboard focus.
     property var originToplevel: null
-    // Window to focus once the overlay releases the keyboard.
+    // Window to focus, or workspace to show ({ id, screen }), once the overlay
+    // releases the keyboard.
     property var pendingActivation: null
+    property var pendingWorkspace: null
+    // The window whose card is being dragged toward the workspace strip.
+    property var draggedToplevel: null
+    readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
+    // Workspaces added with + that have no window yet; see WorkspaceModel.placeholder.
+    property var addedWorkspaces: []
+    // Omarchy's record of which block of ten workspace ids each monitor owns.
+    property string workspaceBlocks: ""
     property bool previewSlowMotion: false
     property bool previewNavigationSlowMotion: false
     property bool openingPending: false
@@ -289,6 +303,9 @@ Item {
         root.originToplevel = Hyprland.activeToplevel || WindowModel.mostRecent(root.allToplevels);
         // Reopening before the overlay is gone cancels the activation.
         root.pendingActivation = null;
+        root.pendingWorkspace = null;
+        root.draggedToplevel = null;
+        root.addedWorkspaces = [];
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
@@ -473,7 +490,7 @@ Item {
     }
 
     function finishDismiss() {
-        if (root.pendingActivation)
+        if (root.pendingActivation || root.pendingWorkspace)
             root.dispatchPendingActivation();
         var notifyShell = root.dismissNotifyShell;
         root.dismissNotifyShell = false;
@@ -899,14 +916,112 @@ Item {
     function activate(top) {
         if (!top)
             return;
+        root.pendingWorkspace = null;
         root.pendingActivation = top;
         root.dismiss();
+    }
+
+    // A connector name that is safe to put in a Lua string.
+    function luaMonitorName(screenName) {
+        var name = String(screenName || "");
+        return /^[A-Za-z0-9_.-]+$/.test(name) ? name : "";
+    }
+
+    function stripWorkspacesForScreen(screenName) {
+        return WorkspaceModel.withPlaceholders(WorkspaceModel.stripWorkspaces(root.allWorkspaces, screenName),
+            root.addedWorkspaces, screenName);
+    }
+
+    // + adds an empty workspace to the strip and keeps the overview open.
+    function addWorkspace(screenName) {
+        var id = root.newWorkspaceIdForScreen(screenName);
+        if (id > 0)
+            root.addedWorkspaces = root.addedWorkspaces.concat([WorkspaceModel.placeholder(id, screenName)]);
+    }
+
+    function activeWorkspaceIdForScreen(screenName) {
+        var monitor = root.monitorForScreen(screenName);
+        return monitor && monitor.activeWorkspace ? Number(monitor.activeWorkspace.id) : 0;
+    }
+
+    function blockForScreen(screenName) {
+        return WorkspaceModel.blockFor(root.workspaceBlocks, screenName, root.activeWorkspaceIdForScreen(screenName));
+    }
+
+    function newWorkspaceIdForScreen(screenName) {
+        var ids = root.allWorkspaces.concat(root.addedWorkspaces).map(function (workspace) { return Number(workspace.id); });
+        return WorkspaceModel.newWorkspaceId(ids, root.blockForScreen(screenName));
+    }
+
+    // Closes the overview onto a workspace of a display.
+    function switchToWorkspace(id, screenName) {
+        if (!(id >= 1))
+            return;
+        root.pendingActivation = null;
+        root.pendingWorkspace = { id: id, screen: String(screenName || "") };
+        root.dismiss();
+    }
+
+    // Number keys pick a slot of the display taking the keyboard, as Super+N does.
+    function switchToSlot(slot) {
+        var screenName = root.keyboardScreenName;
+        root.switchToWorkspace(WorkspaceModel.slotId(root.blockForScreen(screenName), slot), screenName);
+    }
+
+    // Moves a window to a workspace of a display, or to a new one ("new"),
+    // without following it. The overview stays open.
+    function moveToWorkspace(top, target, screenName) {
+        var id = target === "new" ? root.newWorkspaceIdForScreen(screenName) : Number(target);
+        var address = WindowModel.addressFor(top);
+        var workspace = top && top.workspace ? top.workspace : null;
+        if (!address || !(id >= 1) || WindowModel.isPinned(top) || (workspace && Number(workspace.id) === id))
+            return;
+        var lua = "hl.dispatch(hl.dsp.window.move({ workspace = '" + id + "', follow = false, window = 'address:" + address + "' }))";
+        // A workspace that does not exist yet opens on the window's display;
+        // bring it to this one.
+        var exists = root.allWorkspaces.some(function (existing) { return Number(existing.id) === id; });
+        var monitor = root.luaMonitorName(screenName);
+        var windowMonitor = top.monitor ? String(top.monitor.name || "") : "";
+        if (!exists && monitor && windowMonitor !== monitor)
+            lua += "; hl.dispatch(hl.dsp.workspace.move({ workspace = '" + id + "', monitor = '" + monitor + "' }))";
+        Hyprland.dispatch("(function() " + lua + " end)");
+        // Hyprland reports where the window now sits on the next refresh.
+        movedWindowRefresh.restart();
+    }
+
+    Timer {
+        id: movedWindowRefresh
+        interval: 100
+        onTriggered: root.refreshHyprlandState()
+    }
+
+    FileView {
+        id: workspaceBlocksFile
+        path: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/omarchy/monitors/workspaces"
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.workspaceBlocks = text()
+        onLoadFailed: root.workspaceBlocks = ""
+        onFileChanged: Qt.callLater(workspaceBlocksFile.reload)
     }
 
     // Runs once a surface has lost the keyboard, or once the surfaces are gone
     // if none held it. When an exclusive-keyboard layer lets go, Hyprland
     // returns focus to the previous window, overriding any earlier request.
     function dispatchPendingActivation() {
+        var workspace = root.pendingWorkspace;
+        root.pendingWorkspace = null;
+        if (workspace) {
+            root.pendingActivation = null;
+            var monitor = root.luaMonitorName(workspace.screen);
+            var show = "hl.dispatch(hl.dsp.focus({ workspace = '" + workspace.id + "' }))";
+            // A workspace that does not exist yet opens on the focused display.
+            if (monitor)
+                show = "local m = hl.get_monitor('" + monitor + "'); if m and not m.focused then "
+                    + "hl.dispatch(hl.dsp.focus({ monitor = '" + monitor + "' })) end; " + show;
+            Hyprland.dispatch("(function() " + show + " end)");
+            return;
+        }
         var top = root.pendingActivation;
         var address = WindowModel.addressFor(top);
         root.pendingActivation = null;
@@ -1189,7 +1304,9 @@ Item {
             return;
         }
         if (event.key === Qt.Key_Escape) {
-            if (root.previewToplevel || root.previewExitToplevel)
+            if (root.draggedToplevel)
+                root.draggedToplevel = null;
+            else if (root.previewToplevel || root.previewExitToplevel)
                 root.clearPreview();
             else
                 root.dismiss();
@@ -1217,6 +1334,14 @@ Item {
                 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
             if (!event.isAutoRepeat)
                 root.requestClose(root.selection);
+        }
+        // With the workspace strip, the number row switches workspace until a
+        // filter is typed, so digits can still narrow a filter.
+        else if (root.workspaceStrip && !root.filterText
+                && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+                && WorkspaceModel.slotForKey(event.key, event.nativeScanCode) > 0) {
+            if (!event.isAutoRepeat)
+                root.switchToSlot(WorkspaceModel.slotForKey(event.key, event.nativeScanCode));
         }
         else if (Util.editsFilter(event, root.filterText))
             root.setFilter(Util.editedFilter(event, root.filterText));
@@ -1287,7 +1412,7 @@ Item {
 
     WallpaperSource {
         id: wallpaperSource
-        active: root.backgroundMode === "wallpaper" && (root.openingPending || root.surfaceMounted)
+        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip) && (root.openingPending || root.surfaceMounted)
     }
 
     Timer {
@@ -1458,8 +1583,11 @@ Item {
         function backgroundBlur(value: real): string { return root.setSettingFromIpc("backgroundBlur", value); }
         function backgroundDim(value: real): string { return root.setSettingFromIpc("backgroundDim", value); }
         function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
+        function closeButton(mode: string): string { return root.setSettingFromIpc("closeButton", mode); }
         function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
+        function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
+        function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
         // The filter, windows, and selection describe the open overview only.
         function state(): string {
@@ -1694,7 +1822,7 @@ Item {
         Item {
             Window.onActiveChanged: {
                 if (surface.modelData === root.effectiveOverviewScreen
-                        && !Window.active && root.pendingActivation)
+                        && !Window.active && (root.pendingActivation || root.pendingWorkspace))
                     root.dispatchPendingActivation();
             }
         }
@@ -1759,6 +1887,10 @@ Item {
         OverviewSurface {
             id: overviewWindow
             readonly property string screenName: String(modelData.name || "")
+            readonly property var monitor: root.monitorForScreen(overviewWindow.screenName)
+            // Window positions are in the desktop's logical coordinates.
+            readonly property real monitorX: overviewWindow.monitor ? Number(overviewWindow.monitor.x) : 0
+            readonly property real monitorY: overviewWindow.monitor ? Number(overviewWindow.monitor.y) : 0
             readonly property bool acceptsKeyboard: {
                 var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
@@ -1810,6 +1942,19 @@ Item {
 
             onCardToplevelsSourceChanged: overviewWindow.syncCardToplevels()
             Component.onCompleted: overviewWindow.syncCardToplevels()
+            // A window's card capture, which its workspace thumbnail draws
+            // instead of capturing the window a second time.
+            property int cardsRevision: 0
+            function captureItemFor(top) {
+                var revision = overviewWindow.cardsRevision;
+                for (var index = 0; index < cardRepeater.count; index++) {
+                    var card = cardRepeater.itemAt(index);
+                    // A card outside the layout has no size to draw from.
+                    if (card && card.modelData === top) // qmllint disable missing-property
+                        return card.inLayout ? card.captureItem : null; // qmllint disable missing-property
+                }
+                return null;
+            }
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
@@ -1972,6 +2117,27 @@ Item {
                         }
                     }
 
+                    Loader {
+                        id: workspaceStripLoader
+                        Layout.fillWidth: true
+                        Layout.leftMargin: Style.space(64)
+                        Layout.rightMargin: Style.space(64)
+                        Layout.preferredHeight: item ? item.implicitHeight : 0 // qmllint disable missing-property
+                        active: root.workspaceStrip
+                        visible: active
+
+                        sourceComponent: WorkspaceStrip {
+                            controller: root
+                            screenName: overviewWindow.screenName
+                            screenWidth: overviewWindow.width
+                            screenHeight: overviewWindow.height
+                            screenX: overviewWindow.monitorX
+                            screenY: overviewWindow.monitorY
+                            wallpaper: wallpaperSource.source
+                            captureItemFor: overviewWindow.captureItemFor
+                        }
+                    }
+
                     Item {
                         id: overviewArea
                         Layout.fillWidth: true
@@ -1995,12 +2161,16 @@ Item {
                             transformOrigin: Item.TopLeft
 
                             Repeater {
+                                id: cardRepeater
                                 model: overviewWindow.cardToplevels
+                                onItemAdded: overviewWindow.cardsRevision++
+                                onItemRemoved: overviewWindow.cardsRevision++
 
                                 delegate: WindowCard {
                                     controller: root
                                     screenToplevels: overviewWindow.screenToplevels
                                     acceptsKeyboard: overviewWindow.acceptsKeyboard || root.multiMonitorMode === "all-monitors"
+                                    workspaceStrip: workspaceStripLoader.item
                                     windowLayout: overviewArea.windowLayout
                                     layoutAreaWidth: overviewArea.width
                                     layoutAreaHeight: overviewArea.height
@@ -2030,7 +2200,9 @@ Item {
                         visible: root.showFooter && overviewWindow.acceptsKeyboard
 
                         Text {
-                            text: "← ↑ ↓ → navigate   Space preview   Tab scope   Shift+Q close   Enter open   Esc close"
+                            text: "← ↑ ↓ → navigate   Space preview   Tab scope   "
+                                + (root.workspaceStrip ? "1–0 workspace   " : "")
+                                + "Shift+Q close   Enter open   Esc close"
                             textFormat: Text.PlainText
                             color: Commons.Color.menu.text
                             opacity: 0.55

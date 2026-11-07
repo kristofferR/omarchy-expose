@@ -667,9 +667,9 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle],
+            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
-            [initialWorkspaceScopeChoices, displayModeChoicesControl],
+            [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
@@ -978,6 +978,19 @@ Item {
                                 onToggled: function (checked) { settingsView.controller.setSetting("moveCursorToWindow", checked); }
                             }
                         }
+
+                        SettingRow {
+                            label: "Close button"
+                            description: "Show a ✕ on the window under the pointer that closes it, like middle-click or Shift+Q."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: closeButtonToggle
+                                checked: settingsView.controller.closeButton
+                                onToggled: function (checked) { settingsView.controller.setSetting("closeButton", checked); }
+                            }
+                        }
                     }
 
                     SettingsPage {
@@ -1039,6 +1052,33 @@ Item {
                                 Layout.fillWidth: true
                                 value: settingsView.controller.multiMonitorMode
                                 onChosen: function (value) { settingsView.controller.setSetting("multiMonitorMode", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Workspace strip"
+                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: workspaceStripToggle
+                                checked: settingsView.controller.workspaceStrip
+                                onToggled: function (checked) { settingsView.controller.setSetting("workspaceStrip", checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Drag windows to workspaces"
+                            description: "Drop a window on a workspace in the strip, or on +, to move it there. Exposé stays open; Escape cancels a drag."
+                            enabled: settingsView.controller.workspaceStrip
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: workspaceDragToggle
+                                checked: settingsView.controller.workspaceDrag
+                                onToggled: function (checked) { settingsView.controller.setSetting("workspaceDrag", checked); }
                             }
                         }
                     }

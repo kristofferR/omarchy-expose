@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
-import Quickshell.Wayland
 import "WindowModel.js" as WindowModel
 import qs.Commons
 import qs.Commons as Commons
@@ -17,6 +16,11 @@ Ui.BorderSurface {
     required property var windowLayout
     required property real layoutAreaWidth
     required property real layoutAreaHeight
+    // The display's workspace strip, which a card can be dragged onto; null
+    // when the strip is off.
+    property var workspaceStrip: null
+    // The live capture, which workspace thumbnails draw from too.
+    readonly property alias captureItem: captureLayer
     // Position in the filtered list; -1 hides the card.
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
@@ -67,12 +71,61 @@ Ui.BorderSurface {
             packedRect = packedRectSource;
 
     }
+    // Dragging toward the workspace strip. The card shrinks around the point
+    // it was picked up at and follows the pointer through a transform, so its
+    // layout is untouched; a cancelled drop slides it back.
+    readonly property bool canDrag: card.workspaceStrip !== null && card.controller.dragToWorkspaces
+        && card.controller.motionSettled && !card.previewOnThisScreen && !WindowModel.isPinned(modelData)
+    property bool dragging: false
+    property real dragX: 0
+    property real dragY: 0
+    property real grabX: 0
+    property real grabY: 0
+    // About twice a workspace thumbnail, so the strip stays visible around it.
+    property real dragScale: card.dragging ? Math.min(0.5, Style.space(240) / Math.max(1, card.width)) : 1
+    // Escape lets go of the drag.
+    readonly property bool dragHeld: card.controller.draggedToplevel === modelData
+    onDragHeldChanged: {
+        if (!card.dragHeld && card.dragging)
+            card.endDrag(false);
+    }
+
+    function endDrag(drop) {
+        var strip = card.workspaceStrip;
+        var target = strip ? strip.dropTarget : null;
+        if (strip)
+            strip.dropTarget = null;
+        card.dragging = false;
+        // Escape ends a drag while the button is still down; moving on must
+        // not start another.
+        cardMouse.mayDrag = false;
+        if (card.dragHeld)
+            card.controller.draggedToplevel = null;
+        card.dragX = 0;
+        card.dragY = 0;
+        if (drop && strip && target !== null)
+            card.controller.moveToWorkspace(card.modelData, target, strip.screenName);
+    }
+
+    transform: [
+        Scale {
+            origin.x: card.grabX
+            origin.y: card.grabY
+            xScale: card.dragScale
+            yScale: card.dragScale
+        },
+        Translate {
+            x: card.dragX
+            y: card.dragY
+        }
+    ]
+
     visible: inLayout
     x: layoutRect.x
     y: layoutRect.y
     width: layoutRect.width
     height: layoutRect.height
-    z: previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))
+    z: dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0)))
     scale: lifted ? 1.04 : 1
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
@@ -85,9 +138,49 @@ Ui.BorderSurface {
         : (liftSelection && !selected ? 0.72 : 1)
 
     MouseArea {
+        id: cardMouse
+        // Scene position of the press, and whether moving it may start a drag.
+        property point pressPoint: Qt.point(0, 0)
+        property bool mayDrag: false
+        property bool suppressClick: false
         anchors.fill: parent
         enabled: !card.controller.settingsOpen && (!card.previewOnThisScreen || card.previewed)
         hoverEnabled: true
+        preventStealing: true
+        onPressed: function(mouse) {
+            cardMouse.suppressClick = false;
+            cardMouse.mayDrag = mouse.button === Qt.LeftButton && card.canDrag;
+            cardMouse.pressPoint = cardMouse.mapToItem(null, mouse.x, mouse.y);
+            card.grabX = mouse.x;
+            card.grabY = mouse.y;
+        }
+        onPositionChanged: function(mouse) {
+            if (!cardMouse.mayDrag)
+                return;
+            var point = cardMouse.mapToItem(null, mouse.x, mouse.y);
+            var dx = point.x - cardMouse.pressPoint.x;
+            var dy = point.y - cardMouse.pressPoint.y;
+            if (!card.dragging) {
+                if (Math.sqrt(dx * dx + dy * dy) < Style.space(10))
+                    return;
+                card.dragging = true;
+                cardMouse.suppressClick = true;
+                card.controller.draggedToplevel = card.modelData;
+            }
+            card.dragX = dx;
+            card.dragY = dy;
+            card.workspaceStrip.dropTarget = card.workspaceStrip.targetAt(null, point.x, point.y);
+        }
+        onReleased: {
+            cardMouse.mayDrag = false;
+            if (card.dragging)
+                card.endDrag(true);
+        }
+        onCanceled: {
+            cardMouse.mayDrag = false;
+            if (card.dragging)
+                card.endDrag(false);
+        }
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
@@ -111,6 +204,8 @@ Ui.BorderSurface {
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onClicked: function(mouse) {
+            if (cardMouse.suppressClick)
+                return;
             if (mouse.button === Qt.MiddleButton)
                 card.controller.requestClose(card.modelData);
             else
@@ -175,6 +270,7 @@ Ui.BorderSurface {
                 }
 
                 Item {
+                    id: captureLayer
                     anchors.centerIn: parent
                     // Four displays can exhaust the display GPU when every
                     // screencopy also keeps a double-resolution layer.
@@ -185,11 +281,10 @@ Ui.BorderSurface {
                     layer.enabled: doubleResolution
                     layer.smooth: true
 
-                    ScreencopyView {
+                    WindowCapture {
                         anchors.fill: parent
-                        captureSource: WindowModel.waylandFor(card.modelData)
+                        source: WindowModel.waylandFor(card.modelData)
                         live: card.controller.opened && card.inLayout
-                        paintCursor: false
                     }
 
                 }
@@ -231,6 +326,51 @@ Ui.BorderSurface {
                 color: card.currentColor
                 border.color: Commons.Color.menu.background
                 border.width: Style.space(2)
+            }
+
+            // Closes the window under the pointer. Pointer handlers rather
+            // than a MouseArea, so the card stays hovered while the pointer is
+            // on the button, and a press here never reaches the card.
+            Ui.BorderSurface {
+                id: closeButton
+                readonly property bool lit: closeHover.hovered
+                anchors.top: previewFrame.top
+                anchors.left: previewFrame.left
+                anchors.margins: Style.spacing.sm
+                z: 6
+                visible: card.controller.closeButton && card.hovered && card.controller.motionSettled
+                    && !card.previewOnThisScreen && !card.dragging
+                width: Style.space(28)
+                height: width
+                radius: Math.min(width / 2, previewFrame.radius)
+                color: closeButton.lit ? Commons.Color.accent : Commons.Color.menu.background
+                borderSpec: closeButton.lit
+                    ? card.controller.windowBorders.activeSpec
+                    : card.controller.windowBorders.inactiveSpec
+
+                Repeater {
+                    model: [45, -45]
+
+                    Rectangle {
+                        required property int modelData
+                        anchors.centerIn: parent
+                        width: closeButton.width * 0.42
+                        height: Math.max(1, Style.space(2))
+                        radius: height / 2
+                        rotation: modelData
+                        color: closeButton.lit ? Commons.Color.background : Commons.Color.menu.text
+                    }
+                }
+
+                HoverHandler {
+                    id: closeHover
+                    cursorShape: Qt.PointingHandCursor
+                }
+
+                TapHandler {
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: card.controller.requestClose(card.modelData)
+                }
             }
 
             Rectangle {
@@ -479,6 +619,29 @@ Ui.BorderSurface {
             duration: card.controller.previewFadeDuration
         }
 
+    }
+
+    Behavior on dragScale {
+        NumberAnimation {
+            duration: Style.duration(160)
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on dragX {
+        enabled: !card.dragging
+        NumberAnimation {
+            duration: Style.duration(220)
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on dragY {
+        enabled: !card.dragging
+        NumberAnimation {
+            duration: Style.duration(220)
+            easing.type: Easing.OutCubic
+        }
     }
 
     Behavior on scale {
