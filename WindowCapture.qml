@@ -2,11 +2,11 @@ import QtQuick
 import Quickshell.Wayland
 
 // A window capture that starts again when Hyprland ends it. That happens when
-// the window moves to another workspace, or is resized while hidden, and a
-// stopped capture never resumes on its own. A hidden window can take seconds
-// to draw at its new size, and a restart before then can sit without a frame
-// rather than stop again, so a restart that shows nothing within a second is
-// retried too. The waits grow: 0.25, 0.5, 1, 2, 4, then 8 s.
+// the window moves to another workspace, or is resized while hidden. Quickshell
+// then drops the frame without emitting `stopped`, and never captures again on
+// its own. A hidden window can take seconds to draw at its new size, and a
+// restart before then can sit without a frame, so a restart that shows nothing
+// within a second is retried too. The waits grow: 0.25, 0.5, 1, 2, 4, then 8 s.
 ScreencopyView {
     id: capture
 
@@ -31,6 +31,8 @@ ScreencopyView {
         if (capture.hasContent) {
             capture.failures = 0;
             contentCheck.stop();
+        } else if (!capture.restarting) {
+            capture.scheduleRestart();
         }
     }
     onStopped: capture.scheduleRestart()
