@@ -174,9 +174,6 @@ Item {
     property var pendingWorkspace: null
     // The window whose card is being dragged toward the workspace strip.
     property var draggedToplevel: null
-    // Workspace thumbnails capture their single frame once the opening
-    // animation has finished, so capturing does not stall it.
-    property bool thumbnailsArmed: false
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
     // Omarchy's record of which block of ten workspace ids each monitor owns.
     property string workspaceBlocks: ""
@@ -210,10 +207,6 @@ Item {
     // Cards bind to this instead of motionProgress so the animation only
     // notifies them twice, not once per frame.
     readonly property bool motionSettled: root.motionProgress >= 0.999
-    onMotionSettledChanged: {
-        if (root.motionSettled && root.opened)
-            root.thumbnailsArmed = true;
-    }
     property int lastRequestedBlur: -1
     property var iconCache: ({})
     property int modelRevision: 0
@@ -335,7 +328,6 @@ Item {
         overviewMotionAnimation.stop();
         root.motionTarget = 0;
         root.motionProgress = 0;
-        root.thumbnailsArmed = false;
         root.openingPending = true;
         root.refreshHyprlandState();
         root.resetSessionToplevels();
@@ -1935,6 +1927,18 @@ Item {
 
             onCardToplevelsSourceChanged: overviewWindow.syncCardToplevels()
             Component.onCompleted: overviewWindow.syncCardToplevels()
+            // A window's card capture, which its workspace thumbnail draws
+            // instead of capturing the window a second time.
+            property int cardsRevision: 0
+            function captureItemFor(top) {
+                var revision = overviewWindow.cardsRevision;
+                for (var index = 0; index < cardRepeater.count; index++) {
+                    var card = cardRepeater.itemAt(index);
+                    if (card && card.modelData === top) // qmllint disable missing-property
+                        return card.captureItem; // qmllint disable missing-property
+                }
+                return null;
+            }
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
@@ -2114,6 +2118,7 @@ Item {
                             screenX: overviewWindow.monitorX
                             screenY: overviewWindow.monitorY
                             wallpaper: wallpaperSource.source
+                            captureItemFor: overviewWindow.captureItemFor
                         }
                     }
 
@@ -2140,7 +2145,10 @@ Item {
                             transformOrigin: Item.TopLeft
 
                             Repeater {
+                                id: cardRepeater
                                 model: overviewWindow.cardToplevels
+                                onItemAdded: overviewWindow.cardsRevision++
+                                onItemRemoved: overviewWindow.cardsRevision++
 
                                 delegate: WindowCard {
                                     controller: root

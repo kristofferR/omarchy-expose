@@ -20,6 +20,8 @@ Item {
     required property real screenX
     required property real screenY
     required property url wallpaper
+    // The card capture for a window; thumbnails draw from it.
+    required property var captureItemFor
     // Where a dragged card would land: a workspace id, "new", or null.
     property var dropTarget: null
 
@@ -137,7 +139,7 @@ Item {
                         Repeater {
                             model: thumb.windows
 
-                            delegate: WindowCapture {
+                            delegate: ShaderEffectSource {
                                 required property var modelData
                                 readonly property var ipc: WindowModel.ipcFor(modelData)
                                 readonly property real ratio: strip.thumbWidth / Math.max(1, strip.screenWidth)
@@ -146,9 +148,13 @@ Item {
                                 width: (ipc.size || [0, 0])[0] * ratio
                                 height: (ipc.size || [0, 0])[1] * ratio
                                 z: WorkspaceModel.stackLevel(ipc)
-                                // One frame, taken once the overview has opened.
-                                source: strip.controller.thumbnailsArmed ? WindowModel.waylandFor(modelData) : null
-                                live: false
+                                // The window's card already captures it, so the
+                                // thumbnail scales that down instead of capturing
+                                // again. The card must stay visible.
+                                sourceItem: strip.captureItemFor(modelData)
+                                hideSource: false
+                                live: true
+                                textureSize: Qt.size(Math.max(1, Math.ceil(width * 2)), Math.max(1, Math.ceil(height * 2)))
                             }
                         }
                     }

@@ -19,6 +19,8 @@ Ui.BorderSurface {
     // The display's workspace strip, which a card can be dragged onto; null
     // when the strip is off.
     property var workspaceStrip: null
+    // The live capture, which workspace thumbnails draw from too.
+    readonly property alias captureItem: captureLayer
     // Position in the filtered list; -1 hides the card.
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
@@ -265,6 +267,7 @@ Ui.BorderSurface {
                 }
 
                 Item {
+                    id: captureLayer
                     anchors.centerIn: parent
                     // Four displays can exhaust the display GPU when every
                     // screencopy also keeps a double-resolution layer.
