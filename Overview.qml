@@ -882,11 +882,15 @@ Item {
         if (!root.originToplevel)
             root.originToplevel = WindowModel.mostRecent(root.allToplevels);
         var membershipChanged = root.syncSessionToplevels();
-        if (root.openingPending) {
-            var sessionIndex = root.sessionToplevels.indexOf(top);
-            if (sessionIndex >= 0) {
+        // A card takes the window's new shape, such as when closing a window
+        // lets its neighbour grow. A refresh without a size keeps the old one.
+        var sessionIndex = root.sessionToplevels.indexOf(top);
+        var size = WindowModel.ipcFor(top).size || [];
+        if (sessionIndex >= 0 && Number(size[0]) > 0 && Number(size[1]) > 0) {
+            var live = root.liveAspectRatioFor(top);
+            if (Math.abs(live - (root.sessionAspectRatios[sessionIndex] || 0)) > 0.01) {
                 var ratios = root.sessionAspectRatios.slice();
-                ratios[sessionIndex] = root.liveAspectRatioFor(top);
+                ratios[sessionIndex] = live;
                 root.sessionAspectRatios = ratios;
             }
         }
@@ -990,6 +994,7 @@ Item {
         movedWindowRefresh.restart();
     }
 
+    // Also restarted when the session's windows change.
     Timer {
         id: movedWindowRefresh
         interval: 100
@@ -1109,6 +1114,9 @@ Item {
         root.sessionToplevels = next;
         root.sessionAspectRatios = nextRatios;
         root.modelRevision++;
+        // A window opening or closing retiles its neighbours, and Hyprland
+        // reports their new sizes on the next refresh.
+        movedWindowRefresh.restart();
         return true;
     }
 
