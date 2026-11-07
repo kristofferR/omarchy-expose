@@ -151,6 +151,7 @@ Item {
     readonly property bool moveCursorToWindow: SettingsSchema.read(root.pluginEntry, "moveCursorToWindow")
     readonly property string multiMonitorMode: SettingsSchema.read(root.pluginEntry, "multiMonitorMode")
     readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
+    readonly property bool closeButton: SettingsSchema.read(root.pluginEntry, "closeButton")
     readonly property bool workspaceStrip: SettingsSchema.read(root.pluginEntry, "workspaceStrip")
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
@@ -1582,6 +1583,7 @@ Item {
         function backgroundBlur(value: real): string { return root.setSettingFromIpc("backgroundBlur", value); }
         function backgroundDim(value: real): string { return root.setSettingFromIpc("backgroundDim", value); }
         function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
+        function closeButton(mode: string): string { return root.setSettingFromIpc("closeButton", mode); }
         function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }

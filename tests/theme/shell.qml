@@ -25,6 +25,7 @@ ShellRoot {
         property int hotCornerDelay: 0
         readonly property int effectiveHotCornerDelay: hotCornerDelayPreview >= 0 ? hotCornerDelayPreview : hotCornerDelay
         property bool moveCursorToWindow: true
+        property bool closeButton: false
         property string multiMonitorMode: "mirrored"
         property string initialWorkspaceScope: "all"
         property string workspaceLabelStyle: "full"
@@ -121,7 +122,7 @@ ShellRoot {
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
-        var expectedCounts = [5, 4, 3, 4, 5, 8];
+        var expectedCounts = [5, 5, 3, 4, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

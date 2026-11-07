@@ -83,6 +83,7 @@ var specs = {
     hotCornerAllDisplays: { fallback: false },
     moveCursorToWindow: { fallback: true },
     showFooter: { fallback: true },
+    closeButton: { fallback: false },
     workspaceStrip: { fallback: false },
     // Only applies while the workspace strip is shown.
     workspaceDrag: { fallback: true }

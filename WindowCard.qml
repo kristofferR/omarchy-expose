@@ -325,6 +325,51 @@ Ui.BorderSurface {
                 border.width: Style.space(2)
             }
 
+            // Closes the window under the pointer. Pointer handlers rather
+            // than a MouseArea, so the card stays hovered while the pointer is
+            // on the button, and a press here never reaches the card.
+            Ui.BorderSurface {
+                id: closeButton
+                readonly property bool lit: closeHover.hovered
+                anchors.top: previewFrame.top
+                anchors.left: previewFrame.left
+                anchors.margins: Style.spacing.sm
+                z: 6
+                visible: card.controller.closeButton && card.hovered && card.controller.motionSettled
+                    && !card.previewOnThisScreen && !card.dragging
+                width: Style.space(28)
+                height: width
+                radius: Math.min(width / 2, previewFrame.radius)
+                color: closeButton.lit ? Commons.Color.accent : Commons.Color.menu.background
+                borderSpec: closeButton.lit
+                    ? card.controller.windowBorders.activeSpec
+                    : card.controller.windowBorders.inactiveSpec
+
+                Repeater {
+                    model: [45, -45]
+
+                    Rectangle {
+                        required property int modelData
+                        anchors.centerIn: parent
+                        width: closeButton.width * 0.42
+                        height: Math.max(1, Style.space(2))
+                        radius: height / 2
+                        rotation: modelData
+                        color: closeButton.lit ? Commons.Color.background : Commons.Color.menu.text
+                    }
+                }
+
+                HoverHandler {
+                    id: closeHover
+                    cursorShape: Qt.PointingHandCursor
+                }
+
+                TapHandler {
+                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                    onTapped: card.controller.requestClose(card.modelData)
+                }
+            }
+
             Rectangle {
                 id: previewMask
 

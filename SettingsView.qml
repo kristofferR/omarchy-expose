@@ -667,7 +667,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle],
+            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
@@ -976,6 +976,19 @@ Item {
                                 id: movePointerToggle
                                 checked: settingsView.controller.moveCursorToWindow
                                 onToggled: function (checked) { settingsView.controller.setSetting("moveCursorToWindow", checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Close button"
+                            description: "Show a ✕ on the window under the pointer that closes it, like middle-click or Shift+Q."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: closeButtonToggle
+                                checked: settingsView.controller.closeButton
+                                onToggled: function (checked) { settingsView.controller.setSetting("closeButton", checked); }
                             }
                         }
                     }

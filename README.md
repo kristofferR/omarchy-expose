@@ -89,7 +89,7 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
 
-Clicking a card activates it; middle-clicking closes it. With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
+Clicking a card activates it; middle-clicking closes it, as does its ✕ button when that setting is on. With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
 Every display gets the same background blur and dim. With **All displays**, one grid on the opening display shows every window. With **This display**, that grid shows only windows already on that display. With **Each display**, every display shows a grid of its own windows. Keyboard input and Settings stay on the opening display, while arrow keys select windows across displays. Cards on every display can also be clicked. Search applies to all grids, and the current-workspace scope uses each display's active workspace. Clicking empty space dismisses Exposé without clicking through to the desktop.
 
@@ -108,11 +108,12 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
 - Window footer style: floating, integrated, overlay, or centered
-- Workspace strip: off (default) or on. Each display shows its own numbered workspaces, captured once when Exposé opens, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
+- Workspace strip: off (default) or on. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off, position (disable the same corner in other hot-corner plugins to avoid overlap), All displays (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
+- Close button: off (default) or on, a ✕ on the window under the pointer that closes it
 
 **Wallpaper** covers the original desktop windows with the current Omarchy
 wallpaper on every display, cropped to fill each screen. It follows background
@@ -150,6 +151,7 @@ omarchy-shell expose workspaceLabelStyle full    # full | slot
 omarchy-shell expose workspaceStrip off          # off | on
 omarchy-shell expose workspaceDrag on            # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
+omarchy-shell expose closeButton off             # off | on
 ```
 
 Scripts can also read state and drive an open overview the way its keys do:
