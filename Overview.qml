@@ -118,6 +118,7 @@ Item {
         ? 0.11 * (1 - root.motionProgress)
         : 0
     readonly property real windowFooterHeight: root.windowFooterStyle === "overlay" ? 0 : Style.space(40)
+    readonly property string backgroundMode: SettingsSchema.read(root.pluginEntry, "backgroundMode")
     readonly property int backgroundBlur: SettingsSchema.read(root.pluginEntry, "backgroundBlur")
     readonly property int backgroundDim: SettingsSchema.read(root.pluginEntry, "backgroundDim")
     // Off until settings load, so a saved "off" never flashes the corner on.
@@ -179,6 +180,7 @@ Item {
     property real backgroundDimPreview: -1
     property real hotCornerDelayPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
+    readonly property real desktopBackgroundBlur: root.backgroundMode === "desktop" ? root.effectiveBackgroundBlur : 0
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
     readonly property int effectiveHotCornerDelay: root.hotCornerDelayPreview >= 0 ? Math.round(root.hotCornerDelayPreview) : root.hotCornerDelay
     readonly property int previewAnimationDuration: Style.duration(root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190)
@@ -270,10 +272,10 @@ Item {
         root.selectedToplevel = root.originToplevel;
     }
 
-    onEffectiveBackgroundBlurChanged: {
+    onDesktopBackgroundBlurChanged: {
         if (!root.surfaceMounted)
             return;
-        if (!backgroundBlurSession.running && root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+        if (!backgroundBlurSession.running && root.desktopBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             root.backgroundBlurPrimed = false;
             backgroundBlurSession.running = true;
         } else {
@@ -321,7 +323,7 @@ Item {
         root.clearPreview();
         root.backgroundBlurPrimed = false;
         root.backgroundBlurFailed = false;
-        if (root.effectiveBackgroundBlur > 0) {
+        if (root.desktopBackgroundBlur > 0) {
             if (!blurRestoreInFlight)
                 backgroundBlurSession.running = true;
         } else {
@@ -332,6 +334,13 @@ Item {
     function close() {
         root.startDismiss(false);
     }
+
+    // Openings without desktop blur (Wallpaper mode, or blur 0) skip the blur
+    // session, so its layer rule is installed up front as well.
+    function installLayerRule() {
+        Quickshell.execDetached([root.pluginDir + "/background-blur-session", "--layer-rule"]);
+    }
+    Component.onCompleted: root.installLayerRule()
 
     function startDismiss(notifyShell) {
         root.openingPending = false;
@@ -365,7 +374,7 @@ Item {
     }
 
     function requestedBackgroundBlur() {
-        return Math.max(0, Math.round(root.effectiveBackgroundBlur));
+        return Math.max(0, Math.round(root.desktopBackgroundBlur));
     }
 
     function writeBackgroundBlur(size) {
@@ -380,7 +389,7 @@ Item {
     function prepareOpenSurface() {
         if (!root.openingPending)
             return;
-        if (root.effectiveBackgroundBlur > 0 && !root.backgroundBlurFailed) {
+        if (root.desktopBackgroundBlur > 0 && !root.backgroundBlurFailed) {
             if (!backgroundBlurSession.running) {
                 root.backgroundBlurPrimed = false;
                 backgroundBlurSession.running = true;
@@ -1276,6 +1285,11 @@ Item {
         onFinished: root.completeMotion()
     }
 
+    WallpaperSource {
+        id: wallpaperSource
+        active: root.backgroundMode === "wallpaper" && (root.openingPending || root.surfaceMounted)
+    }
+
     Timer {
         id: backgroundBlurUpdate
         interval: 16
@@ -1386,8 +1400,10 @@ Item {
                 root.selectedToplevel = Hyprland.activeToplevel;
         }
         function onRawEvent(event) {
-            if (event && event.name === "configreloaded")
+            if (event && event.name === "configreloaded") {
                 compositorBorders.refresh();
+                root.installLayerRule();
+            }
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
         }
@@ -1438,6 +1454,7 @@ Item {
         function windowFooterStyle(style: string): string { return root.setSettingFromIpc("windowFooterStyle", style); }
         function selectionStyle(style: string): string { return root.setSettingFromIpc("selectionStyle", style); }
         function animationStyle(style: string): string { return root.setSettingFromIpc("animationStyle", style); }
+        function backgroundMode(mode: string): string { return root.setSettingFromIpc("backgroundMode", mode); }
         function backgroundBlur(value: real): string { return root.setSettingFromIpc("backgroundBlur", value); }
         function backgroundDim(value: real): string { return root.setSettingFromIpc("backgroundDim", value); }
         function showFooter(mode: string): string { return root.setSettingFromIpc("showFooter", mode); }
@@ -1642,7 +1659,7 @@ Item {
         // Every backdrop must participate so clicks on other displays arrive.
         WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         HyprlandWindow.opacity: root.motionProgress
-        BackgroundEffect.blurRegion: root.effectiveBackgroundBlur > 0 // qmllint disable missing-type
+        BackgroundEffect.blurRegion: root.desktopBackgroundBlur > 0 // qmllint disable missing-type
                 && !root.backgroundBlurFailed
             ? backgroundBlurRegion
             : null
@@ -1652,6 +1669,17 @@ Item {
         Region {
             id: backgroundBlurRegion
             item: surface.contentItem
+        }
+
+        Loader {
+            anchors.fill: parent
+            active: root.backgroundMode === "wallpaper"
+            sourceComponent: WallpaperBackdrop {
+                source: wallpaperSource.source
+                blur: root.effectiveBackgroundBlur
+                pixelRatio: surface.devicePixelRatio
+                color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
+            }
         }
 
         Rectangle {

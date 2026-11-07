@@ -15,6 +15,7 @@ ShellRoot {
         property bool footerHideConfirmationOpen: false
         property bool footerHideAcknowledged: false
         property bool showFooter: true
+        property string backgroundMode: "desktop"
         property int effectiveBackgroundBlur: 4
         property int effectiveBackgroundDim: 6
         property bool hotCornerEnabled: false
@@ -117,7 +118,7 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [4, 4, 3, 3, 5, 8];
+        var expectedCounts = [5, 4, 3, 3, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

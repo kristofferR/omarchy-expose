@@ -5,6 +5,22 @@ command -v jq >/dev/null || { echo "expose: jq is required" >&2; exit 1; }
 command -v timeout >/dev/null || { echo "expose: GNU timeout is required" >&2; exit 1; }
 command -v flock >/dev/null || { echo "expose: flock is required" >&2; exit 1; }
 
+run_hyprctl() {
+  timeout --signal=TERM --kill-after=1 2 hyprctl "$@"
+}
+
+# The overview owns its opacity transition. Prevent Hyprland from snapshotting
+# the unmapped layer and applying a second fade after the QML animation ends.
+install_layer_rule() {
+  run_hyprctl eval 'if rawget(_G, "__omarchy_expose_layer_rule") == nil then __omarchy_expose_layer_rule = hl.layer_rule({ name = "omarchy-expose-layer", match = { namespace = "^expose-window-overview$" }, no_anim = true, animation = "none" }) end' >/dev/null
+}
+
+# Installs only the layer rule, for openings that leave the desktop blur alone.
+if [[ ${1:-} == --layer-rule ]]; then
+  install_layer_rule
+  exit
+fi
+
 runtime_dir=${XDG_RUNTIME_DIR:-}
 [[ -n $runtime_dir && -d $runtime_dir && -O $runtime_dir ]] || {
   echo "expose: a user-owned XDG_RUNTIME_DIR is required" >&2
@@ -23,13 +39,7 @@ fi
 exec 9<"$lock_dir/."
 flock 9
 
-run_hyprctl() {
-  timeout --signal=TERM --kill-after=1 2 hyprctl "$@"
-}
-
-# The overview owns its opacity transition. Prevent Hyprland from snapshotting
-# the unmapped layer and applying a second fade after the QML animation ends.
-run_hyprctl eval 'if rawget(_G, "__omarchy_expose_layer_rule") == nil then __omarchy_expose_layer_rule = hl.layer_rule({ name = "omarchy-expose-layer", match = { namespace = "^expose-window-overview$" }, no_anim = true, animation = "none" }) end' >/dev/null
+install_layer_rule
 
 IFS=$'\t' read -r saved_enabled saved_size saved_contrast < <(
   run_hyprctl --batch -j 'getoption decoration:blur:enabled; getoption decoration:blur:size; getoption decoration:blur:contrast' |
