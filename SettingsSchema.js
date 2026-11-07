@@ -84,6 +84,13 @@ var specs = {
     moveCursorToWindow: { fallback: true },
     showFooter: { fallback: true },
     closeButton: { fallback: false },
+    closeButtonSide: {
+        fallback: "right",
+        options: [
+            { label: "Left", value: "left" },
+            { label: "Right", value: "right" }
+        ]
+    },
     workspaceStrip: { fallback: false },
     // Only applies while the workspace strip is shown.
     workspaceDrag: { fallback: true }

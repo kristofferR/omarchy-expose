@@ -319,7 +319,8 @@ Ui.BorderSurface {
                 anchors.right: previewFrame.right
                 anchors.margins: Style.spacing.sm
                 z: 6
-                visible: card.liftSelection && card.focusedWindow
+                // The close button takes this corner while it shows.
+                visible: card.liftSelection && card.focusedWindow && !(closeButton.visible && closeButton.onRight)
                 width: Style.space(12)
                 height: width
                 radius: width / 2
@@ -334,8 +335,10 @@ Ui.BorderSurface {
             Ui.BorderSurface {
                 id: closeButton
                 readonly property bool lit: closeHover.hovered
+                readonly property bool onRight: card.controller.closeButtonSide !== "left"
                 anchors.top: previewFrame.top
-                anchors.left: previewFrame.left
+                anchors.left: onRight ? undefined : previewFrame.left
+                anchors.right: onRight ? previewFrame.right : undefined
                 anchors.margins: Style.spacing.sm
                 z: 6
                 visible: card.controller.closeButton && card.hovered && card.controller.motionSettled

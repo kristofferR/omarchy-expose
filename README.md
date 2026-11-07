@@ -113,7 +113,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off, position (disable the same corner in other hot-corner plugins to avoid overlap), All displays (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
-- Close button: off (default) or on, a ✕ on the window under the pointer that closes it
+- Close button: off (default) or on, a ✕ on the window under the pointer that closes it, in its top right (default) or top left corner
 
 **Wallpaper** covers the original desktop windows with the current Omarchy
 wallpaper on every display, cropped to fill each screen. It follows background
@@ -152,6 +152,7 @@ omarchy-shell expose workspaceStrip off          # off | on
 omarchy-shell expose workspaceDrag on            # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
 omarchy-shell expose closeButton off             # off | on
+omarchy-shell expose closeButtonSide right       # left | right
 ```
 
 Scripts can also read state and drive an open overview the way its keys do:

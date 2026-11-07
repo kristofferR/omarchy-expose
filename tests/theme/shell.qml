@@ -26,6 +26,7 @@ ShellRoot {
         readonly property int effectiveHotCornerDelay: hotCornerDelayPreview >= 0 ? hotCornerDelayPreview : hotCornerDelay
         property bool moveCursorToWindow: true
         property bool closeButton: false
+        property string closeButtonSide: "right"
         property string multiMonitorMode: "mirrored"
         property string initialWorkspaceScope: "all"
         property string workspaceLabelStyle: "full"

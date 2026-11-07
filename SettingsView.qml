@@ -667,7 +667,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle],
+            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
@@ -989,6 +989,20 @@ Item {
                                 id: closeButtonToggle
                                 checked: settingsView.controller.closeButton
                                 onToggled: function (checked) { settingsView.controller.setSetting("closeButton", checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Close button side"
+                            description: "Put the ✕ in the window's top left or top right corner."
+                            enabled: settingsView.controller.closeButton
+
+                            SettingChoices {
+                                id: closeButtonSideChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.closeButtonSide
+                                options: SettingsSchema.options("closeButtonSide")
+                                onChosen: function (value) { settingsView.controller.setSetting("closeButtonSide", value); }
                             }
                         }
                     }
