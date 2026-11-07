@@ -231,7 +231,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: strip.controller.switchToWorkspace(strip.controller.newWorkspaceIdForScreen(strip.screenName), strip.screenName)
+                onClicked: strip.controller.addWorkspace(strip.screenName)
             }
         }
     }

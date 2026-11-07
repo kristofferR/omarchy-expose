@@ -21,6 +21,26 @@ function stripWorkspaces(workspaces, monitorName) {
     return result.sort(function (left, right) { return Number(left.id) - Number(right.id); });
 }
 
+// A workspace added with + while the overview is open. Hyprland removes an
+// empty workspace that is not shown, so until a window is moved there it
+// exists only in the strip.
+function placeholder(id, monitorName) {
+    return { id: id, name: String(id), monitor: { name: String(monitorName || "") }, placeholder: true };
+}
+
+// The strip's workspaces with the added ones that do not exist yet, in id
+// order. The same objects come back each time, so thumbnails are kept.
+function withPlaceholders(workspaces, added, monitorName) {
+    var result = workspaces.slice();
+    var ids = workspaces.map(function (workspace) { return Number(workspace.id); });
+    for (var index = 0; index < added.length; index++) {
+        var extra = added[index];
+        if (extra.monitor.name === String(monitorName || "") && ids.indexOf(Number(extra.id)) === -1)
+            result.push(extra);
+    }
+    return result.sort(function (left, right) { return Number(left.id) - Number(right.id); });
+}
+
 // A monitor's block from Omarchy's state file, whose lines read
 // "<block>\t<connector>\t<identity>". Without an entry, the block of the
 // monitor's active workspace stands in.

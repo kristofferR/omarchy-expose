@@ -1044,7 +1044,7 @@ Item {
 
                         SettingRow {
                             label: "Workspace strip"
-                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + opens a new workspace."
+                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip."
 
                             Item { Layout.fillWidth: true }
 

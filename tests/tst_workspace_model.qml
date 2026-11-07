@@ -19,6 +19,17 @@ TestCase {
         compare(WorkspaceModel.stripWorkspaces(workspaces, "DP-1").length, 1);
     }
 
+    function test_addedWorkspacesJoinTheStripUntilTheyExist() {
+        var monitor = {name: "DP-2"};
+        var real = [{id: 1, monitor: monitor}, {id: 3, monitor: monitor}];
+        var added = [WorkspaceModel.placeholder(4, "DP-2"), WorkspaceModel.placeholder(3, "DP-2"),
+            WorkspaceModel.placeholder(14, "HDMI-A-1")];
+        var strip = WorkspaceModel.withPlaceholders(real, added, "DP-2");
+        compare(strip.map(function (workspace) { return workspace.id; }), [1, 3, 4]);
+        compare(strip[1], real[1]);
+        compare(strip[2], added[0]);
+    }
+
     function test_blockComesFromOmarchyStateElseActiveWorkspace() {
         var state = "0\tDP-2\tSamsung LC49G95T\n1\tHDMI-A-1\tDell U2720Q\n";
         compare(WorkspaceModel.blockFor(state, "HDMI-A-1", 3), 1);

@@ -175,6 +175,8 @@ Item {
     // The window whose card is being dragged toward the workspace strip.
     property var draggedToplevel: null
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
+    // Workspaces added with + that have no window yet; see WorkspaceModel.placeholder.
+    property var addedWorkspaces: []
     // Omarchy's record of which block of ten workspace ids each monitor owns.
     property string workspaceBlocks: ""
     property bool previewSlowMotion: false
@@ -302,6 +304,7 @@ Item {
         root.pendingActivation = null;
         root.pendingWorkspace = null;
         root.draggedToplevel = null;
+        root.addedWorkspaces = [];
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
         if (!blurRestoreInFlight)
@@ -924,7 +927,15 @@ Item {
     }
 
     function stripWorkspacesForScreen(screenName) {
-        return WorkspaceModel.stripWorkspaces(root.allWorkspaces, screenName);
+        return WorkspaceModel.withPlaceholders(WorkspaceModel.stripWorkspaces(root.allWorkspaces, screenName),
+            root.addedWorkspaces, screenName);
+    }
+
+    // + adds an empty workspace to the strip and keeps the overview open.
+    function addWorkspace(screenName) {
+        var id = root.newWorkspaceIdForScreen(screenName);
+        if (id > 0)
+            root.addedWorkspaces = root.addedWorkspaces.concat([WorkspaceModel.placeholder(id, screenName)]);
     }
 
     function activeWorkspaceIdForScreen(screenName) {
@@ -937,7 +948,7 @@ Item {
     }
 
     function newWorkspaceIdForScreen(screenName) {
-        var ids = root.allWorkspaces.map(function (workspace) { return Number(workspace.id); });
+        var ids = root.allWorkspaces.concat(root.addedWorkspaces).map(function (workspace) { return Number(workspace.id); });
         return WorkspaceModel.newWorkspaceId(ids, root.blockForScreen(screenName));
     }
 
@@ -965,10 +976,12 @@ Item {
         if (!address || !(id >= 1) || WindowModel.isPinned(top) || (workspace && Number(workspace.id) === id))
             return;
         var lua = "hl.dispatch(hl.dsp.window.move({ workspace = '" + id + "', follow = false, window = 'address:" + address + "' }))";
-        // A new workspace opens on the window's display; bring it to this one.
+        // A workspace that does not exist yet opens on the window's display;
+        // bring it to this one.
+        var exists = root.allWorkspaces.some(function (existing) { return Number(existing.id) === id; });
         var monitor = root.luaMonitorName(screenName);
         var windowMonitor = top.monitor ? String(top.monitor.name || "") : "";
-        if (target === "new" && monitor && windowMonitor !== monitor)
+        if (!exists && monitor && windowMonitor !== monitor)
             lua += "; hl.dispatch(hl.dsp.workspace.move({ workspace = '" + id + "', monitor = '" + monitor + "' }))";
         Hyprland.dispatch("(function() " + lua + " end)");
         // Hyprland reports where the window now sits on the next refresh.
