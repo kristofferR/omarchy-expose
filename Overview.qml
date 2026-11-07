@@ -1949,8 +1949,9 @@ Item {
                 var revision = overviewWindow.cardsRevision;
                 for (var index = 0; index < cardRepeater.count; index++) {
                     var card = cardRepeater.itemAt(index);
+                    // A card outside the layout has no size to draw from.
                     if (card && card.modelData === top) // qmllint disable missing-property
-                        return card.captureItem; // qmllint disable missing-property
+                        return card.inLayout ? card.captureItem : null; // qmllint disable missing-property
                 }
                 return null;
             }

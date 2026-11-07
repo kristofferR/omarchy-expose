@@ -139,22 +139,45 @@ Item {
                         Repeater {
                             model: thumb.windows
 
-                            delegate: ShaderEffectSource {
+                            delegate: Item {
+                                id: thumbWindow
                                 required property var modelData
                                 readonly property var ipc: WindowModel.ipcFor(modelData)
                                 readonly property real ratio: strip.thumbWidth / Math.max(1, strip.screenWidth)
+                                // The window's card already captures it, so the
+                                // thumbnail scales that down instead of capturing
+                                // again. A window without a card in the grid,
+                                // such as one outside the current scope, is
+                                // captured here instead.
+                                readonly property var shared: strip.captureItemFor(modelData)
                                 x: ((ipc.at || [0, 0])[0] - strip.screenX) * ratio
                                 y: ((ipc.at || [0, 0])[1] - strip.screenY) * ratio
                                 width: (ipc.size || [0, 0])[0] * ratio
                                 height: (ipc.size || [0, 0])[1] * ratio
                                 z: WorkspaceModel.stackLevel(ipc)
-                                // The window's card already captures it, so the
-                                // thumbnail scales that down instead of capturing
-                                // again. The card must stay visible.
-                                sourceItem: strip.captureItemFor(modelData)
-                                hideSource: false
-                                live: true
-                                textureSize: Qt.size(Math.max(1, Math.ceil(width * 2)), Math.max(1, Math.ceil(height * 2)))
+
+                                Loader {
+                                    anchors.fill: parent
+                                    sourceComponent: thumbWindow.shared ? sharedCapture : ownCapture
+                                }
+
+                                Component {
+                                    id: sharedCapture
+                                    ShaderEffectSource {
+                                        sourceItem: thumbWindow.shared
+                                        hideSource: false
+                                        live: true
+                                        textureSize: Qt.size(Math.max(1, Math.ceil(thumbWindow.width * 2)), Math.max(1, Math.ceil(thumbWindow.height * 2)))
+                                    }
+                                }
+
+                                Component {
+                                    id: ownCapture
+                                    WindowCapture {
+                                        source: WindowModel.waylandFor(thumbWindow.modelData)
+                                        live: strip.controller.opened
+                                    }
+                                }
                             }
                         }
                     }

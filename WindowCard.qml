@@ -96,6 +96,9 @@ Ui.BorderSurface {
         if (strip)
             strip.dropTarget = null;
         card.dragging = false;
+        // Escape ends a drag while the button is still down; moving on must
+        // not start another.
+        cardMouse.mayDrag = false;
         if (card.dragHeld)
             card.controller.draggedToplevel = null;
         card.dragX = 0;
