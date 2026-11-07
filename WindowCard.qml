@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
-import Quickshell.Wayland
 import "WindowModel.js" as WindowModel
 import qs.Commons
 import qs.Commons as Commons
@@ -276,32 +275,10 @@ Ui.BorderSurface {
                     layer.enabled: doubleResolution
                     layer.smooth: true
 
-                    ScreencopyView {
-                        id: capture
-                        // Hyprland ends a capture when its window moves to
-                        // another workspace, and a stopped capture never
-                        // resumes, so it is started again, a few times per move.
-                        property bool restarting: false
-                        property int restarts: 0
-                        readonly property var workspace: card.modelData.workspace
+                    WindowCapture {
                         anchors.fill: parent
-                        captureSource: capture.restarting ? null : WindowModel.waylandFor(card.modelData)
+                        source: WindowModel.waylandFor(card.modelData)
                         live: card.controller.opened && card.inLayout
-                        paintCursor: false
-                        onWorkspaceChanged: capture.restarts = 0
-                        onStopped: {
-                            if (capture.restarts >= 3)
-                                return;
-                            capture.restarts++;
-                            capture.restarting = true;
-                            captureRestart.restart();
-                        }
-
-                        Timer {
-                            id: captureRestart
-                            interval: 150
-                            onTriggered: capture.restarting = false
-                        }
                     }
 
                 }

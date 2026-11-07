@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Effects
-import Quickshell.Wayland
 import "WindowModel.js" as WindowModel
 import "WorkspaceModel.js" as WorkspaceModel
 import qs.Commons
@@ -138,7 +137,7 @@ Item {
                         Repeater {
                             model: thumb.windows
 
-                            delegate: ScreencopyView {
+                            delegate: WindowCapture {
                                 required property var modelData
                                 readonly property var ipc: WindowModel.ipcFor(modelData)
                                 readonly property real ratio: strip.thumbWidth / Math.max(1, strip.screenWidth)
@@ -148,9 +147,8 @@ Item {
                                 height: (ipc.size || [0, 0])[1] * ratio
                                 z: WorkspaceModel.stackLevel(ipc)
                                 // One frame, taken once the overview has opened.
-                                captureSource: strip.controller.thumbnailsArmed ? WindowModel.waylandFor(modelData) : null
+                                source: strip.controller.thumbnailsArmed ? WindowModel.waylandFor(modelData) : null
                                 live: false
-                                paintCursor: false
                             }
                         }
                     }
