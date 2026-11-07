@@ -28,6 +28,8 @@ ShellRoot {
         property string multiMonitorMode: "mirrored"
         property string initialWorkspaceScope: "all"
         property string workspaceLabelStyle: "full"
+        property bool workspaceStrip: false
+        property bool workspaceDrag: true
         property bool separateTiming: false
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
@@ -118,7 +120,8 @@ ShellRoot {
     }
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
-        var expectedCounts = [5, 4, 3, 3, 5, 8];
+        // Page 3 skips the drag toggle, which is disabled while the strip is off.
+        var expectedCounts = [5, 4, 3, 4, 5, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

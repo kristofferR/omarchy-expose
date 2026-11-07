@@ -17,6 +17,9 @@ Ui.BorderSurface {
     required property var windowLayout
     required property real layoutAreaWidth
     required property real layoutAreaHeight
+    // The display's workspace strip, which a card can be dragged onto; null
+    // when the strip is off.
+    property var workspaceStrip: null
     // Position in the filtered list; -1 hides the card.
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
@@ -67,12 +70,57 @@ Ui.BorderSurface {
             packedRect = packedRectSource;
 
     }
+    // Dragging toward the workspace strip. The card shrinks around the point
+    // it was picked up at and follows the pointer through a transform, so its
+    // layout is untouched; a cancelled drop slides it back.
+    readonly property bool canDrag: card.workspaceStrip !== null && card.controller.dragToWorkspaces
+        && card.controller.motionSettled && !card.previewOnThisScreen && !WindowModel.isPinned(modelData)
+    property bool dragging: false
+    property real dragX: 0
+    property real dragY: 0
+    property real grabX: 0
+    property real grabY: 0
+    property real dragScale: card.dragging ? Math.min(0.6, Style.space(360) / Math.max(1, card.width)) : 1
+    // Escape lets go of the drag.
+    readonly property bool dragHeld: card.controller.draggedToplevel === modelData
+    onDragHeldChanged: {
+        if (!card.dragHeld && card.dragging)
+            card.endDrag(false);
+    }
+
+    function endDrag(drop) {
+        var strip = card.workspaceStrip;
+        var target = strip ? strip.dropTarget : null;
+        if (strip)
+            strip.dropTarget = null;
+        card.dragging = false;
+        if (card.dragHeld)
+            card.controller.draggedToplevel = null;
+        card.dragX = 0;
+        card.dragY = 0;
+        if (drop && strip && target !== null)
+            card.controller.moveToWorkspace(card.modelData, target, strip.screenName);
+    }
+
+    transform: [
+        Scale {
+            origin.x: card.grabX
+            origin.y: card.grabY
+            xScale: card.dragScale
+            yScale: card.dragScale
+        },
+        Translate {
+            x: card.dragX
+            y: card.dragY
+        }
+    ]
+
     visible: inLayout
     x: layoutRect.x
     y: layoutRect.y
     width: layoutRect.width
     height: layoutRect.height
-    z: previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))
+    z: dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0)))
     scale: lifted ? 1.04 : 1
     radius: integratedFooter ? Style.cornerRadius : 0
     color: integratedFooter ? Commons.Color.menu.background : "transparent"
@@ -85,9 +133,49 @@ Ui.BorderSurface {
         : (liftSelection && !selected ? 0.72 : 1)
 
     MouseArea {
+        id: cardMouse
+        // Scene position of the press, and whether moving it may start a drag.
+        property point pressPoint: Qt.point(0, 0)
+        property bool mayDrag: false
+        property bool suppressClick: false
         anchors.fill: parent
         enabled: !card.controller.settingsOpen && (!card.previewOnThisScreen || card.previewed)
         hoverEnabled: true
+        preventStealing: true
+        onPressed: function(mouse) {
+            cardMouse.suppressClick = false;
+            cardMouse.mayDrag = mouse.button === Qt.LeftButton && card.canDrag;
+            cardMouse.pressPoint = cardMouse.mapToItem(null, mouse.x, mouse.y);
+            card.grabX = mouse.x;
+            card.grabY = mouse.y;
+        }
+        onPositionChanged: function(mouse) {
+            if (!cardMouse.mayDrag)
+                return;
+            var point = cardMouse.mapToItem(null, mouse.x, mouse.y);
+            var dx = point.x - cardMouse.pressPoint.x;
+            var dy = point.y - cardMouse.pressPoint.y;
+            if (!card.dragging) {
+                if (Math.sqrt(dx * dx + dy * dy) < Style.space(10))
+                    return;
+                card.dragging = true;
+                cardMouse.suppressClick = true;
+                card.controller.draggedToplevel = card.modelData;
+            }
+            card.dragX = dx;
+            card.dragY = dy;
+            card.workspaceStrip.dropTarget = card.workspaceStrip.targetAt(null, point.x, point.y);
+        }
+        onReleased: {
+            cardMouse.mayDrag = false;
+            if (card.dragging)
+                card.endDrag(true);
+        }
+        onCanceled: {
+            cardMouse.mayDrag = false;
+            if (card.dragging)
+                card.endDrag(false);
+        }
         onEnabledChanged: {
             if (!enabled) {
                 card.hovered = false;
@@ -111,6 +199,8 @@ Ui.BorderSurface {
         }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onClicked: function(mouse) {
+            if (cardMouse.suppressClick)
+                return;
             if (mouse.button === Qt.MiddleButton)
                 card.controller.requestClose(card.modelData);
             else
@@ -479,6 +569,29 @@ Ui.BorderSurface {
             duration: card.controller.previewFadeDuration
         }
 
+    }
+
+    Behavior on dragScale {
+        NumberAnimation {
+            duration: Style.duration(160)
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on dragX {
+        enabled: !card.dragging
+        NumberAnimation {
+            duration: Style.duration(220)
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on dragY {
+        enabled: !card.dragging
+        NumberAnimation {
+            duration: Style.duration(220)
+            easing.type: Easing.OutCubic
+        }
     }
 
     Behavior on scale {
