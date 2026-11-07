@@ -59,3 +59,15 @@
   its catalog entry, update `plugins.txt`, regenerate the marker-owned README
   table, validate the catalog, and submit the change through the
   `kristofferR/omarchy-plugins` fork.
+- Submit every release for verification on the Omarchy plugin marketplace
+  (`omacom/omarchy-plugin-marketplace`, plugins.omarchy.org) once the release
+  commit is on `main`. Until then the listing shows "Update unverified". Open
+  an issue titled `[Verify]: Exposé <version>` with the `verify-plugin.yml`
+  form fields: action "Verify and publish a newer upstream commit", plugin ID
+  `expose.window-overview`, repository `https://github.com/kristofferR/omarchy-expose`,
+  the full 40-character SHA of the release commit, and the verification
+  acknowledgment checked. Copy the body of the previous `[Verify]: Exposé`
+  issue. Then check the bot's report: `validated` is ready for maintainer
+  approval, and `needs-fixes` must be fixed and the issue edited to rerun.
+  The target must stay the repository HEAD until a maintainer approves, so
+  push nothing else to `main` while the request is open.
