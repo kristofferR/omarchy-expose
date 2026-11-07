@@ -80,7 +80,8 @@ Ui.BorderSurface {
     property real dragY: 0
     property real grabX: 0
     property real grabY: 0
-    property real dragScale: card.dragging ? Math.min(0.6, Style.space(360) / Math.max(1, card.width)) : 1
+    // About twice a workspace thumbnail, so the strip stays visible around it.
+    property real dragScale: card.dragging ? Math.min(0.5, Style.space(240) / Math.max(1, card.width)) : 1
     // Escape lets go of the drag.
     readonly property bool dragHeld: card.controller.draggedToplevel === modelData
     onDragHeldChanged: {
@@ -276,10 +277,31 @@ Ui.BorderSurface {
                     layer.smooth: true
 
                     ScreencopyView {
+                        id: capture
+                        // Hyprland ends a capture when its window moves to
+                        // another workspace, and a stopped capture never
+                        // resumes, so it is started again, a few times per move.
+                        property bool restarting: false
+                        property int restarts: 0
+                        readonly property var workspace: card.modelData.workspace
                         anchors.fill: parent
-                        captureSource: WindowModel.waylandFor(card.modelData)
+                        captureSource: capture.restarting ? null : WindowModel.waylandFor(card.modelData)
                         live: card.controller.opened && card.inLayout
                         paintCursor: false
+                        onWorkspaceChanged: capture.restarts = 0
+                        onStopped: {
+                            if (capture.restarts >= 3)
+                                return;
+                            capture.restarts++;
+                            capture.restarting = true;
+                            captureRestart.restart();
+                        }
+
+                        Timer {
+                            id: captureRestart
+                            interval: 150
+                            onTriggered: capture.restarting = false
+                        }
                     }
 
                 }
