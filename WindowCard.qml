@@ -24,7 +24,19 @@ Ui.BorderSurface {
     // Position in the filtered list; -1 hides the card.
     readonly property int slot: card.screenToplevels.indexOf(modelData)
     readonly property bool inLayout: slot >= 0
-    property bool hovered: false
+    // The close button is its own hover target, so the card counts as
+    // hovered while the pointer is on it too.
+    property bool hovered: cardMouse.enabled && (cardMouse.containsMouse || closeHover.hovered)
+    onHoveredChanged: {
+        if (card.hovered) {
+            if (card.acceptsKeyboard) {
+                card.controller.hoveredToplevel = card.modelData;
+                card.controller.selectedToplevel = card.modelData;
+            }
+        } else if (card.controller.hoveredToplevel === card.modelData) {
+            card.controller.hoveredToplevel = null;
+        }
+    }
     readonly property bool selected: card.acceptsKeyboard && inLayout && modelData === card.controller.selection
     // The window the overview was opened from; the overlay holds focus while open.
     readonly property bool focusedWindow: modelData === card.controller.originToplevel
@@ -181,27 +193,6 @@ Ui.BorderSurface {
             if (card.dragging)
                 card.endDrag(false);
         }
-        onEnabledChanged: {
-            if (!enabled) {
-                card.hovered = false;
-                if (card.controller.hoveredToplevel === card.modelData)
-                    card.controller.hoveredToplevel = null;
-
-            }
-        }
-        onEntered: {
-            card.hovered = true;
-            if (card.acceptsKeyboard) {
-                card.controller.hoveredToplevel = card.modelData;
-                card.controller.selectedToplevel = card.modelData;
-            }
-        }
-        onExited: {
-            card.hovered = false;
-            if (card.acceptsKeyboard && card.controller.hoveredToplevel === card.modelData)
-                card.controller.hoveredToplevel = null;
-
-        }
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onClicked: function(mouse) {
             if (cardMouse.suppressClick)
@@ -329,9 +320,8 @@ Ui.BorderSurface {
                 border.width: Style.space(2)
             }
 
-            // Closes the window under the pointer. Pointer handlers rather
-            // than a MouseArea, so the card stays hovered while the pointer is
-            // on the button, and a press here never reaches the card.
+            // Closes the window under the pointer. Its TapHandler takes the
+            // press, so a click here never reaches the card.
             Ui.BorderSurface {
                 id: closeButton
                 readonly property bool lit: closeHover.hovered
