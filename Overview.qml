@@ -882,11 +882,15 @@ Item {
         if (!root.originToplevel)
             root.originToplevel = WindowModel.mostRecent(root.allToplevels);
         var membershipChanged = root.syncSessionToplevels();
-        if (root.openingPending) {
-            var sessionIndex = root.sessionToplevels.indexOf(top);
-            if (sessionIndex >= 0) {
+        // A card takes the window's new shape, such as when closing a window
+        // lets its neighbour grow. A refresh without a size keeps the old one.
+        var sessionIndex = root.sessionToplevels.indexOf(top);
+        var size = WindowModel.ipcFor(top).size || [];
+        if (sessionIndex >= 0 && Number(size[0]) > 0 && Number(size[1]) > 0) {
+            var live = root.liveAspectRatioFor(top);
+            if (Math.abs(live - (root.sessionAspectRatios[sessionIndex] || 0)) > 0.01) {
                 var ratios = root.sessionAspectRatios.slice();
-                ratios[sessionIndex] = root.liveAspectRatioFor(top);
+                ratios[sessionIndex] = live;
                 root.sessionAspectRatios = ratios;
             }
         }
@@ -990,6 +994,7 @@ Item {
         movedWindowRefresh.restart();
     }
 
+    // Also restarted when the session's windows change.
     Timer {
         id: movedWindowRefresh
         interval: 100
@@ -1059,11 +1064,31 @@ Item {
         }
     }
 
+    // Windows the overview asked to close. Their captures stop first:
+    // Hyprland drops the shell's whole Wayland connection when it is asked to
+    // capture a window that has just been destroyed.
+    property var closingToplevels: []
+
+    function captureSourceFor(top) {
+        return root.closingToplevels.indexOf(top) === -1 ? WindowModel.waylandFor(top) : null;
+    }
+
     function requestClose(top) {
         var wayland = WindowModel.waylandFor(top);
         if (!wayland || typeof wayland.close !== "function")
             return;
-        wayland.close();
+        root.closingToplevels = root.closingToplevels.concat([top]);
+        closingRelease.restart();
+        // Sent after the captures have let go of the window.
+        Qt.callLater(function () { wayland.close(); });
+    }
+
+    // A window that is still open, such as one asking to save first, gets its
+    // capture back.
+    Timer {
+        id: closingRelease
+        interval: 2000
+        onTriggered: root.closingToplevels = []
     }
 
     function resetSessionToplevels() {
@@ -1109,6 +1134,9 @@ Item {
         root.sessionToplevels = next;
         root.sessionAspectRatios = nextRatios;
         root.modelRevision++;
+        // A window opening or closing retiles its neighbours, and Hyprland
+        // reports their new sizes on the next refresh.
+        movedWindowRefresh.restart();
         return true;
     }
 
@@ -1414,6 +1442,25 @@ Item {
     WallpaperSource {
         id: wallpaperSource
         active: (root.backgroundMode === "wallpaper" || root.workspaceStrip) && (root.openingPending || root.surfaceMounted)
+        retained: root.backgroundMode === "wallpaper"
+    }
+
+    // A hidden copy of each display's wallpaper backdrop keeps its decoded
+    // image referenced while the overview is closed. Qt drops an unreferenced
+    // image this large from its cache at once, so every opening would decode
+    // it again and show the base colour until it was ready.
+    Variants {
+        model: root.backgroundMode === "wallpaper" ? Quickshell.screens : []
+
+        WallpaperBackdrop {
+            required property var modelData
+            visible: false
+            width: modelData.width
+            height: modelData.height
+            pixelRatio: modelData.devicePixelRatio
+            source: wallpaperSource.source
+            blur: root.effectiveBackgroundBlur
+        }
     }
 
     Timer {
@@ -1807,7 +1854,9 @@ Item {
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
-                pixelRatio: surface.devicePixelRatio
+                // The screen's ratio, as the cached copy above uses: the window's can
+                // start at 1 and change once the compositor sends its scale.
+                pixelRatio: surface.modelData.devicePixelRatio
                 color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
             }
         }
@@ -2147,7 +2196,9 @@ Item {
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
-                            return GridLayout.computeLayout(ratios, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight);
+                            // The gap leaves room for a hovered card's lift and outline;
+                            // more only shrinks the cards on a short display.
+                            return GridLayout.computeLayout(ratios, width, height, Style.space(32), Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {
@@ -2193,6 +2244,8 @@ Item {
                             opacity: 0.7
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.display
+                            layer.enabled: true
+                            layer.effect: BackdropShadow {}
                         }
                     }
 
@@ -2200,6 +2253,9 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
                         visible: root.showFooter && overviewWindow.acceptsKeyboard
+                        // The hints sit on the backdrop, like the floating card footers.
+                        layer.enabled: true
+                        layer.effect: BackdropShadow {}
 
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Tab scope   "

@@ -13,22 +13,33 @@ Rectangle {
     color: "#101315"
     clip: true
 
+    // With blur, the wallpaper is drawn a blur radius past every edge, so the
+    // blur samples wallpaper there rather than fading into the base colour.
+    // The clip hides the overhang.
+    readonly property real bleed: root.blur > 0 ? effect.blurMax : 0
+
     Image {
         id: wallpaper
         anchors.fill: parent
-        source: root.source
-        sourceSize: Qt.size(Math.ceil(root.width * root.pixelRatio), Math.ceil(root.height * root.pixelRatio))
+        anchors.margins: -root.bleed
+        // Loaded only once laid out: an empty sourceSize would decode the
+        // wallpaper at full resolution first, and opening would wait on that.
+        // At a fixed size the decoded image is also cached across openings.
+        source: root.width > 0 && root.height > 0 ? root.source : ""
+        sourceSize: Qt.size(Math.ceil(wallpaper.width * root.pixelRatio), Math.ceil(wallpaper.height * root.pixelRatio))
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: root.blur <= 0
     }
 
     MultiEffect {
-        anchors.fill: parent
+        id: effect
+        anchors.fill: wallpaper
         source: wallpaper
         visible: root.ready && root.blur > 0
         blurEnabled: true
-        blurMax: 20
+        // Close to Hyprland's blur of the desktop at the same setting.
+        blurMax: 64
         blur: Math.max(0, Math.min(1, root.blur / 20))
         autoPaddingEnabled: false
     }

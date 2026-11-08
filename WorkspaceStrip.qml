@@ -174,7 +174,7 @@ Item {
                                 Component {
                                     id: ownCapture
                                     WindowCapture {
-                                        source: WindowModel.waylandFor(thumbWindow.modelData)
+                                        source: strip.controller.captureSourceFor(thumbWindow.modelData)
                                         live: strip.controller.opened
                                     }
                                 }
@@ -217,6 +217,8 @@ Item {
                     textFormat: Text.PlainText
                     color: thumb.current ? Commons.Color.accent : Commons.Color.menu.text
                     opacity: thumb.current ? 1 : 0.7
+                    layer.enabled: true
+                    layer.effect: BackdropShadow {}
                     font.family: Style.font.menuFamily
                     font.pixelSize: Style.font.bodySmall
                     font.bold: thumb.current

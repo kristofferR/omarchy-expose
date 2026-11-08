@@ -59,6 +59,7 @@ ShellRoot {
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
         function aspectRatioFor(model) { return 1.8; }
+        function captureSourceFor(model) { return null; }
         function previewRectFor(model, rect) { return rect; }
         function workspaceName(model) { return "1"; }
         function iconFor(model) { return ""; }
