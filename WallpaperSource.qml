@@ -6,6 +6,9 @@ Item {
     id: root
 
     property bool active: false
+    // Keeps the last resolved path while inactive, resolving it once even then,
+    // so the backdrop's decoded image can stay cached between uses.
+    property bool retained: false
     // Use the same link as Omarchy's background plugin.
     property string backgroundLink: Quickshell.env("HOME") + "/.local/state/omarchy/current/background"
     // A video wallpaper shows the still that Omarchy's lock screen uses.
@@ -17,8 +20,10 @@ Item {
         ? "file://" + root.resolvedPath.split("/").map(encodeURIComponent).join("/")
         : ""
 
+    readonly property bool resolving: root.active || root.retained
+
     function refresh() {
-        if (root.active && !readlinkProcess.running)
+        if (root.resolving && !readlinkProcess.running)
             readlinkProcess.running = true;
     }
 
@@ -28,7 +33,7 @@ Item {
     }
 
     function requestPoster() {
-        if (!root.active || !root.isVideoPath(root.linkTarget) || posterProcess.running)
+        if (!root.resolving || !root.isVideoPath(root.linkTarget) || posterProcess.running)
             return;
         posterProcess.sourcePath = root.linkTarget;
         posterProcess.running = true;
@@ -43,14 +48,15 @@ Item {
         }
     }
 
-    onActiveChanged: {
-        if (root.active) {
+    onResolvingChanged: {
+        if (root.resolving) {
             root.refresh();
         } else {
             root.linkTarget = "";
             root.resolvedPath = "";
         }
     }
+    onActiveChanged: root.refresh()
     onBackgroundLinkChanged: root.refresh()
     Component.onCompleted: root.refresh()
 
@@ -69,7 +75,7 @@ Item {
         command: ["readlink", "-e", "--", root.backgroundLink]
         stdout: StdioCollector {
             onStreamFinished: {
-                if (root.active)
+                if (root.resolving)
                     root.linkTarget = String(text || "").replace(/\n$/, "");
             }
         }
@@ -86,7 +92,7 @@ Item {
                 root.requestPoster();
                 return;
             }
-            if (root.active)
+            if (root.resolving)
                 root.resolvedPath = exitCode === 0 ? String(posterOutput.text || "").replace(/\n$/, "") : "";
         }
     }

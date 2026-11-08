@@ -1442,6 +1442,25 @@ Item {
     WallpaperSource {
         id: wallpaperSource
         active: (root.backgroundMode === "wallpaper" || root.workspaceStrip) && (root.openingPending || root.surfaceMounted)
+        retained: root.backgroundMode === "wallpaper"
+    }
+
+    // A hidden copy of each display's wallpaper backdrop keeps its decoded
+    // image referenced while the overview is closed. Qt drops an unreferenced
+    // image this large from its cache at once, so every opening would decode
+    // it again and show the base colour until it was ready.
+    Variants {
+        model: root.backgroundMode === "wallpaper" ? Quickshell.screens : []
+
+        WallpaperBackdrop {
+            required property var modelData
+            visible: false
+            width: modelData.width
+            height: modelData.height
+            pixelRatio: modelData.devicePixelRatio
+            source: wallpaperSource.source
+            blur: root.effectiveBackgroundBlur
+        }
     }
 
     Timer {
@@ -1835,7 +1854,9 @@ Item {
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
-                pixelRatio: surface.devicePixelRatio
+                // The screen's ratio, as the cached copy above uses: the window's can
+                // start at 1 and change once the compositor sends its scale.
+                pixelRatio: surface.modelData.devicePixelRatio
                 color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
             }
         }

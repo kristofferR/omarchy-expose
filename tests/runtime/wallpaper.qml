@@ -70,8 +70,12 @@ ShellRoot {
                 test.link(test.testDir + "/clip.mp4");
                 test.phase = 7;
             } else if (test.phase === 7 && wallpaper.resolvedPath === test.second && image.status === Image.Ready) {
+                wallpaper.retained = true;
                 wallpaper.active = false;
-                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link, recovery and video still");
+                test.require(wallpaper.resolvedPath === test.second, "a retained source keeps its path while inactive");
+                wallpaper.retained = false;
+                test.require(wallpaper.resolvedPath === "", "releasing a retained, inactive source clears its path");
+                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link, recovery, video still and retention");
                 Qt.quit();
             }
         }
