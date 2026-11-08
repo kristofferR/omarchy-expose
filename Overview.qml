@@ -34,6 +34,12 @@ Item {
         onReloadRequested: Qt.callLater(pluginSettingsFile.reload)
     }
 
+    UpdateNotice {
+        pluginDir: root.pluginDir
+        entry: pluginSettings.diskEntry
+        settingsReady: pluginSettings.ready
+    }
+
     FileView {
         id: pluginSettingsFile
         // Match the host's userConfigPath, which does not use XDG_CONFIG_HOME.

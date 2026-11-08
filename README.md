@@ -10,7 +10,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace, and pick which of the two the overview opens with. Each display uses its own active workspace in the current-workspace scope. Workspaces are numbered 1-10 on every monitor, as in the bar, and windows minimized to the dock show as **Minimized**; picking one brings it back to the current workspace.
-- **Workspace strip.** Optionally, thumbnails of the display's workspaces sit above the windows. Click one or press 1-9 and 0 to switch, drag a window onto one to move it there, and add an empty one with **+**.
+- **Workspace strip.** Thumbnails of the display's workspaces sit above the windows; turn it off in settings if you prefer. Click one or press 1-9 and 0 to switch, drag a window onto one to move it there, and add an empty one with **+**.
 - **Multi-monitor layouts.** Every display blurs and dims. All displays puts every window in one grid on the opening display; This display limits that grid to its own windows; Each display opens a separate grid of its own windows on every display.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corner.** Toggle the overview by flinging the pointer into a corner. Uses the outermost display by default, with an option for all displays.
@@ -108,7 +108,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
 - Window footer style: floating, integrated, overlay, or centered
-- Workspace strip: off (default) or on. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
+- Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corner on/off, position (disable the same corner in other hot-corner plugins to avoid overlap), All displays (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
@@ -148,7 +148,7 @@ omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it 
 omarchy-shell expose moveCursorToWindow on       # on | off
 omarchy-shell expose initialWorkspaceScope all   # all | current
 omarchy-shell expose workspaceLabelStyle full    # full | slot
-omarchy-shell expose workspaceStrip off          # off | on
+omarchy-shell expose workspaceStrip on           # on | off
 omarchy-shell expose workspaceDrag on            # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
 omarchy-shell expose closeButton off             # off | on
