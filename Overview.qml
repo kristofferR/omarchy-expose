@@ -2175,7 +2175,9 @@ Item {
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
-                            return GridLayout.computeLayout(ratios, width, height, Style.space(64), Style.spacing.sm, root.windowFooterHeight);
+                            // The gap leaves room for a hovered card's lift and outline;
+                            // more only shrinks the cards on a short display.
+                            return GridLayout.computeLayout(ratios, width, height, Style.space(32), Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {
