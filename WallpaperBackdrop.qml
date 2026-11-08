@@ -22,7 +22,10 @@ Rectangle {
         id: wallpaper
         anchors.fill: parent
         anchors.margins: -root.bleed
-        source: root.source
+        // Loaded only once laid out: an empty sourceSize would decode the
+        // wallpaper at full resolution first, and opening would wait on that.
+        // At a fixed size the decoded image is also cached across openings.
+        source: root.width > 0 && root.height > 0 ? root.source : ""
         sourceSize: Qt.size(Math.ceil(wallpaper.width * root.pixelRatio), Math.ceil(wallpaper.height * root.pixelRatio))
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
