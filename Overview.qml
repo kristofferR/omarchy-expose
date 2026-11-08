@@ -1064,11 +1064,31 @@ Item {
         }
     }
 
+    // Windows the overview asked to close. Their captures stop first:
+    // Hyprland drops the shell's whole Wayland connection when it is asked to
+    // capture a window that has just been destroyed.
+    property var closingToplevels: []
+
+    function captureSourceFor(top) {
+        return root.closingToplevels.indexOf(top) === -1 ? WindowModel.waylandFor(top) : null;
+    }
+
     function requestClose(top) {
         var wayland = WindowModel.waylandFor(top);
         if (!wayland || typeof wayland.close !== "function")
             return;
-        wayland.close();
+        root.closingToplevels = root.closingToplevels.concat([top]);
+        closingRelease.restart();
+        // Sent after the captures have let go of the window.
+        Qt.callLater(function () { wayland.close(); });
+    }
+
+    // A window that is still open, such as one asking to save first, gets its
+    // capture back.
+    Timer {
+        id: closingRelease
+        interval: 2000
+        onTriggered: root.closingToplevels = []
     }
 
     function resetSessionToplevels() {

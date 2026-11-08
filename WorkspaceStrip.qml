@@ -174,7 +174,7 @@ Item {
                                 Component {
                                     id: ownCapture
                                     WindowCapture {
-                                        source: WindowModel.waylandFor(thumbWindow.modelData)
+                                        source: strip.controller.captureSourceFor(thumbWindow.modelData)
                                         live: strip.controller.opened
                                     }
                                 }

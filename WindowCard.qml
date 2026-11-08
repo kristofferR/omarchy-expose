@@ -274,7 +274,7 @@ Ui.BorderSurface {
 
                     WindowCapture {
                         anchors.fill: parent
-                        source: WindowModel.waylandFor(card.modelData)
+                        source: card.controller.captureSourceFor(card.modelData)
                         live: card.controller.opened && card.inLayout
                     }
 
