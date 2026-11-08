@@ -2221,6 +2221,8 @@ Item {
                             opacity: 0.7
                             font.family: Style.font.menuFamily
                             font.pixelSize: Style.font.display
+                            layer.enabled: true
+                            layer.effect: BackdropShadow {}
                         }
                     }
 
@@ -2228,6 +2230,9 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
                         visible: root.showFooter && overviewWindow.acceptsKeyboard
+                        // The hints sit on the backdrop, like the floating card footers.
+                        layer.enabled: true
+                        layer.effect: BackdropShadow {}
 
                         Text {
                             text: "← ↑ ↓ → navigate   Space preview   Tab scope   "

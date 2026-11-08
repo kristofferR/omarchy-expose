@@ -496,6 +496,8 @@ Ui.BorderSurface {
 
         RowLayout {
             spacing: Style.spacing.md
+            layer.enabled: true
+            layer.effect: BackdropShadow {}
 
             FooterIcon { iconSize: 30 }
 
@@ -543,6 +545,8 @@ Ui.BorderSurface {
 
         ColumnLayout {
             spacing: 0
+            layer.enabled: true
+            layer.effect: BackdropShadow {}
 
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
