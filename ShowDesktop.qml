@@ -31,6 +31,9 @@ import "WindowModel.js" as WindowModel
 // and once more, level-triggered, when `shown` settles. A workspace switch
 // that happened while windows were still being minimized therefore ends the
 // peek too, instead of leaving it shown for a workspace that is out of view.
+// Focus changes before then are mostly minimizing handing focus around, which
+// only ever lands on windows that existed when the peek began; a window that
+// opens and takes focus in that time is remembered and ends the peek at settle.
 // While hiding or restoring, show/toggle are ignored: one transition at a time.
 //
 // Only recorded windows that are still minimized ever move, so a window the
@@ -48,6 +51,10 @@ Item {
     // The active window once the desktop settled; only a change counts.
     property var focusBaseline: null
     property bool settled: false
+    // Windows that existed when the peek began, by address, and whether one
+    // that did not took focus before the peek settled.
+    property var knownAddresses: ({})
+    property bool openedWhileSettling: false
     property bool tiledNoticeShown: false
     // A minimize that never returns must not wedge Show Desktop.
     readonly property int hidingTimeoutMs: 5000
@@ -83,6 +90,10 @@ Item {
         root.entries = plan;
         root.scope = visible;
         root.focusAddress = WindowModel.addressFor(Hyprland.activeToplevel);
+        var known = {};
+        root.toplevels.forEach(function (top) { known[WindowModel.addressFor(top)] = true; });
+        root.knownAddresses = known;
+        root.openedWhileSettling = false;
         root.saveRecord();
         minimizer.command = ["bash", "-c", "for address; do omarchy-hyprland-window-minimize \"$address\"; done",
             "expose-show-desktop"].concat(DesktopModel.addresses(plan));
@@ -149,7 +160,7 @@ Item {
     // waiting for an event: the workspaces in view are no longer the ones the
     // desktop was shown on.
     function endedWhileSettling() {
-        return !DesktopModel.sameWorkspaces(root.scope, root.visibleWorkspaces());
+        return root.openedWhileSettling || !DesktopModel.sameWorkspaces(root.scope, root.visibleWorkspaces());
     }
 
     function reset() {
@@ -163,6 +174,8 @@ Item {
         root.focusAddress = "";
         root.focusBaseline = null;
         root.settled = false;
+        root.knownAddresses = ({});
+        root.openedWhileSettling = false;
         root.saveRecord();
     }
 
@@ -224,6 +237,9 @@ Item {
             var top = Hyprland.activeToplevel;
             if (root.shown && root.settled && top && top !== root.focusBaseline)
                 root.restore(false);
+            else if (top && !root.settled && (root.phase === "hiding" || root.shown)
+                    && !root.knownAddresses[WindowModel.addressFor(top)])
+                root.openedWhileSettling = true;
         }
         function onFocusedWorkspaceChanged() {
             if (root.shown && root.settled && root.endedWhileSettling())
