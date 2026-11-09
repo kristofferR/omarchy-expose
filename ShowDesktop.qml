@@ -32,8 +32,10 @@ import "WindowModel.js" as WindowModel
 // that happened while windows were still being minimized therefore ends the
 // peek too, instead of leaving it shown for a workspace that is out of view.
 // Focus changes before then are mostly minimizing handing focus around, which
-// only ever lands on windows that existed when the peek began; a window that
-// opens and takes focus in that time is remembered and ends the peek at settle.
+// only ever lands on windows that were not minimized when the peek began. A
+// window that takes focus in that time without being one of them, opened
+// fresh or brought back from the dock, is remembered and ends the peek at
+// settle.
 // While hiding or restoring, show/toggle are ignored: one transition at a time.
 //
 // Only recorded windows that are still minimized ever move, so a window the
@@ -51,8 +53,9 @@ Item {
     // The active window once the desktop settled; only a change counts.
     property var focusBaseline: null
     property bool settled: false
-    // Windows that existed when the peek began, by address, and whether one
-    // that did not took focus before the peek settled.
+    // Windows minimizing can hand focus to: those not minimized when the peek
+    // began, by address. And whether any other window took focus before the
+    // peek settled.
     property var knownAddresses: ({})
     property bool openedWhileSettling: false
     property bool tiledNoticeShown: false
@@ -91,7 +94,10 @@ Item {
         root.scope = visible;
         root.focusAddress = WindowModel.addressFor(Hyprland.activeToplevel);
         var known = {};
-        root.toplevels.forEach(function (top) { known[WindowModel.addressFor(top)] = true; });
+        root.toplevels.forEach(function (top) {
+            if (!WindowModel.isMinimized(top))
+                known[WindowModel.addressFor(top)] = true;
+        });
         root.knownAddresses = known;
         root.openedWhileSettling = false;
         root.saveRecord();
