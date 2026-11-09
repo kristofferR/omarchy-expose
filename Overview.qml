@@ -1040,7 +1040,11 @@ Item {
         if (!address)
             return;
         var target = "window = 'address:" + address + "'";
-        var focus = "hl.dispatch(hl.dsp.focus({ " + target + " }))";
+        // Focus alone does not raise a floating window in Hyprland, so on a
+        // floating workspace the chosen window would stay behind the ones
+        // covering it. Raise it as well, as Omarchy's Alt+Tab and the dock do.
+        var raise = "hl.dispatch(hl.dsp.window.alter_zorder({ mode = 'top', " + target + " }))";
+        var focus = "hl.dispatch(hl.dsp.focus({ " + target + " })); " + raise;
         // A window minimized to the dock comes back to the workspace in front
         // of the user, on top and without animating in, as the dock restores it.
         var monitor = Hyprland.focusedMonitor;
@@ -1048,7 +1052,7 @@ Item {
         if (WindowModel.isMinimized(top) && workspaceId >= 1) {
             focus = "hl.dispatch(hl.dsp.window.set_prop({ prop = 'no_anim', value = '1', " + target + " })); "
                 + "hl.dispatch(hl.dsp.window.move({ workspace = '" + workspaceId + "', follow = false, " + target + " })); "
-                + focus + "; hl.dispatch(hl.dsp.window.alter_zorder({ mode = 'top', " + target + " }))";
+                + focus;
             restoredAnimationTimer.targets.push(target);
             restoredAnimationTimer.restart();
         }
