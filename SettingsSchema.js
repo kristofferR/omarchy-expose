@@ -1,5 +1,16 @@
 .pragma library
 
+// Hot corner actions, named as macOS names them where that helps: All windows
+// is Mission Control, App windows is Application Windows.
+function cornerActionOptions() {
+    return [
+        { label: "Off", value: "off" },
+        { label: "All windows", value: "all-windows" },
+        { label: "App windows", value: "app-windows" },
+        { label: "Desktop", value: "desktop" }
+    ];
+}
+
 // One entry per simple setting stored in the plugin's shell.json entry. Reading,
 // setting, IPC validation, and the settings pages all derive from this table.
 // A spec with `options` is an enum, one with `min`/`max` an integer, and one
@@ -38,6 +49,9 @@ var specs = {
             { label: "Slide", value: "slide" }
         ]
     },
+    // Single-corner setting from before per-corner actions. Still read when no
+    // corner has an action of its own, and kept in step for older versions;
+    // see HotCorners.js.
     hotCornerPosition: {
         fallback: "top-left",
         options: [
@@ -47,6 +61,12 @@ var specs = {
             { label: "Bottom right", value: "bottom-right" }
         ]
     },
+    // What each corner does. Read them through HotCorners.read(), which
+    // applies the hotCornerPosition fallback; a plain read() ignores it.
+    hotCornerTopLeft: { fallback: "off", options: cornerActionOptions() },
+    hotCornerTopRight: { fallback: "off", options: cornerActionOptions() },
+    hotCornerBottomLeft: { fallback: "off", options: cornerActionOptions() },
+    hotCornerBottomRight: { fallback: "off", options: cornerActionOptions() },
     initialWorkspaceScope: {
         fallback: "all",
         options: [

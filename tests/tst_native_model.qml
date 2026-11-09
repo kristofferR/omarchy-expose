@@ -146,4 +146,17 @@ TestCase {
         verify(WindowModel.searchTextFor(toplevel).includes("window title"));
         toplevel.destroy();
     }
+
+    // App windows groups by app id only: a title naming another app, or an
+    // app id that merely contains the key, never joins the group.
+    function test_matchesAppByExactAppIdIgnoringCase() {
+        var browser = createToplevel({ wayland: { appId: "Chromium" }, title: "foot - Chromium" });
+        var terminal = createToplevel({ wayland: { appId: "foot" }, title: "chromium docs" });
+        var webapp = createToplevel({ wayland: { appId: "chrome-chatgpt.com__-Default" } });
+        compare(WindowModel.appKeyFor(browser), "chromium");
+        verify(WindowModel.matchesApp(browser, "chromium"));
+        verify(!WindowModel.matchesApp(terminal, "chromium"));
+        verify(!WindowModel.matchesApp(webapp, "chrome"));
+        verify(!WindowModel.matchesApp(browser, ""));
+    }
 }
