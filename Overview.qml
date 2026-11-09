@@ -475,6 +475,12 @@ Item {
     // The Desktop corner or key. With Exposé open it closes Exposé and shows
     // the desktop, as the macOS Desktop corner does from Mission Control.
     function toggleDesktop() {
+        // A Desktop waiting for Exposé to close counts as shown, so a second
+        // toggle cancels it.
+        if (root.desktopAfterDismiss) {
+            root.desktopAfterDismiss = false;
+            return;
+        }
         if (root.opened || root.openingPending) {
             root.desktopAfterDismiss = true;
             root.dismiss();
@@ -1755,6 +1761,9 @@ Item {
         }
         function desktop(mode: string): string {
             if (mode === "show") {
+                // A Desktop already waiting for Exposé to close stays queued.
+                if (root.desktopAfterDismiss)
+                    return showDesktop.phase;
                 if (root.opened || root.openingPending)
                     root.toggleDesktop();
                 else
