@@ -1044,6 +1044,28 @@ Item {
         // floating workspace the chosen window would stay behind the ones
         // covering it. Raise it as well, as Omarchy's Alt+Tab and the dock do.
         var raise = "hl.dispatch(hl.dsp.window.alter_zorder({ mode = 'top', " + target + " }))";
+        // Hyprland keeps a hidden stacking state on a workspace with a
+        // maximized or fullscreen window W:
+        //   W on top      the usual state once W is maximized or fullscreen
+        //   W covered     a floating window was focused meanwhile and is now
+        //                 drawn above W; raising W does not undo this
+        //   W on top      again whenever W's state is set afresh
+        // Picking another window should leave W covered, so that window shows.
+        // Picking W must put W back on top, so its state is unset and set
+        // again, in one call so it keeps its size. That runs only when a
+        // floating, non-fullscreen window shares W's workspace, the only kind
+        // that can cover it, so a lone or tiled-only W is never resized.
+        raise += "; local w = hl.get_window('address:" + address + "')"
+            + "; if w and (w.fullscreen == 1 or w.fullscreen == 2) and w.workspace then"
+            + " local covered = false"
+            + " for _, other in ipairs(hl.get_workspace_windows(tostring(w.workspace.id))) do"
+            + " if other.address ~= w.address and other.floating and (other.fullscreen or 0) == 0 then covered = true end"
+            + " end"
+            + " if covered then"
+            + " local mode = w.fullscreen == 1 and 'maximized' or 'fullscreen'"
+            + "; hl.dispatch(hl.dsp.window.fullscreen({ mode = mode, action = 'unset', window = w }))"
+            + "; hl.dispatch(hl.dsp.window.fullscreen({ mode = mode, action = 'set', window = w }))"
+            + " end end";
         var focus = "hl.dispatch(hl.dsp.focus({ " + target + " })); " + raise;
         // A window minimized to the dock comes back to the workspace in front
         // of the user, on top and without animating in, as the dock restores it.
