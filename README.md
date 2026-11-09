@@ -115,6 +115,7 @@ They behave like their macOS counterparts:
 - Desktop is a temporary peek. Triggering it again brings the windows back, and so does anything that needs a window: opening or focusing one, picking one in Exposé or the dock, or switching workspace. Windows return to their own workspace in their own place. Triggering Desktop with Exposé open closes Exposé and shows the desktop.
 - Desktop minimizes windows with Omarchy's own command, so it works on floating workspaces, where the dock brings windows back. On a tiled workspace it leaves the layout alone and says so once. Pinned, fullscreen, and grouped windows stay put, and a window you minimized yourself is never brought back by it. If Omarchy Shell restarts during a peek, the windows come back.
 - Every corner shares one latch: after a corner fires, none fires again until the pointer has left it, so resting in a corner never repeats an action.
+- With **Ignore fullscreen windows** on, corners rest on a display showing a fullscreen window, such as a video or a game. Maximized windows do not count, and a corner still closes Exposé or Desktop.
 
 Hot corners default to the outermost display: left corners use the leftmost display, and right corners use the rightmost. If displays share that edge, the topmost or bottommost one wins according to the corner. Enable **Hot corners → Use on all displays** to use every corner on every display. Avoid giving a corner to Exposé and to another hot-corner plugin at once.
 
@@ -136,7 +137,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
-- Hot corners on/off, an action for each corner (All windows, App windows, Desktop, or Off; top left opens all windows by default), All displays (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
+- Hot corners on/off, an action for each corner (All windows, App windows, Desktop, or Off; top left opens all windows by default), All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
 - Close button: off (default) or on, a ✕ on the window under the pointer that closes it, in its top right (default) or top left corner
 
@@ -174,6 +175,7 @@ omarchy-shell expose hotCornerAction bottom-left app-windows  # corner: off | al
 omarchy-shell expose hotCorners                  # JSON: every corner's action
 omarchy-shell expose hotCornerPosition top-left  # older form: that corner opens all windows, alone
 omarchy-shell expose hotCornerAllDisplays off    # off: outermost display (default) | on: every display
+omarchy-shell expose hotCornerIgnoreFullscreen off  # on: corners rest over fullscreen windows
 omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it fires
 omarchy-shell expose moveCursorToWindow on       # on | off
 omarchy-shell expose initialWorkspaceScope all   # all | current
