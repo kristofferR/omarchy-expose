@@ -31,6 +31,12 @@ function sameWorkspaces(left, right) {
 // so those stay. Minimized and special-workspace windows are already away.
 // Lists from Hyprland arrive as QML sequences, not JS arrays, so `grouped` is
 // checked by length rather than Array.isArray().
+// A display name safe to put in a Lua string, or null.
+function monitorName(name) {
+    var text = String(name || "");
+    return /^[A-Za-z0-9_.-]{1,64}$/.test(text) ? text : null;
+}
+
 function candidates(toplevels, visibleIds) {
     var result = [];
     for (var index = 0; index < (toplevels || []).length; index++) {
@@ -45,7 +51,7 @@ function candidates(toplevels, visibleIds) {
                 || WindowModel.isMinimized(top))
             continue;
         result.push({ address: address, stableId: ipc.stableId === undefined ? null : String(ipc.stableId),
-            workspaceId: workspaceId });
+            workspaceId: workspaceId, monitor: monitorName(top.monitor ? top.monitor.name : "") });
     }
     return result;
 }
@@ -80,14 +86,26 @@ function addresses(entries) {
 }
 
 // Lua that brings windows back to their own workspaces without following them
-// and without animating in, as the dock restores a window.
-function restoreLua(entries) {
-    return (entries || []).map(function (entry) {
+// and without animating in, as the dock restores a window. A workspace that
+// emptied and closed during the peek is recreated on the display the minimized
+// windows sit on, so it is moved back to the display its windows came from.
+function restoreLua(entries, existingWorkspaceIds) {
+    var lua = (entries || []).map(function (entry) {
         var target = "window = 'address:" + entry.address + "'";
         return "hl.dispatch(hl.dsp.window.set_prop({ prop = 'no_anim', value = '1', " + target + " })); "
             + "hl.dispatch(hl.dsp.window.move({ workspace = '" + Number(entry.workspaceId)
             + "', follow = false, " + target + " }))";
-    }).join("; ");
+    });
+    var placed = {};
+    (entries || []).forEach(function (entry) {
+        var id = Number(entry.workspaceId);
+        var monitor = monitorName(entry.monitor);
+        if (!monitor || placed[id] || (existingWorkspaceIds || []).indexOf(id) !== -1)
+            return;
+        placed[id] = true;
+        lua.push("hl.dispatch(hl.dsp.workspace.move({ workspace = '" + id + "', monitor = '" + monitor + "' }))");
+    });
+    return lua.join("; ");
 }
 
 function animationLua(entries) {
@@ -110,7 +128,7 @@ function parseRecord(text) {
                 continue;
             entries.push({ address: String(entry.address),
                 stableId: entry.stableId === null || entry.stableId === undefined ? null : String(entry.stableId),
-                workspaceId: Number(entry.workspaceId) });
+                workspaceId: Number(entry.workspaceId), monitor: monitorName(entry.monitor) });
         }
     } catch (error) {
         return [];

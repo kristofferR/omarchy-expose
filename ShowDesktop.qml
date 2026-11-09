@@ -132,7 +132,8 @@ Item {
         }
         root.phase = "restoring";
         root.entries = pending;
-        var lua = DesktopModel.restoreLua(pending);
+        var workspaces = Hyprland.workspaces ? Hyprland.workspaces.values : [];
+        var lua = DesktopModel.restoreLua(pending, workspaces.map(function (workspace) { return Number(workspace.id); }));
         var focus = refocus && root.focusAddress ? root.entryFor(root.focusAddress, pending) : null;
         if (focus && root.visibleWorkspaces().indexOf(focus.workspaceId) !== -1)
             lua += "; hl.dispatch(hl.dsp.focus({ window = 'address:" + focus.address + "' }))";

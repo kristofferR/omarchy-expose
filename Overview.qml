@@ -1760,6 +1760,8 @@ Item {
                 else
                     showDesktop.show();
             } else if (mode === "hide") {
+                // A show waiting for Exposé to close is cancelled too.
+                root.desktopAfterDismiss = false;
                 showDesktop.restore(true);
             } else if (mode === "toggle") {
                 root.toggleDesktop();

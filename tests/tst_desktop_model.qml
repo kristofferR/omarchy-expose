@@ -49,7 +49,7 @@ TestCase {
             window("a7", ws1, { mapped: false }),
             window("a8", ws1, { hidden: true })
         ];
-        compare(DesktopModel.candidates(tops, [1]), [{ address: "0xa1", stableId: "a1-id", workspaceId: 1 }]);
+        compare(DesktopModel.candidates(tops, [1]), [{ address: "0xa1", stableId: "a1-id", workspaceId: 1, monitor: null }]);
     }
 
     function test_onlyRecordedWindowsStillMinimizedComeBack() {
@@ -78,18 +78,33 @@ TestCase {
         verify(DesktopModel.animationLua([{ address: "0xc1" }]).indexOf("value = 'unset'") !== -1);
     }
 
+    // With several displays, a workspace emptied by the peek can close; moving
+    // a window back recreates it where the minimized windows sit, so it is
+    // moved back to its own display. One that still exists stays where it is.
+    function test_restoreReturnsAClosedWorkspaceToItsDisplay() {
+        var entries = [
+            { address: "0xe1", workspaceId: 3, monitor: "DP-1" },
+            { address: "0xe2", workspaceId: 3, monitor: "DP-1" },
+            { address: "0xe3", workspaceId: 12, monitor: "HDMI-A-1" },
+            { address: "0xe4", workspaceId: 5, monitor: null }
+        ];
+        var lua = DesktopModel.restoreLua(entries, [12]);
+        compare(lua.split("hl.dsp.workspace.move(").length - 1, 1);
+        verify(lua.indexOf("workspace.move({ workspace = '3', monitor = 'DP-1' })") !== -1);
+    }
+
     // The record outlives the process that wrote it, so nothing in it is
     // trusted: an address that is not hex never reaches a Lua string.
     function test_savedRecordIsValidated() {
         var text = JSON.stringify({ entries: [
-            { address: "0xd1", stableId: "7", workspaceId: 2 },
+            { address: "0xd1", stableId: "7", workspaceId: 2, monitor: "DP-1" },
             { address: "0xd2' }) os.execute('x", workspaceId: 2 },
             { address: "0xd3", workspaceId: 0 },
-            { address: "0xd4", stableId: null, workspaceId: "5" }
+            { address: "0xd4", stableId: null, workspaceId: "5", monitor: "DP' }) os.execute('x" }
         ] });
         compare(DesktopModel.parseRecord(text), [
-            { address: "0xd1", stableId: "7", workspaceId: 2 },
-            { address: "0xd4", stableId: null, workspaceId: 5 }
+            { address: "0xd1", stableId: "7", workspaceId: 2, monitor: "DP-1" },
+            { address: "0xd4", stableId: null, workspaceId: 5, monitor: null }
         ]);
         compare(DesktopModel.parseRecord("not json"), []);
         compare(DesktopModel.parseRecord(""), []);
