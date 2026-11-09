@@ -36,7 +36,9 @@ import "WindowModel.js" as WindowModel
 // window that takes focus in that time without being one of them, opened
 // fresh or brought back from the dock, is remembered and ends the peek at
 // settle.
-// While hiding or restoring, show/toggle are ignored: one transition at a time.
+// One transition runs at a time. While hiding, a hide or toggle is kept and
+// brings the windows back as soon as they are minimized; while restoring,
+// show/toggle are ignored.
 //
 // Only recorded windows that are still minimized ever move, so a window the
 // user minimized themselves, or one opened during the peek, is never touched.
@@ -58,6 +60,9 @@ Item {
     // peek settled.
     property var knownAddresses: ({})
     property bool openedWhileSettling: false
+    // A hide asked for while hiding, and whether it refocuses.
+    property bool restoreQueued: false
+    property bool restoreQueuedRefocus: false
     property bool tiledNoticeShown: false
     // A minimize that never returns must not wedge Show Desktop.
     readonly property int hidingTimeoutMs: 5000
@@ -77,7 +82,7 @@ Item {
     function toggle() {
         if (root.phase === "idle")
             root.show();
-        else if (root.phase === "shown")
+        else if (root.phase === "shown" || root.phase === "hiding")
             root.restore(true);
     }
 
@@ -125,10 +130,19 @@ Item {
         root.entries = hidden;
         root.phase = "shown";
         root.saveRecord();
+        if (root.restoreQueued) {
+            root.restore(root.restoreQueuedRefocus);
+            return;
+        }
         settle.restart();
     }
 
     function restore(refocus) {
+        if (root.phase === "hiding") {
+            root.restoreQueued = true;
+            root.restoreQueuedRefocus = refocus;
+            return;
+        }
         if (root.phase !== "shown")
             return;
         var pending = DesktopModel.stillMinimized(root.entries, root.toplevels);
@@ -183,6 +197,8 @@ Item {
         root.settled = false;
         root.knownAddresses = ({});
         root.openedWhileSettling = false;
+        root.restoreQueued = false;
+        root.restoreQueuedRefocus = false;
         root.saveRecord();
     }
 
