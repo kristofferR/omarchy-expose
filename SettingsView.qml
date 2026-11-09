@@ -663,6 +663,17 @@ Item {
         return items;
     }
 
+    // What the chosen action does, under each corner's choices. Another
+    // hot-corner plugin should not use the same corner.
+    function cornerDescription(position) {
+        var action = settingsView.controller.hotCornerActions[position];
+        var options = SettingsSchema.cornerActionOptions();
+        for (var index = 0; index < options.length; index++)
+            if (options[index].value === action && options[index].description)
+                return options[index].description + ".";
+        return "Does nothing.";
+    }
+
     function settingsFocusItems() {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
@@ -670,7 +681,7 @@ Item {
             [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
-            [hotCornerToggle, hotCornerPositionChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
+            [hotCornerToggle, hotCornerTopLeftChoices, hotCornerTopRightChoices, hotCornerBottomLeftChoices, hotCornerBottomRightChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
         return settingsView.availableFocusItems([categoryButton].concat(controls[settingsView.controller.settingsCategoryIndex] || []));
@@ -1102,8 +1113,8 @@ Item {
                         title: "Activate from a corner"
 
                         SettingRow {
-                            label: "Enable hot corner"
-                            description: "Open or close Exposé by moving the pointer into the chosen corner."
+                            label: "Enable hot corners"
+                            description: "Move the pointer into a screen corner to run its action, as macOS Hot Corners do. All windows is Mission Control; App windows is Application Windows."
 
                             Item { Layout.fillWidth: true }
 
@@ -1115,22 +1126,64 @@ Item {
                         }
 
                         SettingRow {
-                            label: "Corner"
-                            description: "Choose the corner that activates Exposé. Avoid using the same corner in another hot-corner plugin."
+                            label: "Top left"
+                            description: settingsView.cornerDescription("top-left")
                             enabled: settingsView.controller.hotCornerEnabled
 
                             SettingChoices {
-                                id: hotCornerPositionChoices
+                                id: hotCornerTopLeftChoices
                                 Layout.fillWidth: true
-                                value: settingsView.controller.hotCornerPosition
-                                options: SettingsSchema.options("hotCornerPosition")
-                                onChosen: function (value) { settingsView.controller.setSetting("hotCornerPosition", value); }
+                                value: settingsView.controller.hotCornerActions["top-left"]
+                                options: SettingsSchema.cornerActionOptions()
+                                onChosen: function (value) { settingsView.controller.setHotCornerAction("top-left", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Top right"
+                            description: settingsView.cornerDescription("top-right")
+                            enabled: settingsView.controller.hotCornerEnabled
+
+                            SettingChoices {
+                                id: hotCornerTopRightChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.hotCornerActions["top-right"]
+                                options: SettingsSchema.cornerActionOptions()
+                                onChosen: function (value) { settingsView.controller.setHotCornerAction("top-right", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Bottom left"
+                            description: settingsView.cornerDescription("bottom-left")
+                            enabled: settingsView.controller.hotCornerEnabled
+
+                            SettingChoices {
+                                id: hotCornerBottomLeftChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.hotCornerActions["bottom-left"]
+                                options: SettingsSchema.cornerActionOptions()
+                                onChosen: function (value) { settingsView.controller.setHotCornerAction("bottom-left", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Bottom right"
+                            description: settingsView.cornerDescription("bottom-right")
+                            enabled: settingsView.controller.hotCornerEnabled
+
+                            SettingChoices {
+                                id: hotCornerBottomRightChoices
+                                Layout.fillWidth: true
+                                value: settingsView.controller.hotCornerActions["bottom-right"]
+                                options: SettingsSchema.cornerActionOptions()
+                                onChosen: function (value) { settingsView.controller.setHotCornerAction("bottom-right", value); }
                             }
                         }
 
                         SettingRow {
                             label: "Use on all displays"
-                            description: "When off, only the outermost display on the chosen side responds."
+                            description: "When off, each corner answers only on the outermost display on its side, so corners between displays stay out of the way."
                             enabled: settingsView.controller.hotCornerEnabled
 
                             Item { Layout.fillWidth: true }
@@ -1144,7 +1197,7 @@ Item {
 
                         SettingRow {
                             label: "Activation delay"
-                            description: "How long the pointer must stay in the corner. Set to 0 for instant activation."
+                            description: "How long the pointer must stay in a corner. 0 acts on contact, as macOS does."
                             enabled: settingsView.controller.hotCornerEnabled
 
                             SettingSlider {

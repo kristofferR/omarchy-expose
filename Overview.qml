@@ -14,6 +14,7 @@ import "WindowModel.js" as WindowModel
 import "WorkspaceModel.js" as WorkspaceModel
 import "ScreenLayout.js" as ScreenLayout
 import "SettingsSchema.js" as SettingsSchema
+import "HotCorners.js" as HotCorners
 
 Item {
     id: root
@@ -22,6 +23,7 @@ Item {
     property var manifest: null
     readonly property alias windowBorders: compositorBorders
     WindowBorders { id: compositorBorders }
+    ShowDesktop { id: showDesktop }
     readonly property string pluginId: String((root.manifest && root.manifest.id) || "expose.window-overview")
     readonly property string pluginDir: String((root.manifest && root.manifest.__sourceDir)
         || (Quickshell.env("HOME") + "/.config/omarchy/plugins/" + root.pluginId))
@@ -130,16 +132,26 @@ Item {
     readonly property int backgroundDim: SettingsSchema.read(root.pluginEntry, "backgroundDim")
     // Off until settings load, so a saved "off" never flashes the corner on.
     readonly property bool hotCornerEnabled: pluginSettings.ready && SettingsSchema.read(root.pluginEntry, "hotCornerEnabled")
-    readonly property string hotCornerPosition: SettingsSchema.read(root.pluginEntry, "hotCornerPosition")
-    readonly property bool hotCornerOnTop: root.hotCornerPosition.indexOf("top-") === 0
-    readonly property bool hotCornerOnLeft: root.hotCornerPosition.indexOf("-left") !== -1
+    // What each corner does: { "top-left": "all-windows", ... }. See HotCorners.js.
+    readonly property var hotCornerActions: HotCorners.read(root.pluginEntry)
     readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
-    readonly property var hotCornerScreens: root.hotCornerEnabled
-        ? ScreenLayout.hotCornerScreens(Quickshell.screens,
-            Hyprland.monitors ? Hyprland.monitors.values : [],
-            root.hotCornerPosition, root.hotCornerAllDisplays)
-        : []
-    onHotCornerScreensChanged: root.scheduleHotCornerRearm()
+    // One { position, action, screen } per corner that does something, on each
+    // display that answers it: the outermost one on that side, or every display.
+    readonly property var hotCornerSurfaces: {
+        if (!root.hotCornerEnabled)
+            return [];
+        var screens = Quickshell.screens;
+        var monitors = Hyprland.monitors ? Hyprland.monitors.values : [];
+        var result = [];
+        HotCorners.active(root.hotCornerActions).forEach(function (corner) {
+            ScreenLayout.hotCornerScreens(screens, monitors, corner.position, root.hotCornerAllDisplays)
+                .forEach(function (screen) {
+                    result.push({ position: corner.position, action: corner.action, screen: screen });
+                });
+        });
+        return result;
+    }
+    onHotCornerSurfacesChanged: root.scheduleHotCornerRearm()
     // How long the pointer has to rest in the corner before it fires. Zero
     // keeps the original instant trip; longer dwells stop stray flings.
     readonly property int hotCornerDelay: SettingsSchema.read(root.pluginEntry, "hotCornerDelay")
@@ -166,6 +178,19 @@ Item {
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
     property string filterText: ""
+    // "all-windows", or "app-windows" for the windows of one app, named by
+    // appKey (its app id in lower case), as macOS Application Windows does.
+    // Set by every open() and by switchOverviewMode() only, always together
+    // through applyOverviewMode(), so a mode is never paired with another
+    // mode's key. They keep their last values once closed and mean nothing
+    // then; anything reporting them checks `opened` first.
+    property string overviewMode: "all-windows"
+    property string appKey: ""
+    // A deferred intent, set when Desktop fires with Exposé open: the desktop
+    // is shown once the overview has gone, so the two never fight over focus.
+    // Consumed by finishDismiss(); cleared by open(), so reopening before the
+    // overview is gone cancels it and it can never fire on a later close.
+    property bool desktopAfterDismiss: false
     property string workspaceScope: "all"
     // Selection state holds windows, not positions in filteredToplevels, so it
     // survives the list being rebuilt by filtering, scope, or windows closing.
@@ -319,6 +344,8 @@ Item {
             root.backgroundBlurReleasePhase = 0;
         root.closeSettings();
         root.filterText = "";
+        root.desktopAfterDismiss = false;
+        root.applyOverviewMode(root.payloadMode(payload));
         root.workspaceScope = root.initialWorkspaceScope;
         root.dismissNotifyShell = false;
         if (root.surfaceMounted) {
@@ -394,7 +421,73 @@ Item {
     }
 
     function toggle() {
-        (root.opened || root.openingPending) ? root.dismiss() : root.open("{}");
+        root.showOverview("all-windows", "");
+    }
+
+    // { "mode": "app-windows" } opens on the focused app's windows; anything
+    // else, including no payload, opens on every window.
+    function payloadMode(payload) {
+        try {
+            var options = typeof payload === "string" ? JSON.parse(payload || "{}") : (payload || {});
+            return options && options.mode === "app-windows" ? "app-windows" : "all-windows";
+        } catch (error) {
+            return "all-windows";
+        }
+    }
+
+    // App windows needs an app: with no window to take it from, it shows all.
+    function applyOverviewMode(mode) {
+        var key = mode === "app-windows" ? WindowModel.appKeyFor(root.originToplevel) : "";
+        root.overviewMode = key ? "app-windows" : "all-windows";
+        root.appKey = key;
+    }
+
+    // A corner or key for a mode: opens Exposé in that mode, closes it when it
+    // is already showing that mode, and otherwise switches in place, as macOS
+    // moves between Mission Control and Application Windows.
+    function showOverview(mode, screenName) {
+        if (root.opened || root.openingPending) {
+            var wanted = mode === "app-windows" && WindowModel.appKeyFor(root.originToplevel)
+                ? "app-windows" : "all-windows";
+            if (wanted === root.overviewMode)
+                root.dismiss();
+            else
+                root.switchOverviewMode(wanted);
+            return;
+        }
+        var name = String(screenName || "");
+        if (name) {
+            root.overviewScreenPinned = true;
+            root.overviewScreenName = name;
+        }
+        root.open(JSON.stringify({ mode: mode }));
+    }
+
+    function switchOverviewMode(mode) {
+        root.applyOverviewMode(mode);
+        root.filterText = "";
+        root.hoveredToplevel = null;
+        root.clearPreview();
+        root.modelRevision++;
+        root.selectedToplevel = root.originToplevel;
+    }
+
+    // The Desktop corner or key. With Exposé open it closes Exposé and shows
+    // the desktop, as the macOS Desktop corner does from Mission Control.
+    function toggleDesktop() {
+        if (root.opened || root.openingPending) {
+            root.desktopAfterDismiss = true;
+            root.dismiss();
+            return;
+        }
+        showDesktop.toggle();
+    }
+
+    function runCornerAction(action, screenName) {
+        if (action === "desktop")
+            root.toggleDesktop();
+        else if (action === "all-windows" || action === "app-windows")
+            root.showOverview(action, screenName);
     }
 
     function requestedBackgroundBlur() {
@@ -499,6 +592,10 @@ Item {
     function finishDismiss() {
         if (root.pendingActivation || root.pendingWorkspace)
             root.dispatchPendingActivation();
+        if (root.desktopAfterDismiss) {
+            root.desktopAfterDismiss = false;
+            showDesktop.show();
+        }
         var notifyShell = root.dismissNotifyShell;
         root.dismissNotifyShell = false;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
@@ -513,6 +610,11 @@ Item {
     function setSetting(name, value) {
         if (name === "hotCornerEnabled")
             return root.setHotCornerEnabled(value);
+        if (name === "hotCornerPosition")
+            return root.setHotCornerPosition(value);
+        var corner = root.cornerForSetting(name);
+        if (corner)
+            return root.setHotCornerAction(corner, value);
         var next = SettingsSchema.normalize(name, value, root[name]);
         if (next !== root[name])
             root.updatePluginSetting(name, next);
@@ -686,6 +788,34 @@ Item {
         root.previewExitToplevel = null;
     }
 
+    function cornerForSetting(name) {
+        for (var index = 0; index < HotCorners.positions.length; index++)
+            if (HotCorners.keyFor(HotCorners.positions[index]) === name)
+                return HotCorners.positions[index];
+        return "";
+    }
+
+    function storeCornerSettings(settings) {
+        for (var key in settings)
+            root.updatePluginSetting(key, settings[key]);
+    }
+
+    // One corner's action; the other corners keep theirs.
+    function setHotCornerAction(position, action) {
+        if (!HotCorners.isPosition(position))
+            return "";
+        var next = HotCorners.isAction(action) ? action : "off";
+        root.storeCornerSettings(HotCorners.withAction(root.pluginEntry, position, next));
+        return next;
+    }
+
+    // The single-corner setting: that corner opens all windows, alone.
+    function setHotCornerPosition(position) {
+        var next = HotCorners.isPosition(position) ? position : "top-left";
+        root.storeCornerSettings(HotCorners.withAllWindowsAt(root.pluginEntry, next));
+        return next;
+    }
+
     function setHotCornerEnabled(enabled) {
         var next = enabled === true;
         // The corner is also disabled while settings load; an early "off"
@@ -718,7 +848,7 @@ Item {
         for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
             var instances = groups[groupIndex].instances;
             for (var index = 0; index < instances.length; index++)
-                if (instances[index] && instances[index].hotCornerHovered)
+                if (instances[index] && instances[index].cornerHovered())
                     return true;
         }
         return false;
@@ -738,20 +868,13 @@ Item {
         return false;
     }
 
-    function triggerHotCorner(screenName) {
+    // Every corner shares one latch: after any corner fires, none fires again
+    // until the pointer has left the corners (see hotCornerRearm).
+    function triggerHotCorner(screenName, action) {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
         root.hotCornerArmed = false;
-        if (root.opened || root.openingPending) {
-            root.dismiss();
-            return;
-        }
-        var name = String(screenName || "");
-        if (name) {
-            root.overviewScreenPinned = true;
-            root.overviewScreenName = name;
-        }
-        root.open("{}");
+        root.runCornerAction(action, screenName);
     }
 
     function clearOverviewScreen() {
@@ -1226,6 +1349,8 @@ Item {
             var top = candidates[index];
             if (root.workspaceScope === "current" && !root.isOnWorkspace(top, currentWorkspace))
                 continue;
+            if (root.overviewMode === "app-windows" && !WindowModel.matchesApp(top, root.appKey))
+                continue;
             var haystack = WindowModel.searchTextFor(top);
             if (!needle || haystack.indexOf(needle) !== -1)
                 result.push(top);
@@ -1304,6 +1429,14 @@ Item {
             root.selectedToplevel = target;
             root.previewToplevel = target;
         }
+    }
+
+    // The app's name from its desktop entry, else its app id.
+    function appNameFor(top) {
+        var identity = IconResolver.identityFor(top);
+        var entries = DesktopEntries.applications ? DesktopEntries.applications.values : [];
+        var entry = IconResolver.findEntry(entries, identity.candidates);
+        return String((entry && entry.name) || WindowModel.appIdFor(top) || "App");
     }
 
     function iconFor(top) {
@@ -1593,9 +1726,47 @@ Item {
         function open(): string {
             // Must not be root.toggle(): that makes "open" a duplicate of
             // "toggle", so calling open on an already-open overview closes it.
-            // Mirrors close(), which correctly calls dismiss().
-            root.open("{}");
+            // Mirrors close(), which correctly calls dismiss(). An overview
+            // showing one app's windows widens to all of them.
+            if (!root.opened && !root.openingPending)
+                root.open("{}");
+            else if (root.overviewMode !== "all-windows")
+                root.switchOverviewMode("all-windows");
             return "ok";
+        }
+        // App windows (macOS Application Windows): the focused app's windows,
+        // minimized ones included. Same toggle rules as toggle().
+        function toggleApplication(): string {
+            root.showOverview("app-windows", "");
+            return "ok";
+        }
+        function openApplication(): string {
+            if (!root.opened && !root.openingPending)
+                root.open(JSON.stringify({ mode: "app-windows" }));
+            else if (root.overviewMode !== "app-windows")
+                root.switchOverviewMode("app-windows");
+            return root.overviewMode;
+        }
+        // Desktop (macOS Show Desktop): a temporary peek at the desktop that
+        // ends when a window is focused or the workspace changes.
+        function toggleDesktop(): string {
+            root.toggleDesktop();
+            return "ok";
+        }
+        function desktop(mode: string): string {
+            if (mode === "show") {
+                if (root.opened || root.openingPending)
+                    root.toggleDesktop();
+                else
+                    showDesktop.show();
+            } else if (mode === "hide") {
+                showDesktop.restore(true);
+            } else if (mode === "toggle") {
+                root.toggleDesktop();
+            } else if (mode !== "state") {
+                return "expected show, hide, toggle, or state";
+            }
+            return showDesktop.phase;
         }
         function close(): string {
             root.dismiss();
@@ -1655,6 +1826,9 @@ Item {
                 settingsOpen: root.settingsOpen,
                 scope: root.workspaceScope,
                 filter: open ? root.filterText : "",
+                mode: open ? root.overviewMode : null,
+                app: open && root.overviewMode === "app-windows" ? root.appKey : null,
+                desktop: showDesktop.phase,
                 windows: open ? root.filteredToplevels.length : 0,
                 selection: top ? root.windowLabel(top) : null,
                 selectionAddress: top ? WindowModel.addressFor(top) : null,
@@ -1664,6 +1838,9 @@ Item {
         function get(name: string): string {
             if (!Object.prototype.hasOwnProperty.call(SettingsSchema.specs, name))
                 return SettingsSchema.expectedOneOf(Object.keys(SettingsSchema.specs));
+            var corner = root.cornerForSetting(name);
+            if (corner)
+                return root.hotCornerActions[corner];
             var value = SettingsSchema.read(root.pluginEntry, name);
             return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
         }
@@ -1710,6 +1887,16 @@ Item {
         }
         function hotCorner(mode: string): string { return root.setSettingFromIpc("hotCornerEnabled", mode); }
         function hotCornerPosition(position: string): string { return root.setSettingFromIpc("hotCornerPosition", position); }
+        // What a corner does: off, all-windows, app-windows, or desktop.
+        function hotCornerAction(position: string, action: string): string {
+            if (!HotCorners.isPosition(position))
+                return SettingsSchema.expectedOneOf(HotCorners.positions);
+            if (!HotCorners.isAction(action))
+                return SettingsSchema.expectedOneOf(HotCorners.actions);
+            return root.setHotCornerAction(position, action);
+        }
+        // Every corner at once, as JSON: { "top-left": "all-windows", ... }.
+        function hotCorners(): string { return JSON.stringify(root.hotCornerActions); }
         function hotCornerDelay(value: real): string { return root.setSettingFromIpc("hotCornerDelay", value); }
         function hotCornerAllDisplays(mode: string): string { return root.setSettingFromIpc("hotCornerAllDisplays", mode); }
         function moveCursorToWindow(mode: string): string { return root.setSettingFromIpc("moveCursorToWindow", mode); }
@@ -1772,20 +1959,25 @@ Item {
         }
     }
 
-    // Full-screen surfaces take over corner handling while Exposé is mounted.
+    // One small surface per corner that does something, on each display that
+    // answers it. Full-screen surfaces take over corner handling while Exposé
+    // is mounted, so every corner keeps working with the overview open.
     Variants {
         id: hotCornerInstances
-        model: root.hotCornerScreens
+        model: root.hotCornerSurfaces
 
         PanelWindow { // qmllint disable uncreatable-type
+            id: cornerSurface
             required property var modelData
-            screen: modelData
+            readonly property bool cornerOnTop: HotCorners.onTop(modelData.position)
+            readonly property bool cornerOnLeft: HotCorners.onLeft(modelData.position)
+            screen: modelData.screen
             visible: !root.surfaceMounted
             anchors {
-                top: root.hotCornerOnTop
-                right: !root.hotCornerOnLeft
-                bottom: !root.hotCornerOnTop
-                left: root.hotCornerOnLeft
+                top: cornerSurface.cornerOnTop
+                right: !cornerSurface.cornerOnLeft
+                bottom: !cornerSurface.cornerOnTop
+                left: cornerSurface.cornerOnLeft
             }
             implicitWidth: root.hotCornerReach
             implicitHeight: root.hotCornerReach
@@ -1793,12 +1985,12 @@ Item {
             mask: Region {
                 Region {
                     x: 0
-                    y: root.hotCornerOnTop ? 0 : root.hotCornerReach - root.hotCornerDepth
+                    y: cornerSurface.cornerOnTop ? 0 : root.hotCornerReach - root.hotCornerDepth
                     width: root.hotCornerReach
                     height: root.hotCornerDepth
                 }
                 Region {
-                    x: root.hotCornerOnLeft ? 0 : root.hotCornerReach - root.hotCornerDepth
+                    x: cornerSurface.cornerOnLeft ? 0 : root.hotCornerReach - root.hotCornerDepth
                     y: 0
                     width: root.hotCornerDepth
                     height: root.hotCornerReach
@@ -1809,15 +2001,15 @@ Item {
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.exclusiveZone: -1
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-            readonly property bool hotCornerHovered: closedHotCorner.hovered
+            function cornerHovered() { return closedHotCorner.hovered; }
 
             HotCornerTarget {
                 id: closedHotCorner
                 anchors.fill: parent
                 enabled: !root.surfaceMounted
-                onTop: root.hotCornerOnTop
-                onLeft: root.hotCornerOnLeft
-                onEntered: root.triggerHotCorner(String(modelData.name || ""))
+                onTop: cornerSurface.cornerOnTop
+                onLeft: cornerSurface.cornerOnLeft
+                onEntered: root.triggerHotCorner(String(cornerSurface.modelData.screen.name || ""), cornerSurface.modelData.action)
                 onExited: root.scheduleHotCornerRearm()
             }
         }
@@ -1846,8 +2038,19 @@ Item {
                 && !root.backgroundBlurFailed
             ? backgroundBlurRegion
             : null
-        readonly property bool hotCornerHovered: openHotCorner.hovered
         readonly property bool pointerInside: overviewPointer.hovered
+        // The configured corners on this display.
+        readonly property var openCorners: root.hotCornerSurfaces.filter(function (corner) {
+            return corner.screen === surface.modelData;
+        })
+        function cornerHovered() {
+            for (var index = 0; index < openCornerTargets.count; index++) {
+                var target = openCornerTargets.itemAt(index) as HotCornerTarget;
+                if (target && target.hovered)
+                    return true;
+            }
+            return false;
+        }
 
         Region {
             id: backgroundBlurRegion
@@ -1910,18 +2113,23 @@ Item {
             }
         }
 
-        HotCornerTarget {
-            id: openHotCorner
-            width: root.hotCornerReach
-            height: root.hotCornerReach
-            x: root.hotCornerOnLeft ? 0 : parent.width - width
-            y: root.hotCornerOnTop ? 0 : parent.height - height
-            z: 100
-            enabled: root.surfaceMounted && root.hotCornerScreens.indexOf(surface.modelData) !== -1
-            onTop: root.hotCornerOnTop
-            onLeft: root.hotCornerOnLeft
-            onEntered: root.triggerHotCorner(String(surface.modelData.name || ""))
-            onExited: root.scheduleHotCornerRearm()
+        Repeater {
+            id: openCornerTargets
+            model: surface.openCorners
+
+            HotCornerTarget {
+                required property var modelData
+                width: root.hotCornerReach
+                height: root.hotCornerReach
+                x: onLeft ? 0 : surface.width - width
+                y: onTop ? 0 : surface.height - height
+                z: 100
+                enabled: root.surfaceMounted
+                onTop: HotCorners.onTop(modelData.position)
+                onLeft: HotCorners.onLeft(modelData.position)
+                onEntered: root.triggerHotCorner(String(surface.modelData.name || ""), modelData.action)
+                onExited: root.scheduleHotCornerRearm()
+            }
         }
     }
 
@@ -2120,7 +2328,9 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.filterText || "Type to filter windows…"
+                                text: root.filterText || (root.overviewMode === "app-windows"
+                                    ? root.appNameFor(root.originToplevel) + " windows · type to filter…"
+                                    : "Type to filter windows…")
                                 textFormat: Text.PlainText
                                 color: Commons.Color.menu.text
                                 opacity: root.filterText ? 1 : 0.6

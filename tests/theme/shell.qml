@@ -20,7 +20,7 @@ ShellRoot {
         property int effectiveBackgroundDim: 6
         property bool hotCornerEnabled: false
         property bool hotCornerAllDisplays: false
-        property string hotCornerPosition: "top-left"
+        property var hotCornerActions: ({"top-left": "all-windows", "top-right": "off", "bottom-left": "app-windows", "bottom-right": "desktop"})
         property int hotCornerDelayPreview: -1
         property int hotCornerDelay: 0
         readonly property int effectiveHotCornerDelay: hotCornerDelayPreview >= 0 ? hotCornerDelayPreview : hotCornerDelay
@@ -56,6 +56,12 @@ ShellRoot {
         function animationTimingFor(style) { return {"in":190,"out":190,separate:separateTiming}; }
         function focusSettingsItem(item) { item.forceActiveFocus(); return true; }
         function setSetting(name, value) { controller[name] = value; return value; }
+        function setHotCornerAction(position, action) {
+            var next = Object.assign({}, controller.hotCornerActions);
+            next[position] = action;
+            controller.hotCornerActions = next;
+            return action;
+        }
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
         function aspectRatioFor(model) { return 1.8; }
@@ -124,7 +130,8 @@ ShellRoot {
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
-        var expectedCounts = [5, 5, 3, 4, 5, 8];
+        // Page 4: category, enable, four corners, all displays, delay.
+        var expectedCounts = [5, 5, 3, 4, 8, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

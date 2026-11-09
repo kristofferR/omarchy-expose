@@ -17,6 +17,16 @@ function appIdFor(toplevel) {
     return String(ipc.class || ipc.initialClass || "");
 }
 
+// The identity App windows compares: the app id, ignoring case. Titles never
+// take part, so a window titled after another app cannot join its group.
+function appKeyFor(toplevel) {
+    return appIdFor(toplevel).toLowerCase();
+}
+
+function matchesApp(toplevel, appKey) {
+    return Boolean(appKey) && appKeyFor(toplevel) === String(appKey);
+}
+
 function addressFor(toplevel) {
     var address = String((toplevel && toplevel.address) || "");
     return /^[0-9a-fA-F]+$/.test(address) ? "0x" + address : "";
