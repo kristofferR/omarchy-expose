@@ -55,8 +55,8 @@ Item {
     // The active window once the desktop settled; only a change counts.
     property var focusBaseline: null
     property bool settled: false
-    // Windows minimizing can hand focus to: those not minimized when the peek
-    // began, by address. And whether any other window took focus before the
+    // Windows minimizing can hand focus to: those shown and not minimized
+    // when the peek began, by address. And whether any other window took focus before the
     // peek settled.
     property var knownAddresses: ({})
     property bool openedWhileSettling: false
@@ -100,7 +100,8 @@ Item {
         root.focusAddress = WindowModel.addressFor(Hyprland.activeToplevel);
         var known = {};
         root.toplevels.forEach(function (top) {
-            if (!WindowModel.isMinimized(top))
+            // A window still mapping is not one yet; it may be the user's.
+            if (WindowModel.isEligible(top) && !WindowModel.isMinimized(top))
                 known[WindowModel.addressFor(top)] = true;
         });
         root.knownAddresses = known;
