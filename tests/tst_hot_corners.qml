@@ -79,6 +79,23 @@ TestCase {
         verify(!HotCorners.onTop("bottom-left") && HotCorners.onLeft("bottom-left"));
     }
 
+    function test_fullscreenMeansFullscreenNotMaximized() {
+        function monitor(name, modes) {
+            return {
+                name: name,
+                activeWorkspace: {
+                    hasFullscreen: modes.some(function (mode) { return mode > 0; }),
+                    toplevels: { values: modes.map(function (mode) { return { lastIpcObject: { fullscreen: mode } }; }) }
+                }
+            };
+        }
+        var monitors = [monitor("DP-1", [0, 2]), monitor("DP-2", [1]), monitor("DP-3", [0])];
+        verify(HotCorners.showsFullscreen(monitors, "DP-1"));
+        verify(!HotCorners.showsFullscreen(monitors, "DP-2"));
+        verify(!HotCorners.showsFullscreen(monitors, "DP-3"));
+        verify(!HotCorners.showsFullscreen(monitors, "HDMI-A-1"));
+    }
+
     function test_validation() {
         verify(HotCorners.isPosition("bottom-left"));
         verify(!HotCorners.isPosition("center"));

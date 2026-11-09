@@ -10,6 +10,7 @@ TestCase {
         compare(Schema.read(null, "backgroundBlur"), 4);
         compare(Schema.read(null, "moveCursorToWindow"), true);
         compare(Schema.read(null, "hotCornerAllDisplays"), false);
+        compare(Schema.read(null, "hotCornerIgnoreFullscreen"), false);
     }
 
     function test_enumReadsListedValueOnly() {

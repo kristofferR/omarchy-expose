@@ -101,6 +101,7 @@ var specs = {
     hotCornerDelay: { fallback: 0, min: 0, max: 1000 },
     hotCornerEnabled: { fallback: true },
     hotCornerAllDisplays: { fallback: false },
+    hotCornerIgnoreFullscreen: { fallback: false },
     moveCursorToWindow: { fallback: true },
     showFooter: { fallback: true },
     closeButton: { fallback: false },

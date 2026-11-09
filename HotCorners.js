@@ -90,6 +90,25 @@ function withAllWindowsAt(entry, position) {
     return settingsFor(map);
 }
 
+// Whether the named display's active workspace shows a fullscreen window.
+// Hyprland's workspace flag counts maximized windows too, so each window's own
+// mode decides: 2 is fullscreen, 1 maximized. Overview refreshes the windows'
+// IPC objects on every fullscreen event.
+function showsFullscreen(monitors, screenName) {
+    for (var index = 0; index < monitors.length; index++) {
+        var workspace = monitors[index].activeWorkspace;
+        if (monitors[index].name !== screenName || !workspace || !workspace.hasFullscreen)
+            continue;
+        var toplevels = workspace.toplevels ? workspace.toplevels.values : [];
+        for (var top = 0; top < toplevels.length; top++) {
+            var ipc = toplevels[top].lastIpcObject;
+            if (ipc && Number(ipc.fullscreen) === 2)
+                return true;
+        }
+    }
+    return false;
+}
+
 // The corners that do something, in a fixed order.
 function active(map) {
     var result = [];

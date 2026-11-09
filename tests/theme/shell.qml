@@ -20,6 +20,7 @@ ShellRoot {
         property int effectiveBackgroundDim: 6
         property bool hotCornerEnabled: false
         property bool hotCornerAllDisplays: false
+        property bool hotCornerIgnoreFullscreen: false
         property var hotCornerActions: ({"top-left": "all-windows", "top-right": "off", "bottom-left": "app-windows", "bottom-right": "desktop"})
         property int hotCornerDelayPreview: -1
         property int hotCornerDelay: 0
@@ -131,7 +132,7 @@ ShellRoot {
         var items = settings.settingsFocusItems();
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
         // Page 4: category, enable, four corners, all displays, delay.
-        var expectedCounts = [5, 5, 3, 4, 8, 8];
+        var expectedCounts = [5, 5, 3, 4, 9, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

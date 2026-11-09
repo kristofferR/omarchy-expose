@@ -135,6 +135,12 @@ Item {
     // What each corner does: { "top-left": "all-windows", ... }. See HotCorners.js.
     readonly property var hotCornerActions: HotCorners.read(root.pluginEntry)
     readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
+    readonly property bool hotCornerIgnoreFullscreen: SettingsSchema.read(root.pluginEntry, "hotCornerIgnoreFullscreen")
+    // Fullscreen events are only tracked while the setting is on.
+    onHotCornerIgnoreFullscreenChanged: {
+        if (root.hotCornerIgnoreFullscreen)
+            Hyprland.refreshToplevels();
+    }
     // One { position, action, screen } per corner that does something, on each
     // display that answers it: the outermost one on that side, or every display.
     readonly property var hotCornerSurfaces: {
@@ -878,6 +884,10 @@ Item {
     // until the pointer has left the corners (see hotCornerRearm).
     function triggerHotCorner(screenName, action) {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
+            return;
+        // Corners still close whatever they opened.
+        var idle = !root.opened && !root.openingPending && showDesktop.phase === "idle";
+        if (idle && root.hotCornerIgnoreFullscreen && HotCorners.showsFullscreen(Hyprland.monitors ? Hyprland.monitors.values : [], screenName))
             return;
         root.hotCornerArmed = false;
         root.runCornerAction(action, screenName);
@@ -1750,6 +1760,8 @@ Item {
             }
             if (event && event.name === "custom" && event.data === "expose.window-overview:toggle")
                 root.toggle();
+            if (event && event.name === "fullscreen" && root.hotCornerIgnoreFullscreen)
+                Hyprland.refreshToplevels();
         }
     }
 
@@ -1936,6 +1948,7 @@ Item {
         function hotCorners(): string { return JSON.stringify(root.hotCornerActions); }
         function hotCornerDelay(value: real): string { return root.setSettingFromIpc("hotCornerDelay", value); }
         function hotCornerAllDisplays(mode: string): string { return root.setSettingFromIpc("hotCornerAllDisplays", mode); }
+        function hotCornerIgnoreFullscreen(mode: string): string { return root.setSettingFromIpc("hotCornerIgnoreFullscreen", mode); }
         function moveCursorToWindow(mode: string): string { return root.setSettingFromIpc("moveCursorToWindow", mode); }
         function multiMonitorMode(mode: string): string { return root.setSettingFromIpc("multiMonitorMode", mode); }
     }

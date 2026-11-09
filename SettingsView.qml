@@ -737,7 +737,7 @@ Item {
             [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
-            [hotCornerToggle, hotCornerTopLeftChoices, hotCornerTopRightChoices, hotCornerBottomLeftChoices, hotCornerBottomRightChoices, hotCornerAllDisplaysToggle, hotCornerDelaySlider],
+            [hotCornerToggle, hotCornerTopLeftChoices, hotCornerTopRightChoices, hotCornerBottomLeftChoices, hotCornerBottomRightChoices, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
         return settingsView.availableFocusItems([categoryButton].concat(controls[settingsView.controller.settingsCategoryIndex] || []));
@@ -1268,6 +1268,20 @@ Item {
                                 id: hotCornerAllDisplaysToggle
                                 checked: settingsView.controller.hotCornerAllDisplays
                                 onToggled: function (checked) { settingsView.controller.setSetting("hotCornerAllDisplays", checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Ignore fullscreen windows"
+                            description: "When on, corners do nothing on a display showing a fullscreen window, such as a video or a game. They still close Exposé and Desktop."
+                            enabled: settingsView.controller.hotCornerEnabled
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: hotCornerIgnoreFullscreenToggle
+                                checked: settingsView.controller.hotCornerIgnoreFullscreen
+                                onToggled: function (checked) { settingsView.controller.setSetting("hotCornerIgnoreFullscreen", checked); }
                             }
                         }
 
