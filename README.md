@@ -36,7 +36,7 @@ The underlying Quickshell, Hyprland, Bash, and coreutils support ships with Omar
 omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 ```
 
-That's it: the top-left hot corner works right away. Choose an action for each corner under **Settings → Hot corner**, or see [Hot corners](#hot-corners). Optionally, bind keys in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
+That's it: the top-left hot corner works right away. Choose an action for each corner under **Settings → Hot corners**, or see [Hot corners](#hot-corners). Optionally, bind keys in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
 o.bind("SUPER + A", "Exposé", hl.dsp.event("expose.window-overview:toggle"))
@@ -116,13 +116,13 @@ They behave like their macOS counterparts:
 - Desktop minimizes windows with Omarchy's own command, so it works on floating workspaces, where the dock brings windows back. On a tiled workspace it leaves the layout alone and says so once. Pinned, fullscreen, and grouped windows stay put, and a window you minimized yourself is never brought back by it. If Omarchy Shell restarts during a peek, the windows come back.
 - Every corner shares one latch: after a corner fires, none fires again until the pointer has left it, so resting in a corner never repeats an action.
 
-Hot corners default to the outermost display: left corners use the leftmost display, and right corners use the rightmost. If displays share that edge, the topmost or bottommost one wins according to the corner. Enable **Hot corner → Use on all displays** to use every corner on every display. Avoid giving a corner to Exposé and to another hot-corner plugin at once.
+Hot corners default to the outermost display: left corners use the leftmost display, and right corners use the rightmost. If displays share that edge, the topmost or bottommost one wins according to the corner. Enable **Hot corners → Use on all displays** to use every corner on every display. Avoid giving a corner to Exposé and to another hot-corner plugin at once.
 
 Settings saved by older versions keep working: the one corner chosen there opens all windows until you change any corner.
 
 ## Settings
 
-Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-6 jump to a section, Up/Down move between controls, Left/Right adjust sliders and choices, Space or Enter flip toggles and press buttons, Escape closes. Changes apply immediately. Settings are grouped into **Appearance**, **Windows**, **Window labels**, **Workspaces**, **Hot corner**, and **Motion**, with explanatory text beneath each control:
+Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-6 jump to a section, Up/Down move between controls, Left/Right adjust sliders and choices, Space or Enter flip toggles and press buttons, Escape closes. Changes apply immediately. Settings are grouped into **Appearance**, **Windows**, **Window labels**, **Workspaces**, **Hot corners**, and **Motion**, with explanatory text beneath the controls:
 
 - Opening animation: Original (default), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings

@@ -5,9 +5,9 @@
 function cornerActionOptions() {
     return [
         { label: "Off", value: "off" },
-        { label: "All windows", description: "Exposé with every window", value: "all-windows" },
-        { label: "App windows", description: "Exposé with the focused app's windows", value: "app-windows" },
-        { label: "Desktop", description: "Move windows aside to show the desktop", value: "desktop" }
+        { label: "All windows", value: "all-windows" },
+        { label: "App windows", value: "app-windows" },
+        { label: "Desktop", value: "desktop" }
     ];
 }
 
