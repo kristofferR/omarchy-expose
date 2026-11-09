@@ -136,6 +136,11 @@ Item {
     readonly property var hotCornerActions: HotCorners.read(root.pluginEntry)
     readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
     readonly property bool hotCornerIgnoreFullscreen: SettingsSchema.read(root.pluginEntry, "hotCornerIgnoreFullscreen")
+    // Fullscreen events are only tracked while the setting is on.
+    onHotCornerIgnoreFullscreenChanged: {
+        if (root.hotCornerIgnoreFullscreen)
+            Hyprland.refreshToplevels();
+    }
     // One { position, action, screen } per corner that does something, on each
     // display that answers it: the outermost one on that side, or every display.
     readonly property var hotCornerSurfaces: {
