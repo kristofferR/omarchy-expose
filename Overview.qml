@@ -1526,6 +1526,14 @@ Item {
             : "";
         if (!result)
             result = Quickshell.iconPath(iconName, true);
+        // Drop identities no open window has, so closed or renamed windows do
+        // not pile up: after each miss the cache holds only open windows.
+        var live = {};
+        for (var index = 0; index < root.allToplevels.length; index++)
+            live[IconResolver.identityFor(root.allToplevels[index]).key] = true;
+        for (var key in root.iconCache)
+            if (!live[key])
+                delete root.iconCache[key];
         root.iconCache[identity.key] = result;
         return result;
     }
