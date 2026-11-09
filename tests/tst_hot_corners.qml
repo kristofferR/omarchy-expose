@@ -96,11 +96,25 @@ TestCase {
         verify(!HotCorners.showsFullscreen(monitors, "HDMI-A-1"));
     }
 
+    function test_actionsRunOmarchysCommandsOrTheCornersOwn() {
+        compare(HotCorners.argvFor("lock-screen", ""), ["omarchy-system-lock"]);
+        compare(HotCorners.argvFor("apps", ""), ["omarchy-shell", "omarchy.dock", "apps"]);
+        compare(HotCorners.argvFor("command", "omarchy-launch-browser"), ["bash", "-lc", "omarchy-launch-browser"]);
+        compare(HotCorners.argvFor("command", ""), null);
+        compare(HotCorners.argvFor("all-windows", "ignored"), null);
+        var entry = { hotCornerTopRightCommand: "  omarchy-launch-browser  ", hotCornerBottomLeftCommand: 42 };
+        compare(HotCorners.commandFor(entry, "top-right"), "omarchy-launch-browser");
+        compare(HotCorners.commandFor(entry, "bottom-left"), "");
+        compare(HotCorners.commandFor(null, "top-left"), "");
+        compare(HotCorners.read({ hotCornerTopRight: "command" })["top-right"], "command");
+    }
+
     function test_validation() {
         verify(HotCorners.isPosition("bottom-left"));
         verify(!HotCorners.isPosition("center"));
         verify(HotCorners.isAction("desktop"));
         verify(!HotCorners.isAction("mission-control"));
+        verify(HotCorners.isAction("lock-screen"));
         compare(HotCorners.keyFor("bottom-right"), "hotCornerBottomRight");
     }
 }

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Commons as Commons
@@ -508,12 +509,269 @@ Item {
             }
         }
 
-        RowLayout {
+        GridLayout {
             id: cornerControls
             Layout.fillWidth: true
             Layout.preferredWidth: Style.space(320)
-            spacing: 0
+            // Rows without a command field still share widths with those that
+            // have one, so every dropdown starts at the same x.
+            Layout.maximumWidth: Number.POSITIVE_INFINITY
+            columns: settingsDialog.narrow ? 1 : 2
+            columnSpacing: Style.spacing.sm
+            rowSpacing: Style.spacing.xs
         }
+    }
+
+    // A corner's action: the current one on a button that opens the grouped
+    // list. Left/Right step through the actions as SettingChoices do,
+    // Space/Enter open the list, and Up/Down keep moving between controls.
+    component SettingDropdown: ThemedControl {
+        id: settingDropdown
+        property var options: []
+        property string value: ""
+        signal chosen(string nextValue)
+        readonly property int currentIndex: {
+            for (var index = 0; index < settingDropdown.options.length; index++)
+                if (String(settingDropdown.options[index].value) === settingDropdown.value)
+                    return index;
+            return -1;
+        }
+        focused: activeFocus || dropdownPopup.opened
+        hovered: dropdownMouse.containsMouse
+        pressed: dropdownMouse.pressed
+        implicitWidth: Style.space(168)
+        implicitHeight: Style.spacing.controlHeight
+        activeFocusOnTab: true
+
+        function step(offset) {
+            var next = Math.max(0, Math.min(settingDropdown.options.length - 1, settingDropdown.currentIndex + offset));
+            if (next !== settingDropdown.currentIndex)
+                settingDropdown.chosen(String(settingDropdown.options[next].value));
+        }
+
+        Keys.onPressed: function (event) {
+            if (settingsView.controller.handleSettingsNavigation(event))
+                return;
+            // Changing a corner can stall the shell past the key-repeat delay,
+            // and the repeat would then skip an action; the list is the way
+            // to move far.
+            if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right) && event.isAutoRepeat) {
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_Left)
+                settingDropdown.step(-1);
+            else if (event.key === Qt.Key_Right)
+                settingDropdown.step(1);
+            else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                dropdownPopup.open();
+            else {
+                event.accepted = false;
+                return;
+            }
+            event.accepted = true;
+        }
+
+        Text {
+            anchors.left: parent.left
+            anchors.right: dropdownChevron.left
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: Style.spacing.controlPaddingX
+            anchors.rightMargin: Style.spacing.sm
+            text: settingDropdown.currentIndex >= 0 ? String(settingDropdown.options[settingDropdown.currentIndex].label) : ""
+            textFormat: Text.PlainText
+            color: settingDropdown.stateColor
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+        }
+
+        Text {
+            id: dropdownChevron
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.rightMargin: Style.spacing.controlPaddingX
+            text: "▾"
+            color: settingDropdown.stateColor
+            font.family: Style.font.menuFamily
+            font.pixelSize: Style.font.bodySmall
+        }
+
+        MouseArea {
+            id: dropdownMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onPressed: settingDropdown.forceActiveFocus()
+            onClicked: dropdownPopup.opened ? dropdownPopup.close() : dropdownPopup.open()
+        }
+
+        Controls.Popup {
+            id: dropdownPopup
+            property int highlighted: 0
+            y: settingDropdown.height + Style.spacing.xs
+            width: Math.max(settingDropdown.width, Style.space(200))
+            margins: Style.spacing.md
+            padding: Style.spacing.xs
+            closePolicy: Controls.Popup.CloseOnEscape | Controls.Popup.CloseOnPressOutsideParent
+
+            onOpened: {
+                dropdownPopup.highlighted = Math.max(0, settingDropdown.currentIndex);
+                dropdownList.forceActiveFocus();
+            }
+            onClosed: settingDropdown.forceActiveFocus()
+
+            function choose(index) {
+                dropdownPopup.close();
+                if (index !== settingDropdown.currentIndex)
+                    settingDropdown.chosen(String(settingDropdown.options[index].value));
+            }
+
+            background: Ui.BorderSurface {
+                readonly property color menu: Commons.Color.menu.background
+                radius: Style.cornerRadius
+                color: Qt.rgba(menu.r, menu.g, menu.b, 1)
+                borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.foreground, Style.normalBorderWidth)
+            }
+
+            contentItem: Column {
+                id: dropdownList
+                spacing: 0
+                focus: true
+
+                Keys.onPressed: function (event) {
+                    var count = settingDropdown.options.length;
+                    if (event.key === Qt.Key_Down)
+                        dropdownPopup.highlighted = Math.min(count - 1, dropdownPopup.highlighted + 1);
+                    else if (event.key === Qt.Key_Up)
+                        dropdownPopup.highlighted = Math.max(0, dropdownPopup.highlighted - 1);
+                    else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                        dropdownPopup.choose(dropdownPopup.highlighted);
+                    else if (event.key === Qt.Key_Escape || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                        dropdownPopup.close();
+                    event.accepted = true;
+                }
+
+                Repeater {
+                    model: settingDropdown.options
+
+                    delegate: Column {
+                        id: dropdownEntry
+                        required property var modelData
+                        required property int index
+                        readonly property string group: String(modelData.group || "")
+                        readonly property bool startsGroup: index === 0
+                            || String(settingDropdown.options[index - 1].group || "") !== group
+                        // Exposé's and Omarchy's actions get a heading; the
+                        // single-entry groups after them only a divider.
+                        readonly property bool headed: group === "Exposé" || group === "Omarchy"
+                        width: parent ? parent.width : 0
+
+                        ThemeDivider {
+                            width: parent.width
+                            visible: dropdownEntry.startsGroup && dropdownEntry.index > 0
+                        }
+
+                        Text {
+                            visible: dropdownEntry.startsGroup && dropdownEntry.headed
+                            leftPadding: Style.spacing.controlPaddingX
+                            topPadding: Style.spacing.sm
+                            bottomPadding: Style.spacing.xs
+                            text: dropdownEntry.group
+                            textFormat: Text.PlainText
+                            color: Commons.Color.menu.text
+                            opacity: 0.65
+                            font.family: Style.font.menuFamily
+                            font.pixelSize: Style.font.caption
+                            font.capitalization: Font.AllUppercase
+                        }
+
+                        // A plain fill per row, as the shell's own Dropdown
+                        // draws them; a bordered control per row reads as a
+                        // stack of buttons under themes with control borders.
+                        Rectangle {
+                            id: dropdownRow
+                            readonly property bool selected: dropdownEntry.index === settingDropdown.currentIndex
+                            readonly property bool highlighted: dropdownEntry.index === dropdownPopup.highlighted
+                            readonly property color stateColor: highlighted
+                                ? Style.hoverStateColor(Commons.Color.menu.text, Commons.Color.accent)
+                                : selected ? Style.selectedStateColor(Commons.Color.menu.text, Commons.Color.accent)
+                                : Commons.Color.menu.text
+                            width: parent.width
+                            height: Style.spacing.controlHeight
+                            radius: Style.cornerRadius
+                            color: highlighted ? Style.hoverFillFor(Commons.Color.menu.text, Commons.Color.accent)
+                                : selected ? Style.selectedFillFor(Commons.Color.menu.text, Commons.Color.accent)
+                                : "transparent"
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.leftMargin: Style.spacing.controlPaddingX
+                                text: String(dropdownEntry.modelData.label)
+                                textFormat: Text.PlainText
+                                color: dropdownRow.stateColor
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.bodySmall
+                                font.bold: dropdownRow.selected
+                            }
+
+                            Text {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.rightMargin: Style.spacing.controlPaddingX
+                                visible: text !== ""
+                                text: String(dropdownEntry.modelData.hint || "")
+                                textFormat: Text.PlainText
+                                color: Commons.Color.menu.text
+                                opacity: 0.65
+                                font.family: Style.font.menuFamily
+                                font.pixelSize: Style.font.caption
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: dropdownPopup.highlighted = dropdownEntry.index
+                                onClicked: dropdownPopup.choose(dropdownEntry.index)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The shell command a corner runs, saved on Enter or when focus leaves.
+    component SettingCommandField: Ui.TextField {
+        id: commandField
+        property string position: ""
+        foreground: Commons.Color.menu.text
+        font.family: Style.font.menuFamily
+        font.pixelSize: Style.font.bodySmall
+        placeholderText: "Shell command"
+        activeFocusOnTab: true
+
+        // Follows the stored command except while being edited.
+        Binding on text {
+            when: !commandField.activeFocus
+            value: settingsView.controller.hotCornerCommands[commandField.position] || ""
+            restoreMode: Binding.RestoreNone
+        }
+
+        Keys.onPressed: function (event) {
+            if (event.key === Qt.Key_Up || event.key === Qt.Key_Down
+                    || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+                settingsView.controller.handleSettingsNavigation(event);
+            // Escape closes settings before the field loses focus, which
+            // would drop the edit, so it is saved first and Escape goes on.
+            else if (event.key === Qt.Key_Escape) {
+                settingsView.controller.setHotCornerCommand(commandField.position, commandField.text);
+                event.accepted = false;
+            }
+        }
+        onEditingFinished: settingsView.controller.setHotCornerCommand(commandField.position, commandField.text)
     }
 
     component SettingsPage: Flickable {
@@ -737,7 +995,7 @@ Item {
             [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
-            [hotCornerToggle, hotCornerTopLeftChoices, hotCornerTopRightChoices, hotCornerBottomLeftChoices, hotCornerBottomRightChoices, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
+            [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
         return settingsView.availableFocusItems([categoryButton].concat(controls[settingsView.controller.settingsCategoryIndex] || []));
@@ -1170,7 +1428,7 @@ Item {
 
                         SettingRow {
                             label: "Enable hot corners"
-                            description: "Move the pointer into a corner to run its action. All windows and App windows open Exposé."
+                            description: "Move the pointer into a corner to run its action."
 
                             Item { Layout.fillWidth: true }
 
@@ -1195,12 +1453,20 @@ Item {
                                 label: "Top left"
                                 position: "top-left"
 
-                                SettingChoices {
-                                    id: hotCornerTopLeftChoices
-                                    Layout.fillWidth: true
+                                SettingDropdown {
+                                    id: hotCornerTopLeftAction
+                                    Layout.fillWidth: settingsDialog.narrow
+                                    Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                                     value: settingsView.controller.hotCornerActions["top-left"]
                                     options: SettingsSchema.cornerActionOptions()
                                     onChosen: function (value) { settingsView.controller.setHotCornerAction("top-left", value); }
+                                }
+
+                                SettingCommandField {
+                                    id: hotCornerTopLeftCommand
+                                    Layout.fillWidth: true
+                                    position: "top-left"
+                                    visible: settingsView.controller.hotCornerActions["top-left"] === "command"
                                 }
                             }
 
@@ -1208,12 +1474,20 @@ Item {
                                 label: "Top right"
                                 position: "top-right"
 
-                                SettingChoices {
-                                    id: hotCornerTopRightChoices
-                                    Layout.fillWidth: true
+                                SettingDropdown {
+                                    id: hotCornerTopRightAction
+                                    Layout.fillWidth: settingsDialog.narrow
+                                    Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                                     value: settingsView.controller.hotCornerActions["top-right"]
                                     options: SettingsSchema.cornerActionOptions()
                                     onChosen: function (value) { settingsView.controller.setHotCornerAction("top-right", value); }
+                                }
+
+                                SettingCommandField {
+                                    id: hotCornerTopRightCommand
+                                    Layout.fillWidth: true
+                                    position: "top-right"
+                                    visible: settingsView.controller.hotCornerActions["top-right"] === "command"
                                 }
                             }
 
@@ -1221,12 +1495,20 @@ Item {
                                 label: "Bottom left"
                                 position: "bottom-left"
 
-                                SettingChoices {
-                                    id: hotCornerBottomLeftChoices
-                                    Layout.fillWidth: true
+                                SettingDropdown {
+                                    id: hotCornerBottomLeftAction
+                                    Layout.fillWidth: settingsDialog.narrow
+                                    Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                                     value: settingsView.controller.hotCornerActions["bottom-left"]
                                     options: SettingsSchema.cornerActionOptions()
                                     onChosen: function (value) { settingsView.controller.setHotCornerAction("bottom-left", value); }
+                                }
+
+                                SettingCommandField {
+                                    id: hotCornerBottomLeftCommand
+                                    Layout.fillWidth: true
+                                    position: "bottom-left"
+                                    visible: settingsView.controller.hotCornerActions["bottom-left"] === "command"
                                 }
                             }
 
@@ -1234,12 +1516,20 @@ Item {
                                 label: "Bottom right"
                                 position: "bottom-right"
 
-                                SettingChoices {
-                                    id: hotCornerBottomRightChoices
-                                    Layout.fillWidth: true
+                                SettingDropdown {
+                                    id: hotCornerBottomRightAction
+                                    Layout.fillWidth: settingsDialog.narrow
+                                    Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
                                     value: settingsView.controller.hotCornerActions["bottom-right"]
                                     options: SettingsSchema.cornerActionOptions()
                                     onChosen: function (value) { settingsView.controller.setHotCornerAction("bottom-right", value); }
+                                }
+
+                                SettingCommandField {
+                                    id: hotCornerBottomRightCommand
+                                    Layout.fillWidth: true
+                                    position: "bottom-right"
+                                    visible: settingsView.controller.hotCornerActions["bottom-right"] === "command"
                                 }
                             }
 

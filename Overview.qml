@@ -134,6 +134,13 @@ Item {
     readonly property bool hotCornerEnabled: pluginSettings.ready && SettingsSchema.read(root.pluginEntry, "hotCornerEnabled")
     // What each corner does: { "top-left": "all-windows", ... }. See HotCorners.js.
     readonly property var hotCornerActions: HotCorners.read(root.pluginEntry)
+    readonly property var hotCornerCommands: {
+        var commands = {};
+        HotCorners.positions.forEach(function (position) {
+            commands[position] = HotCorners.commandFor(root.pluginEntry, position);
+        });
+        return commands;
+    }
     readonly property bool hotCornerAllDisplays: SettingsSchema.read(root.pluginEntry, "hotCornerAllDisplays")
     readonly property bool hotCornerIgnoreFullscreen: SettingsSchema.read(root.pluginEntry, "hotCornerIgnoreFullscreen")
     // Fullscreen events are only tracked while the setting is on.
@@ -152,7 +159,9 @@ Item {
         HotCorners.active(root.hotCornerActions).forEach(function (corner) {
             ScreenLayout.hotCornerScreens(screens, monitors, corner.position, root.hotCornerAllDisplays)
                 .forEach(function (screen) {
-                    result.push({ position: corner.position, action: corner.action, screen: screen });
+                    // No action here: changing what a corner does keeps its
+                    // surface, and the action is read when the corner fires.
+                    result.push({ position: corner.position, screen: screen });
                 });
         });
         return result;
@@ -495,11 +504,22 @@ Item {
         showDesktop.toggle();
     }
 
-    function runCornerAction(action, screenName) {
-        if (action === "desktop")
+    function runCornerAction(action, screenName, position) {
+        if (action === "desktop") {
             root.toggleDesktop();
-        else if (action === "all-windows" || action === "app-windows")
+            return;
+        }
+        if (action === "all-windows" || action === "app-windows") {
             root.showOverview(action, screenName);
+            return;
+        }
+        var argv = HotCorners.argvFor(action, HotCorners.commandFor(root.pluginEntry, position));
+        if (!argv)
+            return;
+        // What the corner opens should not land behind the overview.
+        if (root.opened || root.openingPending)
+            root.dismiss();
+        Quickshell.execDetached(argv);
     }
 
     function requestedBackgroundBlur() {
@@ -821,6 +841,16 @@ Item {
         return next;
     }
 
+    // The shell command a corner runs when its action is "command".
+    function setHotCornerCommand(position, command) {
+        if (!HotCorners.isPosition(position))
+            return "";
+        var next = String(command || "").trim();
+        if (next !== root.hotCornerCommands[position])
+            root.updatePluginSetting(HotCorners.commandKeyFor(position), next);
+        return next;
+    }
+
     // The single-corner setting: that corner opens all windows, alone.
     function setHotCornerPosition(position) {
         var next = HotCorners.isPosition(position) ? position : "top-left";
@@ -882,7 +912,7 @@ Item {
 
     // Every corner shares one latch: after any corner fires, none fires again
     // until the pointer has left the corners (see hotCornerRearm).
-    function triggerHotCorner(screenName, action) {
+    function triggerHotCorner(screenName, position) {
         if (!root.hotCornerEnabled || !root.hotCornerArmed)
             return;
         // Corners still close whatever they opened.
@@ -890,7 +920,7 @@ Item {
         if (idle && root.hotCornerIgnoreFullscreen && HotCorners.showsFullscreen(Hyprland.monitors ? Hyprland.monitors.values : [], screenName))
             return;
         root.hotCornerArmed = false;
-        root.runCornerAction(action, screenName);
+        root.runCornerAction(root.hotCornerActions[position], screenName, position);
     }
 
     function clearOverviewScreen() {
@@ -1885,6 +1915,9 @@ Item {
             });
         }
         function get(name: string): string {
+            for (var index = 0; index < HotCorners.positions.length; index++)
+                if (HotCorners.commandKeyFor(HotCorners.positions[index]) === name)
+                    return root.hotCornerCommands[HotCorners.positions[index]];
             if (!Object.prototype.hasOwnProperty.call(SettingsSchema.specs, name))
                 return SettingsSchema.expectedOneOf(Object.keys(SettingsSchema.specs));
             var corner = root.cornerForSetting(name);
@@ -1943,6 +1976,12 @@ Item {
             if (!HotCorners.isAction(action))
                 return SettingsSchema.expectedOneOf(HotCorners.actions);
             return root.setHotCornerAction(position, action);
+        }
+        // The command a corner runs with the "command" action; "" clears it.
+        function hotCornerCommand(position: string, command: string): string {
+            if (!HotCorners.isPosition(position))
+                return SettingsSchema.expectedOneOf(HotCorners.positions);
+            return root.setHotCornerCommand(position, command);
         }
         // Every corner at once, as JSON: { "top-left": "all-windows", ... }.
         function hotCorners(): string { return JSON.stringify(root.hotCornerActions); }
@@ -2059,7 +2098,7 @@ Item {
                 enabled: !root.surfaceMounted
                 onTop: cornerSurface.cornerOnTop
                 onLeft: cornerSurface.cornerOnLeft
-                onEntered: root.triggerHotCorner(String(cornerSurface.modelData.screen.name || ""), cornerSurface.modelData.action)
+                onEntered: root.triggerHotCorner(String(cornerSurface.modelData.screen.name || ""), cornerSurface.modelData.position)
                 onExited: root.scheduleHotCornerRearm()
             }
         }
@@ -2177,7 +2216,7 @@ Item {
                 enabled: root.surfaceMounted
                 onTop: HotCorners.onTop(modelData.position)
                 onLeft: HotCorners.onLeft(modelData.position)
-                onEntered: root.triggerHotCorner(String(surface.modelData.name || ""), modelData.action)
+                onEntered: root.triggerHotCorner(String(surface.modelData.name || ""), modelData.position)
                 onExited: root.scheduleHotCornerRearm()
             }
         }
