@@ -2254,11 +2254,10 @@ Item {
             property alias keyboardItem: keyCatcher
             readonly property alias windowLayout: overviewArea.windowLayout
             // Forwarded events don't bubble through the target's parents.
-            // Text edits (including saving on Escape) precede page shortcuts.
-            // Other settings controls follow the overview shortcuts.
+            // Settings controls (including popups) handle keys before page shortcuts.
             readonly property var keyboardTargets: {
                 var focused = keyCatcher.Window.window ? keyCatcher.Window.window.activeFocusItem : null;
-                if (focused instanceof TextInput)
+                if (root.settingsOpen && focused && focused !== keyCatcher)
                     return [focused, keyCatcher];
                 return focused && focused !== keyCatcher ? [keyCatcher, focused] : [keyCatcher];
             }
