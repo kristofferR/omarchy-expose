@@ -1,13 +1,20 @@
 .pragma library
 
-// Hot corner actions, named as macOS names them where that helps: All windows
-// is Mission Control, App windows is Application Windows.
+// Hot corner actions in the order the corner menu lists them: Exposé's own,
+// then Omarchy's, then a command of the user's own, then off. They follow the
+// macOS Hot Corners menu: All windows is Mission Control, App windows is
+// Application Windows, Notifications is Notification Center, Apps is Launchpad.
 function cornerActionOptions() {
     return [
-        { label: "Off", value: "off" },
-        { label: "All windows", value: "all-windows" },
-        { label: "App windows", value: "app-windows" },
-        { label: "Desktop", value: "desktop" }
+        { label: "All windows", value: "all-windows", group: "Exposé" },
+        { label: "App windows", value: "app-windows", group: "Exposé" },
+        { label: "Desktop", value: "desktop", group: "Exposé", hint: "Floating only" },
+        { label: "Notifications", value: "notifications", group: "Omarchy" },
+        { label: "Apps", value: "apps", group: "Omarchy" },
+        { label: "Screensaver", value: "screensaver", group: "Omarchy" },
+        { label: "Lock screen", value: "lock-screen", group: "Omarchy" },
+        { label: "Command", value: "command", group: "command" },
+        { label: "Off", value: "off", group: "off" }
     ];
 }
 

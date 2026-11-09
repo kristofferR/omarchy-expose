@@ -21,7 +21,8 @@ ShellRoot {
         property bool hotCornerEnabled: false
         property bool hotCornerAllDisplays: false
         property bool hotCornerIgnoreFullscreen: false
-        property var hotCornerActions: ({"top-left": "all-windows", "top-right": "off", "bottom-left": "app-windows", "bottom-right": "desktop"})
+        property var hotCornerActions: ({"top-left": "all-windows", "top-right": "command", "bottom-left": "app-windows", "bottom-right": "desktop"})
+        property var hotCornerCommands: ({"top-left": "", "top-right": "omarchy-launch-browser", "bottom-left": "", "bottom-right": ""})
         property int hotCornerDelayPreview: -1
         property int hotCornerDelay: 0
         readonly property int effectiveHotCornerDelay: hotCornerDelayPreview >= 0 ? hotCornerDelayPreview : hotCornerDelay
@@ -62,6 +63,12 @@ ShellRoot {
             next[position] = action;
             controller.hotCornerActions = next;
             return action;
+        }
+        function setHotCornerCommand(position, command) {
+            var next = Object.assign({}, controller.hotCornerCommands);
+            next[position] = command;
+            controller.hotCornerCommands = next;
+            return command;
         }
         function animationInDurationFor(style) { return 190; }
         function animationOutDurationFor(style) { return 190; }
@@ -131,8 +138,9 @@ ShellRoot {
     function checkSettingsPage(index) {
         var items = settings.settingsFocusItems();
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
-        // Page 4: category, enable, four corners, all displays, delay.
-        var expectedCounts = [5, 5, 3, 4, 9, 8];
+        // Page 4: category, enable, four corner actions, top right's command,
+        // all displays, ignore fullscreen, delay.
+        var expectedCounts = [5, 5, 3, 4, 10, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

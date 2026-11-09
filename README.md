@@ -105,7 +105,12 @@ Each corner runs one action, chosen independently, as on macOS:
 | --- | --- | --- |
 | All windows | Mission Control | Opens Exposé with every window |
 | App windows | Application Windows | Opens Exposé with the focused app's windows only, minimized ones included. The search field names the app |
-| Desktop | Show Desktop | Moves windows aside to show the desktop |
+| Desktop | Show Desktop | Moves windows aside to show the desktop, on floating workspaces |
+| Notifications | Notification Center | Shows Omarchy's notification history |
+| Apps | Launchpad | Opens Omarchy's app grid |
+| Screensaver | Start Screen Saver | Starts Omarchy's screensaver |
+| Lock screen | Lock Screen | Locks the session |
+| Command | – | Runs a shell command you type for that corner |
 | Off | – | Nothing |
 
 They behave like their macOS counterparts:
@@ -114,6 +119,7 @@ They behave like their macOS counterparts:
 - App windows matches windows by app id, never by title, so a window titled after another app does not join its group. With no window to take an app from, it shows all windows.
 - Desktop is a temporary peek. Triggering it again brings the windows back, and so does anything that needs a window: opening or focusing one, picking one in Exposé or the dock, or switching workspace. Windows return to their own workspace in their own place. Triggering Desktop with Exposé open closes Exposé and shows the desktop.
 - Desktop minimizes windows with Omarchy's own command, so it works on floating workspaces, where the dock brings windows back. On a tiled workspace it leaves the layout alone and says so once. Pinned, fullscreen, and grouped windows stay put, and a window you minimized yourself is never brought back by it. If Omarchy Shell restarts during a peek, the windows come back.
+- Notifications, Apps, Screensaver, Lock screen, and Command close Exposé first if it is open, so what they open is not hidden behind it. A command runs in a login shell (`bash -lc`), so it sees the same PATH as your terminal.
 - Every corner shares one latch: after a corner fires, none fires again until the pointer has left it, so resting in a corner never repeats an action.
 - With **Ignore fullscreen windows** on, corners rest on a display showing a fullscreen window, such as a video or a game. Maximized windows do not count, and a corner still closes Exposé or Desktop.
 
@@ -137,7 +143,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
-- Hot corners on/off, an action for each corner (All windows, App windows, Desktop, or Off; top left opens all windows by default), All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
+- Hot corners on/off, an action for each corner from a list (All windows, App windows, Desktop, Notifications, Apps, Screensaver, Lock screen, Command, or Off; top left opens all windows by default), a command for each Command corner, All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
 - Close button: off (default) or on, a ✕ on the window under the pointer that closes it, in its top right (default) or top left corner
 
@@ -171,7 +177,8 @@ omarchy-shell expose windowFooterStyle floating  # floating | integrated | overl
 omarchy-shell expose selectionStyle outline      # outline | lift
 omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor
 omarchy-shell expose hotCorner on                # on | off, every corner
-omarchy-shell expose hotCornerAction bottom-left app-windows  # corner: off | all-windows | app-windows | desktop
+omarchy-shell expose hotCornerAction bottom-left app-windows  # corner: off | all-windows | app-windows | desktop | notifications | apps | screensaver | lock-screen | command
+omarchy-shell expose hotCornerCommand top-right omarchy-launch-browser  # the command a Command corner runs; "" clears it
 omarchy-shell expose hotCorners                  # JSON: every corner's action
 omarchy-shell expose hotCornerPosition top-left  # older form: that corner opens all windows, alone
 omarchy-shell expose hotCornerAllDisplays off    # off: outermost display (default) | on: every display

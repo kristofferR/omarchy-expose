@@ -3,10 +3,15 @@
 // macOS-style hot corners: each of the four corners runs one action, chosen
 // independently, as in System Settings > Desktop & Dock > Hot Corners.
 //
-//   all-windows  Exposé with every window (Mission Control)
-//   app-windows  Exposé with the focused app's windows (Application Windows)
-//   desktop      move windows aside to show the desktop (Desktop)
-//   off          nothing
+//   all-windows    Exposé with every window (Mission Control)
+//   app-windows    Exposé with the focused app's windows (Application Windows)
+//   desktop        move windows aside to show the desktop (Desktop)
+//   notifications  Omarchy's notification history (Notification Center)
+//   apps           Omarchy's app grid (Launchpad)
+//   screensaver    Omarchy's screensaver (Start Screen Saver)
+//   lock-screen    lock the session (Lock Screen)
+//   command        a shell command of the user's own, stored per corner
+//   off            nothing
 //
 // Entries saved before per-corner actions name a single corner in
 // hotCornerPosition, which opened all windows. That corner is the default; a
@@ -24,11 +29,37 @@ var keys = {
     "bottom-right": "hotCornerBottomRight"
 };
 
-var actions = ["off", "all-windows", "app-windows", "desktop"];
+var actions = ["off", "all-windows", "app-windows", "desktop", "notifications", "apps", "screensaver", "lock-screen", "command"];
+
+// What the actions outside Exposé run.
+var commands = {
+    "notifications": ["omarchy-shell", "notifications", "showHistory"],
+    "apps": ["omarchy-shell", "omarchy.dock", "apps"],
+    "screensaver": ["omarchy-launch-screensaver", "force"],
+    "lock-screen": ["omarchy-system-lock"]
+};
 
 function isPosition(position) { return positions.indexOf(position) !== -1; }
 function isAction(action) { return actions.indexOf(action) !== -1; }
 function keyFor(position) { return keys[position]; }
+function commandKeyFor(position) { return keys[position] + "Command"; }
+
+// The command a corner stores for its "command" action, trimmed.
+function commandFor(entry, position) {
+    var stored = entry ? entry[commandKeyFor(position)] : undefined;
+    return typeof stored === "string" ? stored.trim() : "";
+}
+
+// The argv a corner's action runs, or null for Exposé's own actions and an
+// empty command. A user's command runs in a login shell, so it sees the PATH
+// their terminal does.
+function argvFor(action, command) {
+    if (commands[action])
+        return commands[action];
+    if (action === "command" && command)
+        return ["bash", "-lc", command];
+    return null;
+}
 function onTop(position) { return String(position).indexOf("top-") === 0; }
 function onLeft(position) { return String(position).indexOf("-left") !== -1; }
 
