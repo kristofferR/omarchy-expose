@@ -35,7 +35,8 @@ import "WindowModel.js" as WindowModel
 // only ever lands on windows that were not minimized when the peek began. A
 // window that takes focus in that time without being one of them, opened
 // fresh or brought back from the dock, is remembered and ends the peek at
-// settle.
+// settle, and so is one of the peek's own windows brought back after it was
+// minimized.
 // One transition runs at a time. While hiding, a hide or toggle is kept and
 // brings the windows back as soon as they are minimized; while restoring,
 // show/toggle are ignored.
@@ -261,9 +262,15 @@ Item {
             var top = Hyprland.activeToplevel;
             if (root.shown && root.settled && top && top !== root.focusBaseline)
                 root.restore(false);
-            else if (top && !root.settled && (root.phase === "hiding" || root.shown)
-                    && !root.knownAddresses[WindowModel.addressFor(top)])
-                root.openedWhileSettling = true;
+            else if (top && !root.settled && (root.phase === "hiding" || root.shown)) {
+                var address = WindowModel.addressFor(top);
+                // Once shown, every window of the peek is minimized; one that
+                // takes focus out of the minimized state was brought back.
+                var restored = root.shown && root.entryFor(address, root.entries) !== null
+                    && !WindowModel.isMinimized(top);
+                if (!root.knownAddresses[address] || restored)
+                    root.openedWhileSettling = true;
+            }
         }
         function onFocusedWorkspaceChanged() {
             if (root.shown && root.settled && root.endedWhileSettling())
