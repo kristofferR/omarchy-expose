@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import "WindowModel.js" as WindowModel
+import "CapturePolicy.js" as CapturePolicy
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui as Ui
@@ -106,7 +107,7 @@ Ui.BorderSurface {
         var strip = card.workspaceStrip;
         var target = strip ? strip.dropTarget : null;
         if (strip)
-            strip.dropTarget = null;
+            strip.clearDrag();
         card.dragging = false;
         // Escape ends a drag while the button is still down; moving on must
         // not start another.
@@ -116,7 +117,7 @@ Ui.BorderSurface {
         card.dragX = 0;
         card.dragY = 0;
         if (drop && strip && target !== null)
-            card.controller.moveToWorkspace(card.modelData, target, strip.screenName);
+            strip.dropWindow(card.modelData, target);
     }
 
     transform: [
@@ -176,12 +177,13 @@ Ui.BorderSurface {
                 if (Math.sqrt(dx * dx + dy * dy) < Style.space(10))
                     return;
                 card.dragging = true;
+                card.workspaceStrip.beginDrag();
                 cardMouse.suppressClick = true;
                 card.controller.draggedToplevel = card.modelData;
             }
             card.dragX = dx;
             card.dragY = dy;
-            card.workspaceStrip.dropTarget = card.workspaceStrip.targetAt(null, point.x, point.y);
+            card.workspaceStrip.updateDrag(null, point.x, point.y);
         }
         onReleased: {
             cardMouse.mayDrag = false;
@@ -275,7 +277,8 @@ Ui.BorderSurface {
                     WindowCapture {
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
-                        live: card.controller.opened && card.inLayout
+                        active: CapturePolicy.active(card.controller.opened, card.controller.surfaceMounted, card.inLayout)
+                        live: CapturePolicy.live(card.controller.opened, card.inLayout, card.controller.lowLoadPreviews)
                     }
 
                 }

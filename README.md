@@ -136,6 +136,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90)
 - Selection highlight: outline (default) or lift, which raises and lights only the window Enter opens and marks the current one with a dot
+- Low-load previews: off (default) uses live window previews; on captures one still frame per window while Exposé is open, refreshing the next time it opens
 - Quick Look position: in-place or centered
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
@@ -173,6 +174,7 @@ omarchy-shell expose backgroundMode wallpaper    # desktop | wallpaper
 omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
+omarchy-shell expose lowLoadPreviews on          # on: still previews | off: live previews
 omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
 omarchy-shell expose selectionStyle outline      # outline | lift
 omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor

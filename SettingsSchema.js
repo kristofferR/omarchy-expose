@@ -47,6 +47,7 @@ var specs = {
             { label: "Lift", value: "lift" }
         ]
     },
+    lowLoadPreviews: { fallback: false },
     animationStyle: {
         fallback: "original",
         options: [

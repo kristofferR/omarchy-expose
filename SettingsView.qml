@@ -992,7 +992,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
+            [lowLoadPreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
@@ -1266,6 +1266,20 @@ Item {
                         title: "Quick Look and activation"
 
                         SettingRow {
+                            label: "Low-load previews"
+                            description: "Use one still frame per window while Exposé is open, instead of continuously updating live previews. Frames refresh the next time you open Exposé."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: lowLoadPreviewsToggle
+                                objectName: "lowLoadPreviewsToggle"
+                                checked: settingsView.controller.lowLoadPreviews
+                                onToggled: function (checked) { settingsView.controller.setSetting("lowLoadPreviews", checked); }
+                            }
+                        }
+
+                        SettingRow {
                             label: "Selection highlight"
                             description: "Outline borders the selected, hovered, and current windows alike. Lift raises only the window Enter opens and marks the current window with a dot."
 
@@ -1396,7 +1410,7 @@ Item {
 
                         SettingRow {
                             label: "Workspace strip"
-                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip."
+                            description: "Show workspaces above the windows. With multiple displays, use the monitor row to choose the destination; this does not change which windows the grid includes. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip."
 
                             Item { Layout.fillWidth: true }
 
@@ -1408,8 +1422,8 @@ Item {
                         }
 
                         SettingRow {
-                            label: "Drag windows to workspaces"
-                            description: "Drop a window on a workspace in the strip, or on +, to move it there. Exposé stays open; Escape cancels a drag."
+                            label: "Drag windows to workspaces and monitors"
+                            description: "Drop on a workspace or + to move a window. Hover over a monitor for a moment to show its workspaces, or drop directly on it to use its active workspace. Exposé stays open; Escape cancels a drag."
                             enabled: settingsView.controller.workspaceStrip
 
                             Item { Layout.fillWidth: true }

@@ -38,6 +38,7 @@ ShellRoot {
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
         property string selectionStyle: "outline"
+        property bool lowLoadPreviews: false
         property string animationStyle: "original"
         property string animationDurationPreviewStyle: ""
         property int animationInDurationPreview: -1
@@ -140,8 +141,10 @@ ShellRoot {
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
         // Page 4: category, enable, four corner actions, top right's command,
         // all displays, ignore fullscreen, delay.
-        var expectedCounts = [5, 5, 3, 4, 10, 8];
+        var expectedCounts = [5, 6, 3, 4, 10, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
+        if (index % 6 === 1)
+            require(items.some(function (item) { return item.objectName === "lowLoadPreviewsToggle"; }), "low-load previews toggle is keyboard focusable");
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);
         require(settings.holdsFocus(), "settings report their own focus on page " + index);
