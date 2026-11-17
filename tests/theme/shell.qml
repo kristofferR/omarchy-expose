@@ -38,6 +38,7 @@ ShellRoot {
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
         property string selectionStyle: "outline"
+        property bool lowLoadPreviews: false
         property string animationStyle: "original"
         property string animationDurationPreviewStyle: ""
         property int animationInDurationPreview: -1

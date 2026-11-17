@@ -1,7 +1,10 @@
 import QtQuick
 import QtQuick.Effects
+import Quickshell
 import "WindowModel.js" as WindowModel
 import "WorkspaceModel.js" as WorkspaceModel
+import "MonitorTargets.js" as MonitorTargets
+import "CapturePolicy.js" as CapturePolicy
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui as Ui
@@ -24,10 +27,101 @@ Item {
     required property var captureItemFor
     // Where a dragged card would land: a workspace id, "new", or null.
     property var dropTarget: null
+    property string destinationScreenName: screenName
+    property string hoveredMonitor: ""
+    readonly property var destinationScreen: {
+        var screens = Quickshell.screens;
+        for (var i = 0; i < screens.length; i++)
+            if (screens[i].name === destinationScreenName) return screens[i];
+        return null;
+    }
+    readonly property var destinationMonitor: controller.monitorForScreen(destinationScreenName)
+    readonly property real destinationWidth: destinationScreen ? destinationScreen.width : screenWidth
+    readonly property real destinationHeight: destinationScreen ? destinationScreen.height : screenHeight
+    readonly property real destinationX: destinationMonitor ? destinationMonitor.x : screenX
+    readonly property real destinationY: destinationMonitor ? destinationMonitor.y : screenY
+    readonly property real monitorRowHeight: Quickshell.screens.length > 1 ? Style.space(36) : 0
+    onScreenNameChanged: destinationScreenName = screenName
+    onDestinationScreenChanged: {
+        if (!destinationScreen) destinationScreenName = screenName;
+    }
+    function beginDrag() {
+        destinationScreenName = screenName;
+        clearDrag();
+    }
+    function clearDrag() {
+        monitorHover.stop();
+        hoveredMonitor = "";
+        dropTarget = null;
+    }
+    function updateDrag(item, x, y) {
+        var name = "";
+        for (var i = 0; i < monitorTiles.count; i++) {
+            var tile = monitorTiles.itemAt(i);
+            if (tile && tile.contains(tile.mapFromItem(item, x, y))) {
+                name = tile.outputName; // qmllint disable missing-property
+                break;
+            }
+        }
+        if (name !== hoveredMonitor) {
+            hoveredMonitor = name;
+            monitorHover.stop();
+            if (name && name !== destinationScreenName) monitorHover.restart();
+        }
+        dropTarget = name ? { monitor: name } : targetAt(item, x, y);
+    }
+    function dropWindow(top, target) {
+        var active = target && typeof target === "object"
+            ? controller.activeWorkspaceIdForScreen(target.monitor) : 0;
+        var destination = MonitorTargets.destination(target, destinationScreenName, active);
+        if (destination) controller.moveToWorkspace(top, destination.workspace, destination.monitor);
+    }
+    Timer {
+        id: monitorHover
+        interval: 300
+        onTriggered: if (strip.hoveredMonitor) strip.destinationScreenName = strip.hoveredMonitor
+    }
+    Row {
+        id: monitorRow
+        visible: strip.monitorRowHeight > 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Style.spacing.sm
+        Repeater {
+            id: monitorTiles
+            model: Quickshell.screens.length > 1 ? Quickshell.screens : []
+            Rectangle {
+                required property var modelData
+                readonly property string outputName: String(modelData.name)
+                width: Math.min(Style.space(160), Math.max(Style.space(50), (strip.width - monitorRow.spacing * (monitorTiles.count - 1)) / Math.max(1, monitorTiles.count)))
+                height: Style.space(28)
+                radius: Style.space(4)
+                color: outputName === strip.destinationScreenName ? Commons.Color.accent : Commons.Color.menu.background
+                border.width: 1
+                border.color: outputName === strip.hoveredMonitor ? Commons.Color.accent : Commons.Color.menu.text
+                Text {
+                    anchors.fill: parent
+                    anchors.margins: Style.space(4)
+                    text: parent.outputName
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    color: Commons.Color.menu.text
+                    font.family: Style.font.menuFamily
+                    font.pixelSize: Style.font.bodySmall
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: strip.destinationScreenName = parent.outputName
+                }
+            }
+        }
+    }
 
     // Reassigned only when the workspaces change, so thumbnails and their
     // captures survive other updates.
-    readonly property var workspacesSource: strip.controller.stripWorkspacesForScreen(strip.screenName)
+    readonly property var workspacesSource: strip.controller.stripWorkspacesForScreen(strip.destinationScreenName)
     property var workspaces: []
     onWorkspacesSourceChanged: {
         if (!strip.controller.toplevelListsEqual(strip.workspaces, strip.workspacesSource))
@@ -35,9 +129,9 @@ Item {
     }
     Component.onCompleted: strip.workspaces = strip.workspacesSource
 
-    readonly property bool canAdd: strip.controller.newWorkspaceIdForScreen(strip.screenName) > 0
+    readonly property bool canAdd: strip.controller.newWorkspaceIdForScreen(strip.destinationScreenName) > 0
     readonly property real aspect: strip.screenWidth > 0 && strip.screenHeight > 0
-        ? strip.screenWidth / strip.screenHeight
+        ? strip.destinationWidth / strip.destinationHeight
         : 16 / 9
     readonly property real gap: Style.spacing.md
     readonly property real labelHeight: Style.space(22)
@@ -51,7 +145,7 @@ Item {
     }
     readonly property real thumbWidth: strip.thumbHeight * strip.aspect
     readonly property real radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-    implicitHeight: strip.thumbHeight + strip.labelHeight
+    implicitHeight: strip.monitorRowHeight + strip.thumbHeight + strip.labelHeight
 
     // The drop target under a point in `item` coordinates.
     function targetAt(item, x, y) {
@@ -78,6 +172,7 @@ Item {
     }
 
     Row {
+        y: strip.monitorRowHeight
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: strip.gap
 
@@ -89,11 +184,11 @@ Item {
                 id: thumb
                 required property var modelData
                 readonly property int workspaceId: Number(modelData.id)
-                readonly property bool current: strip.controller.activeWorkspaceIdForScreen(strip.screenName) === thumb.workspaceId
+                readonly property bool current: strip.controller.activeWorkspaceIdForScreen(strip.destinationScreenName) === thumb.workspaceId
                 readonly property bool targeted: strip.dropTarget === thumb.workspaceId
                 readonly property alias frame: frame
                 width: strip.thumbWidth
-                height: strip.implicitHeight
+                height: strip.thumbHeight + strip.labelHeight
 
                 readonly property var windowsSource: {
                     var revision = strip.controller.modelRevision;
@@ -143,15 +238,15 @@ Item {
                                 id: thumbWindow
                                 required property var modelData
                                 readonly property var ipc: WindowModel.ipcFor(modelData)
-                                readonly property real ratio: strip.thumbWidth / Math.max(1, strip.screenWidth)
+                                readonly property real ratio: strip.thumbWidth / Math.max(1, strip.destinationWidth)
                                 // The window's card already captures it, so the
                                 // thumbnail scales that down instead of capturing
                                 // again. A window without a card in the grid,
                                 // such as one outside the current scope, is
                                 // captured here instead.
                                 readonly property var shared: strip.captureItemFor(modelData)
-                                x: ((ipc.at || [0, 0])[0] - strip.screenX) * ratio
-                                y: ((ipc.at || [0, 0])[1] - strip.screenY) * ratio
+                                x: ((ipc.at || [0, 0])[0] - strip.destinationX) * ratio
+                                y: ((ipc.at || [0, 0])[1] - strip.destinationY) * ratio
                                 width: (ipc.size || [0, 0])[0] * ratio
                                 height: (ipc.size || [0, 0])[1] * ratio
                                 z: WorkspaceModel.stackLevel(ipc)
@@ -175,7 +270,8 @@ Item {
                                     id: ownCapture
                                     WindowCapture {
                                         source: strip.controller.captureSourceFor(thumbWindow.modelData)
-                                        live: strip.controller.opened
+                                        active: CapturePolicy.active(strip.controller.opened, true)
+                                        live: CapturePolicy.live(strip.controller.opened, true, strip.controller.lowLoadPreviews)
                                     }
                                 }
                             }
@@ -206,7 +302,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: strip.controller.switchToWorkspace(thumb.workspaceId, strip.screenName)
+                        onClicked: strip.controller.switchToWorkspace(thumb.workspaceId, strip.destinationScreenName)
                     }
                 }
 
@@ -256,7 +352,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: strip.controller.addWorkspace(strip.screenName)
+                onClicked: strip.controller.addWorkspace(strip.destinationScreenName)
             }
         }
     }

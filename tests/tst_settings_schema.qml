@@ -32,6 +32,8 @@ TestCase {
         compare(Schema.read({moveCursorToWindow: false}, "moveCursorToWindow"), false);
         compare(Schema.read({hotCornerAllDisplays: "yes"}, "hotCornerAllDisplays"), false);
         compare(Schema.read({hotCornerAllDisplays: true}, "hotCornerAllDisplays"), true);
+        compare(Schema.read(null, "lowLoadPreviews"), false);
+        compare(Schema.read({lowLoadPreviews: true}, "lowLoadPreviews"), true);
     }
 
     function test_normalizeInvalidIntegerKeepsCurrent() {
@@ -44,6 +46,7 @@ TestCase {
         compare(Schema.normalize("previewPlacement", "middle", "centered"), "in-place");
         compare(Schema.normalize("showFooter", "true", true), false);
         compare(Schema.normalize("showFooter", true, false), true);
+        compare(Schema.normalize("lowLoadPreviews", false, true), false);
     }
 
     function test_expectedOneOfReadsNaturallyForOneTwoAndMany() {
@@ -59,6 +62,7 @@ TestCase {
         compare(Schema.parseIpc("multiMonitorMode", "x").error, "expected mirrored, per-monitor, or all-monitors");
         compare(Schema.parseIpc("showFooter", "yes").error, "expected on or off");
         compare(Schema.parseIpc("showFooter", "off").value, false);
+        compare(Schema.parseIpc("lowLoadPreviews", "on").value, true);
         compare(Schema.parseIpc("hotCornerPosition", "top-right").value, "top-right");
     }
 
