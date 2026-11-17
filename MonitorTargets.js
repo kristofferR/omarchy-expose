@@ -1,5 +1,9 @@
 // Resolve a drop without mutating compositor state. Monitor targets use their
 // live active workspace at release; workspace targets use the selected monitor.
+function destinationAtDragStart(selectedMonitor, sourceMonitor) {
+    return selectedMonitor || sourceMonitor;
+}
+
 function destination(target, selectedMonitor, activeWorkspace) {
     if (target === null || target === undefined) return null;
     if (typeof target === "object") {

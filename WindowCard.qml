@@ -277,7 +277,7 @@ Ui.BorderSurface {
                     WindowCapture {
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
-                        active: CapturePolicy.active(card.controller.opened, card.inLayout)
+                        active: CapturePolicy.active(card.controller.opened, card.controller.surfaceMounted, card.inLayout)
                         live: CapturePolicy.live(card.controller.opened, card.inLayout, card.controller.lowLoadPreviews)
                     }
 

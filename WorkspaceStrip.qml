@@ -46,7 +46,7 @@ Item {
         if (!destinationScreen) destinationScreenName = screenName;
     }
     function beginDrag() {
-        destinationScreenName = screenName;
+        destinationScreenName = MonitorTargets.destinationAtDragStart(destinationScreenName, screenName);
         clearDrag();
     }
     function clearDrag() {
@@ -270,7 +270,7 @@ Item {
                                     id: ownCapture
                                     WindowCapture {
                                         source: strip.controller.captureSourceFor(thumbWindow.modelData)
-                                        active: CapturePolicy.active(strip.controller.opened, true)
+                                        active: CapturePolicy.active(strip.controller.opened, strip.controller.surfaceMounted, true)
                                         live: CapturePolicy.live(strip.controller.opened, true, strip.controller.lowLoadPreviews)
                                     }
                                 }

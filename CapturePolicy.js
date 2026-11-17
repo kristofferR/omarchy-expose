@@ -1,11 +1,11 @@
 // Keep capture lifecycle decisions independent from Wayland so they can be
 // covered by the QML unit tests without a running compositor.
-function active(opened, visible) {
-    return Boolean(opened && visible);
+function active(opened, surfaceMounted, visible) {
+    return Boolean((opened || surfaceMounted) && visible);
 }
 
 function live(opened, visible, lowLoadPreviews) {
-    return active(opened, visible) && !lowLoadPreviews;
+    return Boolean(opened && visible && !lowLoadPreviews);
 }
 
 function captureSource(enabled, restarting, source) {

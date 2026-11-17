@@ -13,8 +13,8 @@ ScreencopyView {
     id: capture
 
     required property var source
-    // Capture only while Exposé is open. In still mode, this also makes each
-    // opening take a fresh frame without keeping hidden captures alive.
+    // Keep the source bound while its overview surface is mounted, including
+    // the exit animation. In still mode, this also refreshes each opening.
     property bool active: true
     property bool restarting: false
     property int failures: 0

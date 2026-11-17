@@ -4,6 +4,11 @@ import "../MonitorTargets.js" as Targets
 
 TestCase {
     name: "MonitorTargets"
+    function test_dragKeepsSelectedMonitorOrDefaultsToSource() {
+        compare(Targets.destinationAtDragStart("DP-2", "eDP-1"), "DP-2");
+        compare(Targets.destinationAtDragStart("", "eDP-1"), "eDP-1");
+    }
+
     function test_workspaceUsesSelectedDestination() {
         compare(Targets.destination(21, "DP-1", 3), {monitor: "DP-1", workspace: 21});
         compare(Targets.destination("new", "DP-2", 0), {monitor: "DP-2", workspace: "new"});

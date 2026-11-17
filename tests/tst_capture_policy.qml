@@ -6,20 +6,29 @@ TestCase {
     name: "CapturePolicy"
 
     function test_closedOrOutOfLayoutCaptureIsInactive() {
-        verify(!CapturePolicy.active(false, true));
-        verify(!CapturePolicy.active(true, false));
+        verify(!CapturePolicy.active(false, false, true));
+        verify(!CapturePolicy.active(true, false, false));
         verify(!CapturePolicy.live(false, true, false));
         verify(!CapturePolicy.live(true, false, false));
     }
 
     function test_liveModeStreamsOnlyVisibleWindows() {
-        verify(CapturePolicy.active(true, true));
+        verify(CapturePolicy.active(true, false, true));
         verify(CapturePolicy.live(true, true, false));
     }
 
     function test_lowLoadModeKeepsVisibleCaptureStill() {
-        verify(CapturePolicy.active(true, true));
+        verify(CapturePolicy.active(true, false, true));
         verify(!CapturePolicy.live(true, true, true));
+    }
+
+    function test_dismissalStopsLiveUpdatesButKeepsCaptureMounted() {
+        var source = ({window: "example"});
+        var active = CapturePolicy.active(false, true, true);
+        var live = CapturePolicy.live(false, true, false);
+        verify(active, "the capture stays active through the exit animation");
+        verify(!live, "live updates stop when dismissal begins");
+        verify(CapturePolicy.shouldCaptureStill(active, live, source));
     }
 
     function test_captureSourceIsReleasedWhenInactiveOrRestarting() {

@@ -992,7 +992,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
+            [lowLoadPreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
@@ -1273,6 +1273,7 @@ Item {
 
                             SettingToggle {
                                 id: lowLoadPreviewsToggle
+                                objectName: "lowLoadPreviewsToggle"
                                 checked: settingsView.controller.lowLoadPreviews
                                 onToggled: function (checked) { settingsView.controller.setSetting("lowLoadPreviews", checked); }
                             }
