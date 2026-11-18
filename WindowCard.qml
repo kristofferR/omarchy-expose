@@ -19,7 +19,7 @@ Ui.BorderSurface {
     // The display's workspace strip, which a card can be dragged onto; null
     // when the strip is off.
     property var workspaceStrip: null
-    // The live capture, which workspace thumbnails draw from too.
+    // The window's capture, which workspace thumbnails draw from too.
     readonly property alias captureItem: captureLayer
     // Position in the filtered list; -1 hides the card.
     readonly property int slot: card.screenToplevels.indexOf(modelData)
@@ -256,7 +256,7 @@ Ui.BorderSurface {
 
                 CardText {
                     anchors.centerIn: parent
-                    text: "Live preview unavailable"
+                    text: "Preview unavailable"
                     opacity: 0.45
                 }
 
@@ -275,7 +275,7 @@ Ui.BorderSurface {
                     WindowCapture {
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
-                        live: card.controller.opened && card.inLayout
+                        live: card.controller.livePreviews && card.controller.opened && card.inLayout
                     }
 
                 }

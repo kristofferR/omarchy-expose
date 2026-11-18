@@ -6,7 +6,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 
 ## Highlights
 
-- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too.
+- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too. On a slower computer, turn them off to show a still of each window instead, which uses fewer resources.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace, and pick which of the two the overview opens with. Each display uses its own active workspace in the current-workspace scope. Workspaces are numbered 1-10 on every monitor, as in the bar, and windows minimized to the dock show as **Minimized**; picking one brings it back to the current workspace.
@@ -135,6 +135,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90)
+- Live previews: on (default) or off, which shows a still of each window instead and uses fewer resources on slower computers
 - Selection highlight: outline (default) or lift, which raises and lights only the window Enter opens and marks the current one with a dot
 - Quick Look position: in-place or centered
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
@@ -173,6 +174,7 @@ omarchy-shell expose backgroundMode wallpaper    # desktop | wallpaper
 omarchy-shell expose backgroundBlur 4            # 0-20
 omarchy-shell expose backgroundDim 6             # 0-90
 omarchy-shell expose previewPlacement in-place   # in-place | centered
+omarchy-shell expose livePreviews on             # on (default) | off: stills, lighter on slower computers
 omarchy-shell expose windowFooterStyle floating  # floating | integrated | overlay | centered
 omarchy-shell expose selectionStyle outline      # outline | lift
 omarchy-shell expose multiMonitorMode mirrored   # mirrored | per-monitor

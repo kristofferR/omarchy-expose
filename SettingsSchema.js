@@ -109,6 +109,7 @@ var specs = {
     hotCornerEnabled: { fallback: true },
     hotCornerAllDisplays: { fallback: false },
     hotCornerIgnoreFullscreen: { fallback: false },
+    livePreviews: { fallback: true },
     moveCursorToWindow: { fallback: true },
     showFooter: { fallback: true },
     closeButton: { fallback: false },

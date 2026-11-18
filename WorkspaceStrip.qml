@@ -175,7 +175,7 @@ Item {
                                     id: ownCapture
                                     WindowCapture {
                                         source: strip.controller.captureSourceFor(thumbWindow.modelData)
-                                        live: strip.controller.opened
+                                        live: strip.controller.livePreviews && strip.controller.opened
                                     }
                                 }
                             }
