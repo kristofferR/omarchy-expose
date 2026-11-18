@@ -992,7 +992,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
+            [livePreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
@@ -1263,7 +1263,20 @@ Item {
 
                     SettingsPage {
                         categoryIndex: 1
-                        title: "Quick Look and activation"
+                        title: "Previews and activation"
+
+                        SettingRow {
+                            label: "Live previews"
+                            description: "Keep previews moving while Exposé is open, so videos play and terminals scroll. Turn off to show stills instead, which use fewer resources and suit slower computers."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: livePreviewsToggle
+                                checked: settingsView.controller.livePreviews
+                                onToggled: function (checked) { settingsView.controller.setSetting("livePreviews", checked); }
+                            }
+                        }
 
                         SettingRow {
                             label: "Selection highlight"
