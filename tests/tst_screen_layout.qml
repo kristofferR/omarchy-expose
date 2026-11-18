@@ -47,6 +47,29 @@ TestCase {
         }
     }
 
+    function test_displaysRunLeftToRightThenTopToBottom() {
+        var screens = [
+            { name: "right", width: 1080, height: 1920 },
+            { name: "lower", width: 1920, height: 1080 },
+            { name: "upper", width: 2560, height: 1440 }
+        ];
+        var monitors = [
+            { name: "lower", x: -1920, y: 0 },
+            { name: "right", x: 640, y: -200 },
+            { name: "upper", x: -1920, y: -1440 }
+        ];
+        compare(ScreenLayout.displays(screens, monitors), [
+            { name: "upper", x: -1920, y: -1440, width: 2560, height: 1440 },
+            { name: "lower", x: -1920, y: 0, width: 1920, height: 1080 },
+            { name: "right", x: 640, y: -200, width: 1080, height: 1920 }
+        ]);
+    }
+
+    function test_displayWithoutMonitorSitsAtTheOrigin() {
+        compare(ScreenLayout.displays([{ name: "new", width: 1920, height: 1080 }], []),
+            [{ name: "new", x: 0, y: 0, width: 1920, height: 1080 }]);
+    }
+
     function test_allDisplaysAndHotplug() {
         var left = { name: "left", width: 1920, height: 1080 };
         var right = { name: "right", width: 1920, height: 1080 };

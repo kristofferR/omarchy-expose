@@ -6,7 +6,10 @@ checks current-wallpaper symlink replacement, special characters in paths,
 inactive cleanup, missing targets, and recovery using temporary files only.
 The theme runtime check also exercises every settings page at desktop and narrow
 widths, focus traversal and wrapping, disabled hot-corner controls, conditional
-Motion controls, and scrolling focused controls into view. Run
+Motion controls, and scrolling focused controls into view. It then drags over a
+workspace strip with two displays: drops on a display tile, a workspace, and +,
+a cancelled drag, a held drag that switches the strip to the other display, and
+that display being unplugged. Run
 `./tests/check-theme-runtime /tmp/expose-settings` to save rendered page captures.
 `./tests/check-blur-lock` checks the blur helper with a temporary runtime directory
 and fake `hyprctl`: planted symlinks and invalid lock paths cannot damage files or

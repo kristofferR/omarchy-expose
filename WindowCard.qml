@@ -103,10 +103,6 @@ Ui.BorderSurface {
     }
 
     function endDrag(drop) {
-        var strip = card.workspaceStrip;
-        var target = strip ? strip.dropTarget : null;
-        if (strip)
-            strip.dropTarget = null;
         card.dragging = false;
         // Escape ends a drag while the button is still down; moving on must
         // not start another.
@@ -115,8 +111,8 @@ Ui.BorderSurface {
             card.controller.draggedToplevel = null;
         card.dragX = 0;
         card.dragY = 0;
-        if (drop && strip && target !== null)
-            card.controller.moveToWorkspace(card.modelData, target, strip.screenName);
+        if (card.workspaceStrip)
+            card.workspaceStrip.endDrag(drop ? card.modelData : null);
     }
 
     transform: [
@@ -181,7 +177,7 @@ Ui.BorderSurface {
             }
             card.dragX = dx;
             card.dragY = dy;
-            card.workspaceStrip.dropTarget = card.workspaceStrip.targetAt(null, point.x, point.y);
+            card.workspaceStrip.dragTo(null, point.x, point.y);
         }
         onReleased: {
             cardMouse.mayDrag = false;

@@ -306,6 +306,8 @@ Item {
         return DisplayModel.mountedScreens(Quickshell.screens, root.effectiveOverviewScreen,
             root.multiMonitorMode, root.surfaceMounted);
     }
+    // Every display's place on the desktop, for the workspace strips.
+    readonly property var displays: ScreenLayout.displays(Quickshell.screens, Hyprland.monitors ? Hyprland.monitors.values : [])
     readonly property var backdropScreens: {
         return DisplayModel.backdropScreens(Quickshell.screens, root.effectiveOverviewScreen,
             root.multiMonitorMode, root.surfaceMounted);
@@ -1144,9 +1146,11 @@ Item {
         root.dismiss();
     }
 
-    // Number keys pick a slot of the display taking the keyboard, as Super+N does.
+    // Number keys pick a slot of the display the strip shows, as Super+N does
+    // on the focused one.
     function switchToSlot(slot) {
-        var screenName = root.keyboardScreenName;
+        var surface = root.keyboardSurface();
+        var screenName = surface ? surface.stripScreenName : root.keyboardScreenName;
         root.switchToWorkspace(WorkspaceModel.slotId(root.blockForScreen(screenName), slot), screenName);
     }
 
@@ -2252,10 +2256,10 @@ Item {
         OverviewSurface {
             id: overviewWindow
             readonly property string screenName: String(modelData.name || "")
-            readonly property var monitor: root.monitorForScreen(overviewWindow.screenName)
-            // Window positions are in the desktop's logical coordinates.
-            readonly property real monitorX: overviewWindow.monitor ? Number(overviewWindow.monitor.x) : 0
-            readonly property real monitorY: overviewWindow.monitor ? Number(overviewWindow.monitor.y) : 0
+            // The display whose workspaces the strip shows; number keys act on it.
+            readonly property string stripScreenName: workspaceStripLoader.item
+                ? workspaceStripLoader.item.shownScreenName // qmllint disable missing-property
+                : overviewWindow.screenName
             readonly property bool acceptsKeyboard: {
                 var wanted = root.effectiveOverviewScreenName;
                 if (wanted)
@@ -2498,10 +2502,6 @@ Item {
                         sourceComponent: WorkspaceStrip {
                             controller: root
                             screenName: overviewWindow.screenName
-                            screenWidth: overviewWindow.width
-                            screenHeight: overviewWindow.height
-                            screenX: overviewWindow.monitorX
-                            screenY: overviewWindow.monitorY
                             wallpaper: wallpaperSource.source
                             captureItemFor: overviewWindow.captureItemFor
                         }
