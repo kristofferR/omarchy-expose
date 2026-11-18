@@ -1,33 +1,57 @@
 import QtQuick
 import QtQuick.Effects
+import "ScreenLayout.js" as ScreenLayout
 import "WindowModel.js" as WindowModel
 import "WorkspaceModel.js" as WorkspaceModel
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui as Ui
 
-// One thumbnail per workspace on this display, and a tile for a new one.
-// Click a thumbnail to switch to it; drop a dragged card on one to move the
-// window there.
+// One thumbnail per workspace of a display, and a tile for a new one. Click a
+// thumbnail to switch to it; drop a dragged card on one to move the window
+// there. With more than one display, a row of display tiles above the
+// thumbnails chooses whose workspaces they show.
 Item {
     id: strip
 
     required property var controller
+    // The display this strip is on, whose workspaces it shows at first.
     required property string screenName
-    // The display's logical size and position, which window geometry is in.
-    required property real screenWidth
-    required property real screenHeight
-    required property real screenX
-    required property real screenY
     required property url wallpaper
     // The card capture for a window; thumbnails draw from it.
     required property var captureItemFor
-    // Where a dragged card would land: a workspace id, "new", or null.
+
+    // The display chosen in the display row, shown while it stays connected.
+    property string pickedScreenName: ""
+    // The shown display's logical size and position, which window geometry is in.
+    readonly property var display: ScreenLayout.named(strip.controller.displays, strip.pickedScreenName)
+        || ScreenLayout.named(strip.controller.displays, strip.screenName)
+        || { name: strip.screenName, x: 0, y: 0, width: 0, height: 0 }
+    readonly property string shownScreenName: strip.display.name
+
+    // Where a dragged card would land: a workspace id or "new" in dropTarget,
+    // or in dropDisplay the name of a display, which stands for that display's
+    // active workspace.
     property var dropTarget: null
+    property string dropDisplay: ""
+    // Holding a card over a display's tile shows that display's workspaces, so
+    // the card can go on to any of them.
+    onDropDisplayChanged: {
+        if (strip.dropDisplay && strip.dropDisplay !== strip.shownScreenName)
+            displayHold.restart();
+        else
+            displayHold.stop();
+    }
+
+    Timer {
+        id: displayHold
+        interval: 400
+        onTriggered: strip.pickedScreenName = strip.dropDisplay
+    }
 
     // Reassigned only when the workspaces change, so thumbnails and their
     // captures survive other updates.
-    readonly property var workspacesSource: strip.controller.stripWorkspacesForScreen(strip.screenName)
+    readonly property var workspacesSource: strip.controller.stripWorkspacesForScreen(strip.shownScreenName)
     property var workspaces: []
     onWorkspacesSourceChanged: {
         if (!strip.controller.toplevelListsEqual(strip.workspaces, strip.workspacesSource))
@@ -35,9 +59,9 @@ Item {
     }
     Component.onCompleted: strip.workspaces = strip.workspacesSource
 
-    readonly property bool canAdd: strip.controller.newWorkspaceIdForScreen(strip.screenName) > 0
-    readonly property real aspect: strip.screenWidth > 0 && strip.screenHeight > 0
-        ? strip.screenWidth / strip.screenHeight
+    readonly property bool canAdd: strip.controller.newWorkspaceIdForScreen(strip.shownScreenName) > 0
+    readonly property real aspect: strip.display.width > 0 && strip.display.height > 0
+        ? strip.display.width / strip.display.height
         : 16 / 9
     readonly property real gap: Style.spacing.md
     readonly property real labelHeight: Style.space(22)
@@ -51,7 +75,8 @@ Item {
     }
     readonly property real thumbWidth: strip.thumbHeight * strip.aspect
     readonly property real radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-    implicitHeight: strip.thumbHeight + strip.labelHeight
+    readonly property real displayRowHeight: displayTiles.count > 0 ? Style.space(28) + strip.gap : 0
+    implicitHeight: strip.displayRowHeight + strip.thumbHeight + strip.labelHeight
 
     // The drop target under a point in `item` coordinates.
     function targetAt(item, x, y) {
@@ -63,6 +88,36 @@ Item {
         if (addTile.visible && addTile.contains(addTile.mapFromItem(item, x, y)))
             return "new";
         return null;
+    }
+
+    // The display whose tile is under a point in `item` coordinates, or "".
+    function displayAt(item, x, y) {
+        for (var index = 0; index < displayTiles.count; index++) {
+            var tile = displayTiles.itemAt(index);
+            if (tile && tile.contains(tile.mapFromItem(item, x, y)))
+                return tile.modelData.name; // qmllint disable missing-property
+        }
+        return "";
+    }
+
+    // Aims a dragged card at whatever is under a point in `item` coordinates.
+    function dragTo(item, x, y) {
+        strip.dropDisplay = strip.displayAt(item, x, y);
+        strip.dropTarget = strip.dropDisplay ? null : strip.targetAt(item, x, y);
+    }
+
+    // Ends a drag. Given the dragged window, moves it to where it was dropped.
+    function endDrag(top) {
+        var display = strip.dropDisplay;
+        var target = strip.dropTarget;
+        strip.dropDisplay = "";
+        strip.dropTarget = null;
+        if (!top)
+            return;
+        if (display)
+            strip.controller.moveToWorkspace(top, strip.controller.activeWorkspaceIdForScreen(display), display);
+        else if (target !== null)
+            strip.controller.moveToWorkspace(top, target, strip.shownScreenName);
     }
 
     // A one-off grow on hover or as a drop target.
@@ -77,7 +132,66 @@ Item {
         }
     }
 
+    // The translucent tile behind + and each display's name.
+    component TileSurface: Ui.BorderSurface {
+        property bool active: false
+        anchors.fill: parent
+        radius: strip.radius
+        color: Qt.rgba(Commons.Color.menu.background.r, Commons.Color.menu.background.g, Commons.Color.menu.background.b, 0.6)
+        borderSpec: active
+            ? strip.controller.windowBorders.activeSpec
+            : strip.controller.windowBorders.inactiveSpec
+    }
+
     Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: Style.spacing.sm
+
+        Repeater {
+            id: displayTiles
+            model: strip.controller.displays.length > 1 ? strip.controller.displays : []
+
+            delegate: Lift {
+                id: displayTile
+                required property var modelData
+                readonly property bool shown: modelData.name === strip.shownScreenName
+                width: Math.min(Style.space(128), (strip.width - Style.spacing.sm * (displayTiles.count - 1)) / displayTiles.count)
+                height: Style.space(28)
+                raised: displayMouse.containsMouse || modelData.name === strip.dropDisplay
+
+                TileSurface {
+                    active: displayTile.shown || displayTile.raised
+                }
+
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.spacing.sm
+                    anchors.rightMargin: Style.spacing.sm
+                    text: displayTile.modelData.name
+                    textFormat: Text.PlainText
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                    color: displayTile.shown ? Commons.Color.accent : Commons.Color.menu.text
+                    opacity: displayTile.shown ? 1 : 0.7
+                    font.family: Style.font.menuFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: displayTile.shown
+                }
+
+                MouseArea {
+                    id: displayMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: strip.pickedScreenName = displayTile.modelData.name
+                }
+            }
+        }
+    }
+
+    Row {
+        y: strip.displayRowHeight
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: strip.gap
 
@@ -89,11 +203,11 @@ Item {
                 id: thumb
                 required property var modelData
                 readonly property int workspaceId: Number(modelData.id)
-                readonly property bool current: strip.controller.activeWorkspaceIdForScreen(strip.screenName) === thumb.workspaceId
+                readonly property bool current: strip.controller.activeWorkspaceIdForScreen(strip.shownScreenName) === thumb.workspaceId
                 readonly property bool targeted: strip.dropTarget === thumb.workspaceId
                 readonly property alias frame: frame
                 width: strip.thumbWidth
-                height: strip.implicitHeight
+                height: strip.thumbHeight + strip.labelHeight
 
                 readonly property var windowsSource: {
                     var revision = strip.controller.modelRevision;
@@ -143,15 +257,15 @@ Item {
                                 id: thumbWindow
                                 required property var modelData
                                 readonly property var ipc: WindowModel.ipcFor(modelData)
-                                readonly property real ratio: strip.thumbWidth / Math.max(1, strip.screenWidth)
+                                readonly property real ratio: strip.thumbWidth / Math.max(1, strip.display.width)
                                 // The window's card already captures it, so the
                                 // thumbnail scales that down instead of capturing
                                 // again. A window without a card in the grid,
                                 // such as one outside the current scope, is
                                 // captured here instead.
                                 readonly property var shared: strip.captureItemFor(modelData)
-                                x: ((ipc.at || [0, 0])[0] - strip.screenX) * ratio
-                                y: ((ipc.at || [0, 0])[1] - strip.screenY) * ratio
+                                x: ((ipc.at || [0, 0])[0] - strip.display.x) * ratio
+                                y: ((ipc.at || [0, 0])[1] - strip.display.y) * ratio
                                 width: (ipc.size || [0, 0])[0] * ratio
                                 height: (ipc.size || [0, 0])[1] * ratio
                                 z: WorkspaceModel.stackLevel(ipc)
@@ -206,7 +320,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: strip.controller.switchToWorkspace(thumb.workspaceId, strip.screenName)
+                        onClicked: strip.controller.switchToWorkspace(thumb.workspaceId, strip.shownScreenName)
                     }
                 }
 
@@ -233,13 +347,8 @@ Item {
             height: strip.thumbHeight
             raised: addMouse.containsMouse || strip.dropTarget === "new"
 
-            Ui.BorderSurface {
-                anchors.fill: parent
-                radius: strip.radius
-                color: Qt.rgba(Commons.Color.menu.background.r, Commons.Color.menu.background.g, Commons.Color.menu.background.b, 0.6)
-                borderSpec: addTile.raised
-                    ? strip.controller.windowBorders.activeSpec
-                    : strip.controller.windowBorders.inactiveSpec
+            TileSurface {
+                active: addTile.raised
             }
 
             Text {
@@ -256,7 +365,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: strip.controller.addWorkspace(strip.screenName)
+                onClicked: strip.controller.addWorkspace(strip.shownScreenName)
             }
         }
     }

@@ -10,7 +10,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace, and pick which of the two the overview opens with. Each display uses its own active workspace in the current-workspace scope. Workspaces are numbered 1-10 on every monitor, as in the bar, and windows minimized to the dock show as **Minimized**; picking one brings it back to the current workspace.
-- **Workspace strip.** Thumbnails of the display's workspaces sit above the windows; turn it off in settings if you prefer. Click one or press 1-9 and 0 to switch, drag a window onto one to move it there, and add an empty one with **+**.
+- **Workspace strip.** Thumbnails of the display's workspaces sit above the windows; turn it off in settings if you prefer. Click one or press 1-9 and 0 to switch, drag a window onto one to move it there, and add an empty one with **+**. With several displays, a row of display tiles above the strip reaches the other displays' workspaces too.
 - **Multi-monitor layouts.** Every display blurs and dims. All displays puts every window in one grid on the opening display; This display limits that grid to its own windows; Each display opens a separate grid of its own windows on every display.
 - **Built for Omarchy.** Runs inside Omarchy Shell, follows the active theme, and adds no packages, services, or daemons.
 - **Hot corners, the macOS way.** Give each screen corner its own action, as in macOS **Desktop & Dock → Hot Corners**: **All windows** (Mission Control), **App windows** (Application Windows: just the focused app's windows, minimized ones included), or **Desktop** (Show Desktop). Uses the outermost display by default, with an option for all displays.
@@ -88,12 +88,12 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Space | Quick Look the hovered or selected preview (enlarge or restore) |
 | Shift+Space | Quick Look in slow motion |
 | Tab | Toggle all windows or the current workspace |
-| 1-9, 0 | With the workspace strip on and no filter typed: switch to that workspace of the display |
+| 1-9, 0 | With the workspace strip on and no filter typed: switch to that workspace of the display the strip shows |
 | Shift+Q | Close the selected window |
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
 
-Clicking a card activates it; middle-clicking closes it, as does its ✕ button when that setting is on. With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
+Clicking a card activates it; middle-clicking closes it, as does its ✕ button when that setting is on. With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. With more than one display, a row of display tiles sits above the strip. Click a tile to see that display's workspaces. Drop a card on a tile to move the window to that display's active workspace, or hold it there until the display's workspaces appear and drop it on one of them. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
 Every display gets the same background blur and dim. With **All displays**, one grid on the opening display shows every window. With **This display**, that grid shows only windows already on that display. With **Each display**, every display shows a grid of its own windows. Keyboard input and Settings stay on the opening display, while arrow keys select windows across displays. Cards on every display can also be clicked. Search applies to all grids, and the current-workspace scope uses each display's active workspace. Clicking empty space dismisses Exposé without clicking through to the desktop.
 
@@ -140,7 +140,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
 - Window footer style: floating, integrated, overlay, or centered
-- Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. Dragging windows onto the strip can be turned off separately
+- Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. With several displays, display tiles above the strip switch it to another display's workspaces. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corners on/off, an action for each corner from a list (All windows, App windows, Desktop, Notifications, Apps, Screensaver, Lock screen, Command, or Off; top left opens all windows by default), a command for each Command corner, All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)

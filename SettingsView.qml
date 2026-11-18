@@ -1396,7 +1396,7 @@ Item {
 
                         SettingRow {
                             label: "Workspace strip"
-                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip."
+                            description: "Show this display's workspaces above the windows. Click one, or press 1–9 and 0 before typing a filter, to switch to it. + adds an empty workspace to the strip. With several displays, click a display above the strip to see its workspaces instead."
 
                             Item { Layout.fillWidth: true }
 
@@ -1409,7 +1409,7 @@ Item {
 
                         SettingRow {
                             label: "Drag windows to workspaces"
-                            description: "Drop a window on a workspace in the strip, or on +, to move it there. Exposé stays open; Escape cancels a drag."
+                            description: "Drop a window on a workspace in the strip, or on +, to move it there. Drop it on a display to move it to that display's active workspace, or hold it there to see all of its workspaces. Exposé stays open; Escape cancels a drag."
                             enabled: settingsView.controller.workspaceStrip
 
                             Item { Layout.fillWidth: true }

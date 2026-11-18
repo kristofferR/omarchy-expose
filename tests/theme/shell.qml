@@ -77,6 +77,22 @@ ShellRoot {
         function previewRectFor(model, rect) { return rect; }
         function workspaceName(model) { return "1"; }
         function iconFor(model) { return ""; }
+        // Two displays for the workspace strip: "left" has workspaces 1 and 2,
+        // "right" has 11. Moves the strip asks for are recorded.
+        property var displays: [
+            { name: "left", x: 0, y: 0, width: 1920, height: 1080 },
+            { name: "right", x: 1920, y: 0, width: 1080, height: 1920 }
+        ]
+        readonly property var stripWorkspaces: ({ left: [{ id: 1, name: "1" }, { id: 2, name: "2" }], right: [{ id: 11, name: "11" }] })
+        property var allToplevels: []
+        property int modelRevision: 0
+        property var moves: []
+        function stripWorkspacesForScreen(name) { return stripWorkspaces[name] || []; }
+        function activeWorkspaceIdForScreen(name) { return name === "right" ? 11 : 1; }
+        function newWorkspaceIdForScreen(name) { return name === "right" ? 12 : 3; }
+        function toplevelListsEqual(left, right) { return left.length === right.length && left.every(function (item, index) { return item === right[index]; }); }
+        function formatWorkspaceLabel(name) { return name; }
+        function moveToWorkspace(top, target, screenName) { moves.push(target + " on " + screenName); }
     }
     Window {
         id: window
@@ -107,6 +123,17 @@ ShellRoot {
                     property bool acceptsKeyboard: false
                     function focusFirstSettingsControl() {}
                 }
+            }
+            WorkspaceStrip {
+                id: strip
+                visible: false
+                x: 40; y: 30
+                width: parent.width - 80
+                height: implicitHeight
+                controller: controller
+                screenName: "left"
+                wallpaper: ""
+                captureItemFor: function (top) { return null; }
             }
             WindowCard {
                 id: card
@@ -179,8 +206,53 @@ ShellRoot {
         }
         settings.focusFirstSettingsControl();
     }
+    // A point of the strip over a drop target: a display's name, a workspace
+    // id, or "new".
+    function stripPoint(wanted) {
+        for (var y = 4; y < strip.height; y += 8) {
+            for (var x = 0; x < strip.width; x += 8) {
+                if ((strip.displayAt(strip, x, y) || strip.targetAt(strip, x, y)) === wanted)
+                    return Qt.point(x, y);
+            }
+        }
+        require(false, "the strip has a drop target for " + wanted);
+    }
+    function dragOverStrip(wanted) {
+        var point = stripPoint(wanted);
+        strip.dragTo(strip, point.x, point.y);
+    }
+    function prepareStrip() {
+        window.width = 1240;
+        settings.visible = false;
+        strip.visible = true;
+    }
+    function checkStripDrops() {
+        var top = card.modelData;
+        require(strip.shownScreenName === "left" && strip.workspaces.length === 2, "the strip opens on its own display");
+        dragOverStrip("right");
+        require(strip.dropDisplay === "right" && strip.dropTarget === null, "a display tile is a drop target");
+        strip.endDrag(top);
+        require(controller.moves.join() === "11 on right", "a drop on a display moves to its active workspace");
+        require(strip.shownScreenName === "left", "a quick drop leaves the strip on its display");
+        dragOverStrip(2);
+        require(strip.dropTarget === 2 && strip.dropDisplay === "", "a workspace is a drop target");
+        strip.endDrag(null);
+        require(controller.moves.length === 1 && strip.dropTarget === null, "a cancelled drag moves nothing");
+        dragOverStrip("right");
+    }
+    function checkStripHold() {
+        var top = card.modelData;
+        require(strip.shownScreenName === "right" && strip.workspaces.length === 1, "holding a card over a display shows its workspaces");
+        dragOverStrip(11);
+        strip.endDrag(top);
+        dragOverStrip("new");
+        strip.endDrag(top);
+        require(controller.moves.slice(1).join() === "11 on right,new on right", "drops land on the shown display");
+        controller.displays = controller.displays.slice(0, 1);
+        require(strip.shownScreenName === "left" && strip.displayRowHeight === 0, "an unplugged display hands the strip back, without a display row");
+    }
     function finish() {
-        console.log("PASS: real shell theme tokens, views, compositor window borders, gradients, per-side widths, alpha, zero borders, live reload, settings layout and focus navigation");
+        console.log("PASS: real shell theme tokens, views, compositor window borders, gradients, per-side widths, alpha, zero borders, live reload, settings layout and focus navigation, workspace strip drops");
         Qt.quit();
     }
     function require(condition, message) {
@@ -275,6 +347,16 @@ ShellRoot {
                 }
                 test.phase++;
             } else if (test.phase === 23) {
+                prepareStrip();
+                test.phase++;
+            } else if (test.phase === 24) {
+                checkStripDrops();
+                test.phase++;
+            } else if (test.phase === 25) {
+                // The hold takes longer than one tick.
+                test.phase++;
+            } else if (test.phase === 26) {
+                checkStripHold();
                 finish();
             }
         }
