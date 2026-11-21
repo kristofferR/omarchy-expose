@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import "WindowModel.js" as WindowModel
+import "GlideMotion.js" as GlideMotion
 import qs.Commons
 import qs.Commons as Commons
 import qs.Ui as Ui
@@ -19,6 +20,8 @@ Ui.BorderSurface {
     // The display's workspace strip, which a card can be dragged onto; null
     // when the strip is off.
     property var workspaceStrip: null
+    // The display this card is drawn on, which Glide finds the window's place on.
+    property string screenName: ""
     // The window's capture, which workspace thumbnails draw from too.
     readonly property alias captureItem: captureLayer
     // Position in the filtered list; -1 hides the card.
@@ -71,7 +74,9 @@ Ui.BorderSurface {
     readonly property var packedRectSource: inLayout ? card.windowLayout[slot] : null
     property var packedRect: Qt.rect(0, 0, 1, 1)
     readonly property var previewRect: card.controller.previewRectFor(modelData, packedRect, card.layoutAreaWidth, card.layoutAreaHeight, Style.spacing.sm, card.controller.windowFooterHeight)
-    readonly property var layoutRect: previewed ? previewRect : packedRect
+    // Glide flies every preview to its grid slot; Quick Look opened in
+    // flight takes over once the previews have landed.
+    readonly property var layoutRect: previewed && !glideActive ? previewRect : packedRect
 
     onPackedRectSourceChanged: {
         if (packedRectSource)
@@ -81,6 +86,8 @@ Ui.BorderSurface {
     Component.onCompleted: {
         if (packedRectSource)
             packedRect = packedRectSource;
+        card.countGlideCapture(card.glideCaptureWaiting);
+        card.latchGlideStart();
 
     }
     // Dragging toward the workspace strip. The card shrinks around the point
@@ -115,7 +122,91 @@ Ui.BorderSurface {
             card.workspaceStrip.endDrag(drop ? card.modelData : null);
     }
 
+    // Glide: while the overview opens or closes, the preview is drawn over the
+    // window's real place on screen, moving to its place in the grid. Only a
+    // transform changes, so layout, text and textures stay as they are.
+    readonly property bool glideActive: card.controller.glideMotion && !card.controller.motionSettled
+    readonly property real glideProgress: card.controller.motionProgress
+    // Where the window is on screen, taken when a transition starts (and
+    // while Glide waits to start), so a capture or Hyprland update arriving
+    // in flight cannot make the preview jump. A window whose capture has no
+    // frame yet grows in place instead of flying in as a blank card.
+    property var glideStart: null
+    function latchGlideStart() {
+        card.glideStart = card.glideActive && capture.hasContent
+            ? card.controller.glideStartRectFor(card.modelData, card.screenName)
+            : null;
+    }
+    onGlideActiveChanged: card.latchGlideStart()
+    Connections {
+        target: card.controller
+        function onMotionEpochChanged() { card.latchGlideStart(); }
+        function onGlideGateActiveChanged() { card.latchGlideStart(); }
+    }
+    Connections {
+        target: capture
+        function onHasContentChanged() {
+            if (card.controller.glideGateActive || card.controller.motionProgress <= 0)
+                card.latchGlideStart();
+        }
+    }
+    // The preview frame within the card.
+    readonly property real frameX: Style.spacing.sm + previewFrame.x
+    readonly property real frameY: Style.spacing.sm + previewFrame.y
+    readonly property var glideFinal: {
+        if (!card.glideActive || !card.parent)
+            return null;
+        // Read every frame, because the layout can still settle while moving.
+        // The card layer has no transform of its own in this style, so the
+        // mapping is not changed by the card's motion.
+        var origin = card.glideProgress >= 0 ? card.parent.mapToItem(null, 0, 0) : Qt.point(0, 0);
+        return {
+            x: origin.x + card.x + card.frameX,
+            y: origin.y + card.y + card.frameY,
+            width: Math.max(1, previewFrame.width),
+            height: Math.max(1, previewFrame.height)
+        };
+    }
+    readonly property var glideRect: card.glideFinal
+        ? GlideMotion.rectAt(card.glideStart, card.glideFinal, card.glideProgress)
+        : null
+    readonly property real glideChrome: card.glideActive ? GlideMotion.chromeOpacity(card.glideProgress) : 1
+    // How much larger than the grid the preview is drawn at most, so its
+    // texture is rendered big enough not to look soft on the way.
+    readonly property real glideTextureScale: card.glideActive && card.glideStart && card.glideFinal
+        ? Math.min(8, Math.max(1, card.glideStart.width / card.glideFinal.width, card.glideStart.height / card.glideFinal.height))
+        : 1
+    // Counted by the overview, which waits for these before Glide starts.
+    readonly property bool glideCaptureWaiting: card.controller.glideGateActive && card.inLayout
+        && capture.source !== null && !capture.hasContent
+    property bool glideCaptureCounted: false
+    onGlideCaptureWaitingChanged: card.countGlideCapture(card.glideCaptureWaiting)
+    Component.onDestruction: card.countGlideCapture(false)
+    function countGlideCapture(waiting) {
+        if (waiting === card.glideCaptureCounted)
+            return;
+        card.glideCaptureCounted = waiting;
+        card.controller.glideCaptureWaiting(waiting);
+    }
+    readonly property real glideStackZ: GlideMotion.stackZ(WindowModel.ipcFor(card.modelData))
+        + (card.modelData === card.controller.glideLandingTop ? 10 : 0)
+    // On the desktop end the previews are only stand-ins for their windows:
+    // hidden before the overview opens and once a closing has landed (the
+    // overlay can stay a moment longer, while the windows may change).
+    readonly property bool glideHidden: card.controller.glideMotion && !card.controller.opened
+        && card.controller.motionProgress <= 0.001
+
     transform: [
+        Scale {
+            origin.x: card.frameX
+            origin.y: card.frameY
+            xScale: card.glideRect ? card.glideRect.width / card.glideFinal.width : 1
+            yScale: card.glideRect ? card.glideRect.height / card.glideFinal.height : 1
+        },
+        Translate {
+            x: card.glideRect ? card.glideRect.x - card.glideFinal.x : 0
+            y: card.glideRect ? card.glideRect.y - card.glideFinal.y : 0
+        },
         Scale {
             origin.x: card.grabX
             origin.y: card.grabY
@@ -133,17 +224,24 @@ Ui.BorderSurface {
     y: layoutRect.y
     width: layoutRect.width
     height: layoutRect.height
-    z: dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0)))
-    scale: lifted ? 1.04 : 1
+    z: glideActive ? glideStackZ + (previewed ? 20 : 0) : (dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))))
+    scale: lifted ? 1 + 0.04 * glideChrome : 1
     radius: integratedFooter ? Style.cornerRadius : 0
-    color: integratedFooter ? Commons.Color.menu.background : "transparent"
-    borderSpec: integratedFooter ? outlineSpec : Border.none()
+    readonly property color integratedColor: Commons.Color.menu.background
+    color: integratedFooter
+        ? Qt.rgba(integratedColor.r, integratedColor.g, integratedColor.b, integratedColor.a * glideChrome)
+        : "transparent"
+    borderSpec: integratedFooter && glideChrome > 0.5 ? outlineSpec : Border.none()
     // Quick Look dims and locks only the grid it opened on.
     readonly property bool previewOnThisScreen: card.controller.previewToplevel !== null
         && card.screenToplevels.indexOf(card.controller.previewToplevel) !== -1
-    opacity: card.previewOnThisScreen
+    opacity: (card.previewOnThisScreen
         ? (previewed ? 1 : 0.28)
-        : (liftSelection && !selected ? 0.72 : 1)
+        // Glide keeps previews opaque over their windows, dimming the
+        // unselected ones only as they land.
+        : (liftSelection && !selected ? 1 - 0.28 * glideChrome : 1))
+        * (card.glideActive && !card.glideStart ? GlideMotion.growOpacity(card.glideProgress) : 1)
+        * (card.glideHidden ? 0 : 1)
 
     MouseArea {
         id: cardMouse
@@ -216,7 +314,7 @@ Ui.BorderSurface {
                 anchors.margins: -Style.space(4)
                 radius: previewFrame.radius + Style.space(4)
                 color: Commons.Color.accent
-                opacity: card.lifted ? 0.85 : 0
+                opacity: card.lifted ? 0.85 * card.glideChrome : 0
                 visible: opacity > 0
                 layer.enabled: visible
                 layer.effect: MultiEffect {
@@ -246,14 +344,23 @@ Ui.BorderSurface {
                 width: Math.min(parent.width, parent.height * windowAspectRatio)
                 height: Math.min(parent.height, parent.width / windowAspectRatio)
                 radius: Math.max(0, Style.cornerRadius - Style.spacing.xs)
-                color: Commons.Color.background
+                // In flight a translucent window stays translucent, as on the
+                // desktop; the backing appears as it lands.
+                readonly property color backing: Commons.Color.background
+                color: Qt.rgba(backing.r, backing.g, backing.b, backing.a * card.glideChrome)
                 clip: true
                 layer.enabled: true
+                layer.textureSize: card.glideTextureScale > 1
+                    ? Qt.size(Math.ceil(width * card.glideTextureScale * Screen.devicePixelRatio),
+                        Math.ceil(height * card.glideTextureScale * Screen.devicePixelRatio))
+                    : Qt.size(0, 0)
 
                 CardText {
                     anchors.centerIn: parent
                     text: "Preview unavailable"
                     opacity: 0.45
+                    // Translucent windows would show it through their capture.
+                    visible: !capture.hasContent
                 }
 
                 Item {
@@ -267,8 +374,13 @@ Ui.BorderSurface {
                     scale: doubleResolution ? 0.5 : 1
                     layer.enabled: doubleResolution
                     layer.smooth: true
+                    layer.textureSize: card.glideTextureScale > 2
+                        ? Qt.size(Math.ceil(parent.width * card.glideTextureScale * Screen.devicePixelRatio),
+                            Math.ceil(parent.height * card.glideTextureScale * Screen.devicePixelRatio))
+                        : Qt.size(0, 0)
 
                     WindowCapture {
+                        id: capture
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
                         live: card.controller.livePreviews && card.controller.opened && card.inLayout
@@ -279,6 +391,7 @@ Ui.BorderSurface {
                 Loader {
                     anchors.fill: parent
                     z: 2
+                    opacity: card.glideChrome
                     active: card.overlayFooter
                     sourceComponent: overlayFooterComponent
                 }
@@ -295,6 +408,7 @@ Ui.BorderSurface {
             Ui.BorderSurface {
                 anchors.fill: previewFrame
                 visible: !card.integratedFooter
+                opacity: card.glideChrome
                 z: 5
                 radius: previewFrame.radius
                 color: "transparent"
@@ -308,6 +422,7 @@ Ui.BorderSurface {
                 z: 6
                 // The close button takes this corner while it shows.
                 visible: card.liftSelection && card.focusedWindow && !(closeButton.visible && closeButton.onRight)
+                opacity: card.glideChrome
                 width: Style.space(12)
                 height: width
                 radius: width / 2
@@ -379,6 +494,7 @@ Ui.BorderSurface {
             Layout.fillWidth: true
             Layout.preferredHeight: Style.space(40)
             visible: !card.overlayFooter
+            opacity: card.glideChrome
 
             Loader {
                 anchors.fill: parent

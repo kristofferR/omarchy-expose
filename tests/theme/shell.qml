@@ -53,6 +53,13 @@ ShellRoot {
         property bool opened: false
         property int windowFooterHeight: 40
         property bool motionSettled: true
+        property real motionProgress: 1
+        property int motionEpoch: 0
+        property bool glideMotion: false
+        property bool glideGateActive: false
+        property var glideLandingTop: null
+        function glideStartRectFor(model, screenName) { return null; }
+        function glideCaptureWaiting(waiting) {}
         property int previewAnimationDuration: 190
         property int previewAnimationEasing: Easing.OutQuart
         property int previewFadeDuration: 130
@@ -252,7 +259,23 @@ ShellRoot {
         controller.displays = controller.displays.slice(0, 1);
         require(strip.shownScreenName === "left" && strip.displayRowHeight === 0, "an unplugged display hands the strip back, without a display row");
     }
+    // A card in Glide's flight, without a capture frame: it grows in place,
+    // faded, with its titles hidden, and is untouched once landed.
+    function checkGlideCard() {
+        controller.glideMotion = true;
+        controller.motionSettled = false;
+        controller.motionProgress = 0.5;
+        controller.motionEpoch++;
+        require(card.glideRect !== null, "Glide places a card in flight");
+        require(Math.abs(card.glideRect.width - card.glideFinal.width * 0.95) < 0.01, "a window off screen grows in place");
+        require(card.glideChrome === 0 && card.opacity < 1, "titles and an off-screen card wait while in flight");
+        controller.motionProgress = 1;
+        controller.motionSettled = true;
+        require(card.glideRect === null && card.glideChrome === 1 && card.opacity === 1, "a landed card is left as it was");
+        controller.glideMotion = false;
+    }
     function finish() {
+        checkGlideCard();
         console.log("PASS: real shell theme tokens, views, compositor window borders, gradients, per-side widths, alpha, zero borders, live reload, settings layout and focus navigation, workspace strip drops");
         Qt.quit();
     }

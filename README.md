@@ -131,7 +131,7 @@ Settings saved by older versions keep working: the one corner chosen there opens
 
 Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-6 jump to a section, Up/Down move between controls, Left/Right adjust sliders and choices, Space or Enter flip toggles and press buttons, Escape closes. Changes apply immediately. Settings are grouped into **Appearance**, **Windows**, **Window labels**, **Workspaces**, **Hot corners**, and **Motion**, with explanatory text beneath the controls:
 
-- Opening animation: Original (default), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
+- Opening animation: Original (default), Glide (windows fly between their places on screen and in the grid, as in Mission Control), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90)
@@ -163,7 +163,7 @@ omarchy-shell expose toggleApplication           # the focused app's windows; al
 omarchy-shell expose toggleDesktop               # show the desktop, or bring the windows back
 omarchy-shell expose desktop show                # show | hide | toggle | state
 omarchy-shell expose settings toggle             # also: open, close
-omarchy-shell expose animationStyle original     # original | fade | zoom | slide
+omarchy-shell expose animationStyle original     # original | glide | fade | zoom | slide
 omarchy-shell expose animationDuration original 190    # linked in/out, 100-800 ms
 omarchy-shell expose animationDurationIn original 190  # separate opening speed
 omarchy-shell expose animationDurationOut original 190 # separate closing speed
