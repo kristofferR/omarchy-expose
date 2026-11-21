@@ -65,4 +65,45 @@ TestCase {
         backdrop.blur = 0;
         verify(grabImage(backdrop).equals(sharp), "turning blur off restores the wallpaper");
     }
+
+    function test_blurredBackdropIsReadyOnlyWithEveryCopyLoaded() {
+        backdrop.source = svg('<rect width="100" height="60" fill="white"/>', 100, 60);
+        tryCompare(backdrop, "ready", true);
+        backdrop.blur = 4;
+        tryCompare(backdrop, "ready", true);
+        compare(backdrop.tilesReady, 9, "the blur waits for every mirrored copy");
+        backdrop.blur = 0;
+        verify(backdrop.ready, "without blur only the wallpaper itself counts");
+    }
+
+    // The offscreen test platform draws no MultiEffect blur, so these
+    // checks run only where Qt renders on a GPU.
+    function grabBlurred() {
+        waitForRendering(backdrop);
+        var image = grabImage(backdrop);
+        if (Qt.colorEqual(image.pixel(60, 30), backdrop.color))
+            skip("blur is not rendered on this platform");
+        return image;
+    }
+
+    function test_blurKeepsTheDesktopCropAndScale() {
+        // The desktop shows this wallpaper unscaled, with its edge at x = 25.
+        backdrop.source = svg('<rect width="100" height="60" fill="white"/>'
+            + '<rect width="25" height="60" fill="black"/>', 100, 60);
+        tryCompare(backdrop, "ready", true);
+        backdrop.blur = 4;
+        var blurred = grabBlurred();
+        verify(blurred.red(4, 30) < 60, "the black part stays at the left edge");
+        verify(blurred.red(25, 30) > 70 && blurred.red(25, 30) < 185, "the edge stays at x = 25");
+        verify(blurred.red(60, 30) > 220, "the white part keeps its place");
+    }
+
+    function test_blurredEdgesStayWallpaper() {
+        backdrop.source = svg('<rect width="100" height="60" fill="white"/>', 100, 60);
+        tryCompare(backdrop, "ready", true);
+        backdrop.blur = 20;
+        var blurred = grabBlurred();
+        verify(blurred.red(0, 0) > 245, "a corner does not blur into the base colour");
+        verify(blurred.red(50, 59) > 245, "an edge does not blur into the base colour");
+    }
 }
