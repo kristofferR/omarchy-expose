@@ -188,6 +188,7 @@ Item {
     readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
     readonly property bool closeButton: SettingsSchema.read(root.pluginEntry, "closeButton")
     readonly property string closeButtonSide: SettingsSchema.read(root.pluginEntry, "closeButtonSide")
+    readonly property bool specialWorkspaces: SettingsSchema.read(root.pluginEntry, "specialWorkspaces")
     readonly property bool workspaceStrip: SettingsSchema.read(root.pluginEntry, "workspaceStrip")
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
@@ -330,6 +331,7 @@ Item {
     // What Enter opens.
     readonly property var selection: WindowModel.selectionFor(root.filteredToplevels, root.selectedToplevel, root.originToplevel)
 
+    onSpecialWorkspacesChanged: root.handleToplevelCollectionChanged()
     onMultiMonitorModeChanged: {
         root.hoveredToplevel = null;
         root.clearPreview();
@@ -1298,12 +1300,18 @@ Item {
         onTriggered: root.closingToplevels = []
     }
 
+    function listedToplevels() {
+        var result = [];
+        for (var index = 0; index < root.allToplevels.length; index++) {
+            var top = root.allToplevels[index];
+            if (WindowModel.isEligible(top) && (root.specialWorkspaces || !WindowModel.isOnSpecialWorkspace(top)))
+                result.push(top);
+        }
+        return result;
+    }
+
     function resetSessionToplevels() {
-        var next = [];
-        for (var index = 0; index < root.allToplevels.length; index++)
-            if (WindowModel.isEligible(root.allToplevels[index]))
-                next.push(root.allToplevels[index]);
-        root.sessionToplevels = next;
+        root.sessionToplevels = root.listedToplevels();
         root.captureSessionAspectRatios();
         root.modelRevision++;
     }
@@ -1311,10 +1319,7 @@ Item {
     function syncSessionToplevels() {
         if (!root.surfaceMounted && !root.openingPending)
             return false;
-        var current = [];
-        for (var currentIndex = 0; currentIndex < root.allToplevels.length; currentIndex++)
-            if (WindowModel.isEligible(root.allToplevels[currentIndex]))
-                current.push(root.allToplevels[currentIndex]);
+        var current = root.listedToplevels();
 
         var next = [];
         var nextRatios = [];
@@ -1906,6 +1911,7 @@ Item {
         function closeButtonSide(side: string): string { return root.setSettingFromIpc("closeButtonSide", side); }
         function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
+        function specialWorkspaces(mode: string): string { return root.setSettingFromIpc("specialWorkspaces", mode); }
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
         function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
