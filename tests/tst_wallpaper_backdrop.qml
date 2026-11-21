@@ -66,6 +66,16 @@ TestCase {
         verify(grabImage(backdrop).equals(sharp), "turning blur off restores the wallpaper");
     }
 
+    function test_blurredBackdropIsReadyOnlyWithEveryCopyLoaded() {
+        backdrop.source = svg('<rect width="100" height="60" fill="white"/>', 100, 60);
+        tryCompare(backdrop, "ready", true);
+        backdrop.blur = 4;
+        tryCompare(backdrop, "ready", true);
+        compare(backdrop.tilesReady, 9, "the blur waits for every mirrored copy");
+        backdrop.blur = 0;
+        verify(backdrop.ready, "without blur only the wallpaper itself counts");
+    }
+
     // The offscreen test platform draws no MultiEffect blur, so these
     // checks run only where Qt renders on a GPU.
     function grabBlurred() {

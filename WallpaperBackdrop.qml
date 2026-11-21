@@ -7,7 +7,21 @@ Rectangle {
     property url source: ""
     property real blur: 0
     property real pixelRatio: 1
+    // Ready once everything drawn is loaded: the wallpaper, and with blur also
+    // every copy the blur is drawn from (they load separately, even though
+    // they share one decoded image).
     readonly property bool ready: wallpaper.status === Image.Ready
+        && (root.blur <= 0 || root.tilesReady === mirrors.count && mirrors.count > 0)
+    property int tilesReady: 0
+    function countTiles() {
+        var ready = 0;
+        for (var index = 0; index < mirrors.count; index++) {
+            var tile = mirrors.itemAt(index);
+            if (tile && tile.status === Image.Ready)
+                ready++;
+        }
+        root.tilesReady = ready;
+    }
     // An opaque base also hides desktop windows while loading, for images
     // with transparency, and when the wallpaper is missing or unreadable.
     color: "#101315"
@@ -46,7 +60,10 @@ Rectangle {
         // The wallpaper in the middle, and a copy mirrored across each edge
         // and corner.
         Repeater {
+            id: mirrors
             model: root.blur > 0 ? 9 : 0
+            onItemAdded: root.countTiles()
+            onItemRemoved: root.countTiles()
 
             Image {
                 required property int index
@@ -61,6 +78,7 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 clip: true
+                onStatusChanged: root.countTiles()
                 transform: Scale {
                     origin.x: root.width / 2
                     origin.y: root.height / 2
