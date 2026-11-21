@@ -2723,6 +2723,18 @@ Item {
                         }
                     }
                 }
+
+                // Glide's short wait for the captures shows the desktop as it
+                // is, with cards that are not visible yet: a click, scroll or
+                // hover then is not meant for the overview. Keys still work.
+                MouseArea {
+                    anchors.fill: parent
+                    z: 300
+                    enabled: root.glideGateActive
+                    acceptedButtons: Qt.AllButtons
+                    hoverEnabled: true
+                    onWheel: function (wheel) { wheel.accepted = true; }
+                }
             }
         }
     }
