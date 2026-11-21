@@ -13,29 +13,68 @@ Rectangle {
     color: "#101315"
     clip: true
 
-    // With blur, the wallpaper is drawn a blur radius past every edge, so the
-    // blur samples wallpaper there rather than fading into the base colour.
-    // The clip hides the overhang.
+    // With blur, the blur samples a blur radius past every edge. Mirrored
+    // copies of the wallpaper fill that margin, so the edges blur into
+    // wallpaper rather than the base colour, while the wallpaper itself keeps
+    // the desktop's crop and scale. The clip hides the margin.
     readonly property real bleed: root.blur > 0 ? effect.blurMax : 0
+    // Loaded only once laid out: an empty sourceSize would decode the
+    // wallpaper at full resolution first, and opening would wait on that.
+    // At a fixed size the decoded image is also cached across openings, and
+    // every copy below shares it.
+    readonly property url loadSource: root.width > 0 && root.height > 0 ? root.source : ""
+    readonly property size decodeSize: Qt.size(Math.ceil(root.width * root.pixelRatio), Math.ceil(root.height * root.pixelRatio))
 
     Image {
         id: wallpaper
         anchors.fill: parent
-        anchors.margins: -root.bleed
-        // Loaded only once laid out: an empty sourceSize would decode the
-        // wallpaper at full resolution first, and opening would wait on that.
-        // At a fixed size the decoded image is also cached across openings.
-        source: root.width > 0 && root.height > 0 ? root.source : ""
-        sourceSize: Qt.size(Math.ceil(wallpaper.width * root.pixelRatio), Math.ceil(wallpaper.height * root.pixelRatio))
+        source: root.loadSource
+        sourceSize: root.decodeSize
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: root.blur <= 0
     }
 
+    Item {
+        id: padded
+        x: -root.bleed
+        y: -root.bleed
+        width: root.width + 2 * root.bleed
+        height: root.height + 2 * root.bleed
+        visible: false
+
+        // The wallpaper in the middle, and a copy mirrored across each edge
+        // and corner.
+        Repeater {
+            model: root.blur > 0 ? 9 : 0
+
+            Image {
+                required property int index
+                readonly property int column: index % 3 - 1
+                readonly property int row: Math.floor(index / 3) - 1
+                x: root.bleed + column * root.width
+                y: root.bleed + row * root.height
+                width: root.width
+                height: root.height
+                source: root.loadSource
+                sourceSize: root.decodeSize
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                clip: true
+                transform: Scale {
+                    origin.x: root.width / 2
+                    origin.y: root.height / 2
+                    xScale: column === 0 ? 1 : -1
+                    yScale: row === 0 ? 1 : -1
+                }
+            }
+        }
+    }
+
     MultiEffect {
         id: effect
-        anchors.fill: wallpaper
-        source: wallpaper
+        anchors.fill: padded
+        source: padded
         visible: root.ready && root.blur > 0
         blurEnabled: true
         // Close to Hyprland's blur of the desktop at the same setting.
