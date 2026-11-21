@@ -141,6 +141,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
 - Window footer style: floating, integrated, overlay, or centered
+- Special workspaces: on (default) or off, which leaves out windows on the scratchpad and other special workspaces. Windows minimized to the dock are listed either way
 - Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. With several displays, display tiles above the strip switch it to another display's workspaces. Dragging windows onto the strip can be turned off separately
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
@@ -189,6 +190,7 @@ omarchy-shell expose hotCornerDelay 0            # 0-1000 ms of dwell before it 
 omarchy-shell expose moveCursorToWindow on       # on | off
 omarchy-shell expose initialWorkspaceScope all   # all | current
 omarchy-shell expose workspaceLabelStyle full    # full | slot
+omarchy-shell expose specialWorkspaces on        # on | off
 omarchy-shell expose workspaceStrip on           # on | off
 omarchy-shell expose workspaceDrag on            # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
