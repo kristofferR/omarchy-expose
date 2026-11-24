@@ -188,8 +188,8 @@ Ui.BorderSurface {
         card.glideCaptureCounted = waiting;
         card.controller.glideCaptureWaiting(waiting);
     }
-    readonly property real glideStackZ: GlideMotion.stackZ(WindowModel.ipcFor(card.modelData))
-        + (card.modelData === card.controller.glideLandingTop ? 10 : 0)
+    readonly property real glideStackZ: GlideMotion.stackZ(WindowModel.ipcFor(card.modelData),
+        card.modelData === card.controller.glideLandingTop)
     // On the desktop end the previews are only stand-ins for their windows:
     // hidden before the overview opens and once a closing has landed (the
     // overlay can stay a moment longer, while the windows may change).

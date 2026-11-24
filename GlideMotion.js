@@ -95,8 +95,10 @@ function growOpacity(progress) {
 
 // Stacking while the previews overlap their windows: floating and fullscreen
 // windows above tiled ones, and within each, the most recently focused on top.
-function stackZ(ipc) {
+// The chosen window lands on top of its own kind only: focus does not lift a
+// tiled window over the floating and fullscreen ones.
+function stackZ(ipc, chosen) {
     var raised = ipc && (ipc.floating === true || Number(ipc.fullscreen || 0) > 0) ? 1 : 0;
     var history = ipc && isFinite(Number(ipc.focusHistoryID)) ? Number(ipc.focusHistoryID) : 899;
-    return raised + 0.9 - Math.max(0, Math.min(899, history)) / 1000;
+    return raised + (chosen ? 0.95 : 0.9 - Math.max(0, Math.min(899, history)) / 1000);
 }

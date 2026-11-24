@@ -268,8 +268,8 @@ Item {
     // show their windows; the first frames otherwise take long enough that
     // the animation would start halfway, over empty previews.
     property bool glideGateActive: false
-    // The window chosen to close onto. Hyprland raises it as soon as the
-    // overview lets go of the keyboard, so its preview lands on top.
+    // The window chosen to close onto. It is focused as soon as the overview
+    // lets go of the keyboard, so its preview lands on top of its own kind.
     property var glideLandingTop: null
     property int glideCapturesWaiting: 0
     function glideCaptureWaiting(waiting) {

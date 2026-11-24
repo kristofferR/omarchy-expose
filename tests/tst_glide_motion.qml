@@ -85,4 +85,12 @@ TestCase {
         verify(GlideMotion.stackZ({fullscreen: 1, focusHistoryID: 0}) > GlideMotion.stackZ({floating: true, focusHistoryID: 1}));
         verify(GlideMotion.stackZ({focusHistoryID: 0}) > GlideMotion.stackZ({focusHistoryID: 1}));
     }
+
+    function test_chosenWindowLandsOnTopOfItsOwnKind() {
+        var tiled = GlideMotion.stackZ({focusHistoryID: 4}, true);
+        verify(tiled > GlideMotion.stackZ({focusHistoryID: 0}));
+        verify(tiled < GlideMotion.stackZ({floating: true, focusHistoryID: 899}));
+        verify(GlideMotion.stackZ({floating: true, focusHistoryID: 4}, true)
+            > GlideMotion.stackZ({fullscreen: 2, focusHistoryID: 0}));
+    }
 }
