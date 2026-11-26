@@ -222,6 +222,9 @@ Item {
     // releases the keyboard.
     property var pendingActivation: null
     property var pendingWorkspace: null
+    // Each display's workspace when a close began. The current-workspace
+    // scope keeps to it, so cards do not change under a closing overview.
+    property var closingWorkspaces: null
     // The window whose card is being dragged toward the workspace strip.
     property var draggedToplevel: null
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
@@ -355,6 +358,7 @@ Item {
         // Reopening before the overlay is gone cancels the activation.
         root.pendingActivation = null;
         root.pendingWorkspace = null;
+        root.closingWorkspaces = null;
         root.draggedToplevel = null;
         root.addedWorkspaces = [];
         compositorBorders.refresh();
@@ -413,6 +417,14 @@ Item {
     Component.onCompleted: root.installLayerRule()
 
     function startDismiss(notifyShell) {
+        if (root.opened && !root.closingWorkspaces) {
+            var held = {};
+            for (var index = 0; index < Quickshell.screens.length; index++) {
+                var name = String(Quickshell.screens[index].name || "");
+                held[name] = root.workspaceForScreen(name);
+            }
+            root.closingWorkspaces = held;
+        }
         root.openingPending = false;
         root.closeSettings();
         root.hoveredToplevel = null;
@@ -1420,7 +1432,7 @@ Item {
 
     function toplevelsForScreen(screenName) {
         var needle = root.filterText.toLowerCase();
-        var currentWorkspace = root.workspaceForScreen(screenName);
+        var currentWorkspace = (root.closingWorkspaces && root.closingWorkspaces[screenName]) || root.workspaceForScreen(screenName);
         var candidates = root.toplevelsOnScreen(screenName);
         var result = [];
         for (var index = 0; index < candidates.length; index++) {
