@@ -994,7 +994,7 @@ Item {
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
             [livePreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
-            [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle],
+            [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle, workspaceStripIconsToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
@@ -1431,6 +1431,20 @@ Item {
                                 id: workspaceDragToggle
                                 checked: settingsView.controller.workspaceDrag
                                 onToggled: function (checked) { settingsView.controller.setSetting("workspaceDrag", checked); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "App icons in the strip"
+                            description: "Show each window's app icon on its preview in the workspace strip."
+                            enabled: settingsView.controller.workspaceStrip
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: workspaceStripIconsToggle
+                                checked: settingsView.controller.workspaceStripIcons
+                                onToggled: function (checked) { settingsView.controller.setSetting("workspaceStripIcons", checked); }
                             }
                         }
                     }

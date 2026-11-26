@@ -292,6 +292,19 @@ Item {
                                         live: strip.controller.livePreviews && strip.controller.opened
                                     }
                                 }
+
+                                // Tells the windows apart at thumbnail size.
+                                Image {
+                                    readonly property real size: Math.min(Style.space(24), Math.min(thumbWindow.width, thumbWindow.height) * 0.6)
+                                    anchors.centerIn: parent
+                                    width: size
+                                    height: size
+                                    visible: strip.controller.workspaceStripIcons && size >= Style.space(8)
+                                    source: visible ? strip.controller.iconFor(thumbWindow.modelData) : ""
+                                    sourceSize: Qt.size(Math.ceil(size * 2), Math.ceil(size * 2))
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                }
                             }
                         }
                     }

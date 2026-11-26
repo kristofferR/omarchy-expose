@@ -141,7 +141,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opens with: all workspaces (default) or the current workspace; Tab still switches either way
 - Workspace names: full (default) or slot only, which prints just the trailing slot of names like `<monitor description>:3` that per-monitor workspace plugins produce
 - Window footer style: floating, integrated, overlay, or centered
-- Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. With several displays, display tiles above the strip switch it to another display's workspaces. Dragging windows onto the strip can be turned off separately
+- Workspace strip: on (default) or off. Each display shows its own numbered workspaces with live previews of their windows, and a **+** tile that adds an empty workspace to the strip without closing Exposé. With several displays, display tiles above the strip switch it to another display's workspaces. Dragging windows onto the strip can be turned off separately, and each window's app icon can be shown on its preview (off by default)
 - Windows to include: All displays (one grid with every window), This display (one grid with that display's windows), or Each display (one grid of local windows per display)
 - Bottom text visibility. Hiding it requires confirmation and removes the Settings link
 - Hot corners on/off, an action for each corner from a list (All windows, App windows, Desktop, Notifications, Apps, Screensaver, Lock screen, Command, or Off; top left opens all windows by default), a command for each Command corner, All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
@@ -191,6 +191,7 @@ omarchy-shell expose initialWorkspaceScope all   # all | current
 omarchy-shell expose workspaceLabelStyle full    # full | slot
 omarchy-shell expose workspaceStrip on           # on | off
 omarchy-shell expose workspaceDrag on            # on | off, with the strip on
+omarchy-shell expose workspaceStripIcons off     # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
 omarchy-shell expose closeButton off             # off | on
 omarchy-shell expose closeButtonSide right       # left | right

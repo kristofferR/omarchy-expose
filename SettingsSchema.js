@@ -122,7 +122,8 @@ var specs = {
     },
     workspaceStrip: { fallback: true },
     // Only applies while the workspace strip is shown.
-    workspaceDrag: { fallback: true }
+    workspaceDrag: { fallback: true },
+    workspaceStripIcons: { fallback: false }
 };
 
 function spec(name) {

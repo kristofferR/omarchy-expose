@@ -191,6 +191,7 @@ Item {
     readonly property bool workspaceStrip: SettingsSchema.read(root.pluginEntry, "workspaceStrip")
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
+    readonly property bool workspaceStripIcons: SettingsSchema.read(root.pluginEntry, "workspaceStripIcons")
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -1908,6 +1909,7 @@ Item {
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
         function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
+        function workspaceStripIcons(mode: string): string { return root.setSettingFromIpc("workspaceStripIcons", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
         // The filter, windows, and selection describe the open overview only.
         function state(): string {
