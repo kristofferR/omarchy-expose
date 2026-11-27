@@ -26,6 +26,7 @@ QT_QPA_PLATFORM=offscreen timeout 300s "$qt6_bin/qmltestrunner" -input tests
 ./tests/check-hot-corner-runtime
 ./tests/check-theme-runtime
 ./tests/check-wallpaper-runtime
+./tests/check-themed-icons-runtime
 lua tests/check-workspace-gesture.lua
 
 # Make the installed UI component types visible to qmllint. Of Commons, only
@@ -49,14 +50,14 @@ printf 'module qs.Commons\nsingleton Color 1.0 Color.qml\n' > "$lint_dir/qs/Comm
   --unqualified disable \
   --unused-imports disable \
   --block-scope-var-declaration disable \
-  Overview.qml ShowDesktop.qml WindowCard.qml WindowCapture.qml BackdropShadow.qml UpdateNotice.qml WorkspaceStrip.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml PluginSettings.qml WallpaperSource.qml WallpaperBackdrop.qml
+  Overview.qml ShowDesktop.qml WindowCard.qml WindowCapture.qml BackdropShadow.qml UpdateNotice.qml WorkspaceStrip.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml PluginSettings.qml WallpaperSource.qml WallpaperBackdrop.qml ThemedIcons.qml
 
 # Lint the runtime fixture after injecting its host functions and imports.
 ./tests/check-settings-runtime --lint
 
 # One file per call: bash -n checks only its first argument and hands the
 # rest to that script as arguments.
-for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-wallpaper-runtime tests/check-blur-lock; do
+for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-wallpaper-runtime tests/check-themed-icons-runtime tests/check-blur-lock; do
   bash -n "$script"
 done
 timeout 15s ./tests/check-blur-lock

@@ -11,6 +11,10 @@ workspace strip with two displays: drops on a display tile, a workspace, and +,
 a cancelled drag, a held drag that switches the strip to the other display, and
 that display being unplugged. Run
 `./tests/check-theme-runtime /tmp/expose-settings` to save rendered page captures.
+`./tests/check-themed-icons-runtime` draws a temporary themed icon, redraws it in
+place as Omarchy does on a theme switch, and checks that the icon on screen
+changes. It also checks that a link to the user's own icon, unknown names, and
+an Omarchy without drawn icons are left to the icon theme.
 `tests/check-workspace-gesture.lua` loads `workspace-gesture.lua` into a model of
 Hyprland's gesture table, after the installed Omarchy's default gestures and
 without them. It checks that workspace swipes do nothing while Exposé is open,

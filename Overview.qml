@@ -1527,9 +1527,9 @@ Item {
             ? String(entry.icon || "application-x-executable")
             : String(identity.candidates[0] || "application-x-executable");
         var appLibrary = root.shell && root.shell.appLibrary ? root.shell.appLibrary : null;
-        var result = appLibrary && typeof appLibrary.iconSource === "function"
-            ? String(appLibrary.iconSource(iconName) || "")
-            : "";
+        var result = themedIcons.source(iconName);
+        if (!result && appLibrary && typeof appLibrary.iconSource === "function")
+            result = String(appLibrary.iconSource(iconName) || "");
         if (!result)
             result = Quickshell.iconPath(iconName, true);
         // Drop identities no open window has, so closed or renamed windows do
@@ -1644,6 +1644,11 @@ Item {
     Connections {
         target: root.shell && root.shell.appLibrary ? root.shell.appLibrary : null
         function onIconIndexChanged() { root.iconCache = {}; }
+    }
+
+    ThemedIcons {
+        id: themedIcons
+        onRevisionChanged: root.iconCache = {}
     }
 
     Timer {
