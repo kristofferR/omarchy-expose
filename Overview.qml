@@ -4,9 +4,9 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
-import qs.Commons // qmllint disable import
-import qs.Commons as Commons // qmllint disable import
-import qs.Ui as Ui // qmllint disable import
+import qs.Commons
+import qs.Commons as Commons
+import qs.Ui as Ui
 import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
