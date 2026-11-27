@@ -39,7 +39,7 @@ omarchy plugin add https://github.com/kristofferR/omarchy-expose.git --enable
 That's it: the top-left hot corner works right away. Choose an action for each corner under **Settings → Hot corners**, or see [Hot corners](#hot-corners). Optionally, bind keys in `~/.config/hypr/bindings.lua`, then run `hyprctl reload`:
 
 ```lua
-o.bind("SUPER + A", "Exposé", hl.dsp.event("expose.window-overview:toggle"))
+o.bind("SUPER + E", "Exposé", hl.dsp.event("expose.window-overview:toggle"))
 -- macOS-style: Ctrl+Up, Ctrl+Down, and F11 there
 o.bind("SUPER + CTRL + UP", "Exposé: all windows", "omarchy-shell expose toggle")
 o.bind("SUPER + CTRL + DOWN", "Exposé: app windows", "omarchy-shell expose toggleApplication")
