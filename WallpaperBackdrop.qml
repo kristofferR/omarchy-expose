@@ -16,7 +16,7 @@ Rectangle {
     function countTiles() {
         var ready = 0;
         for (var index = 0; index < mirrors.count; index++) {
-            var tile = mirrors.itemAt(index);
+            var tile = mirrors.itemAt(index) as Image;
             if (tile && tile.status === Image.Ready)
                 ready++;
         }
