@@ -48,8 +48,8 @@
 - Treat `manifest.json` as the release source of truth and bump its semantic
   version for every published release.
 - Validate with `./validate`. It runs the QML unit tests in `tests/`,
-  `qmllint`, shell syntax checks for the helper scripts, and
-  `omarchy plugin validate .`. The `qmltestrunner` and `qmllint` on PATH are
+  `qmllint`, the gesture helper check, shell syntax checks for the helper
+  scripts, and `omarchy plugin validate .`. The `qmltestrunner` and `qmllint` on PATH are
   Qt 5 builds that silently do nothing useful; the script calls the Qt 6
   binaries in `/usr/lib/qt6/bin` directly.
 - The README demo is a GitHub release asset, not a tracked file, so clones stay

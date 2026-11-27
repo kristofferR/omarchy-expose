@@ -32,6 +32,7 @@ ShellRoot {
         property string multiMonitorMode: "mirrored"
         property string initialWorkspaceScope: "all"
         property string workspaceLabelStyle: "full"
+        property bool specialWorkspaces: true
         property bool workspaceStrip: false
         property bool workspaceDrag: true
         property bool workspaceStripIcons: false
@@ -169,7 +170,7 @@ ShellRoot {
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
         // Page 4: category, enable, four corner actions, top right's command,
         // all displays, ignore fullscreen, delay.
-        var expectedCounts = [5, 6, 3, 4, 10, 8];
+        var expectedCounts = [5, 6, 3, 5, 10, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

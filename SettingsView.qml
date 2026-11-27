@@ -994,7 +994,7 @@ Item {
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
             [livePreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
             [windowFooterChoices, workspaceLabelStyleChoices],
-            [initialWorkspaceScopeChoices, displayModeChoicesControl, workspaceStripToggle, workspaceDragToggle, workspaceStripIconsToggle],
+            [initialWorkspaceScopeChoices, displayModeChoicesControl, specialWorkspacesToggle, workspaceStripToggle, workspaceDragToggle, workspaceStripIconsToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
             [motionAnimateButton, animationStyleChoices, animationSameSpeedToggle, slideDirectionChoices, slideDirectionInChoices, slideDirectionOutChoices, animationSpeedSlider, animationInSlider, animationOutSlider]
         ];
@@ -1404,6 +1404,19 @@ Item {
                                 Layout.fillWidth: true
                                 value: settingsView.controller.multiMonitorMode
                                 onChosen: function (value) { settingsView.controller.setSetting("multiMonitorMode", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Special workspaces"
+                            description: "Include windows on the scratchpad and other special workspaces."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: specialWorkspacesToggle
+                                checked: settingsView.controller.specialWorkspaces
+                                onToggled: function (checked) { settingsView.controller.setSetting("specialWorkspaces", checked); }
                             }
                         }
 

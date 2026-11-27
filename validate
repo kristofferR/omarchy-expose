@@ -26,28 +26,38 @@ QT_QPA_PLATFORM=offscreen timeout 300s "$qt6_bin/qmltestrunner" -input tests
 ./tests/check-hot-corner-runtime
 ./tests/check-theme-runtime
 ./tests/check-wallpaper-runtime
+./tests/check-themed-icons-runtime
+lua tests/check-workspace-gesture.lua
 
-# Make the installed UI component types visible to qmllint. Commons' dynamic
-# singleton objects remain runtime-injected, as in the shell itself.
+# Make the installed UI component types visible to qmllint. Of Commons, only
+# Color is: since Qt 6.12.1 qmllint warns about a type read through a namespace
+# it cannot resolve (Commons.Color). Color's nested palettes are QtObject, which
+# qmllint cannot see into, so they are read as untyped; its own members are
+# checked against the installed host. The other singletons stay unresolved,
+# so qmllint takes the unqualified Commons import for unused.
 # The code uses function-scoped var by convention; Qt 6.12 counts its
 # block-scope warning toward --max-warnings without printing it.
+shell_dir=/usr/share/omarchy/shell
 lint_dir=$(mktemp -d)
 trap 'rm -rf "$lint_dir"' EXIT
-mkdir -p "$lint_dir/qs"
-ln -s /usr/share/omarchy/shell/Ui "$lint_dir/qs/Ui"
+mkdir -p "$lint_dir/qs/Commons"
+ln -s "$shell_dir/Ui" "$lint_dir/qs/Ui"
+sed -E 's/\bproperty QtObject\b/property var/' "$shell_dir/Commons/Color.qml" > "$lint_dir/qs/Commons/Color.qml"
+printf 'module qs.Commons\nsingleton Color 1.0 Color.qml\n' > "$lint_dir/qs/Commons/qmldir"
 "$qt6_bin/qmllint" \
   -I "$lint_dir" \
   --max-warnings 0 \
   --unqualified disable \
+  --unused-imports disable \
   --block-scope-var-declaration disable \
-  Overview.qml ShowDesktop.qml WindowCard.qml WindowCapture.qml BackdropShadow.qml UpdateNotice.qml WorkspaceStrip.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml PluginSettings.qml WallpaperSource.qml WallpaperBackdrop.qml
+  Overview.qml ShowDesktop.qml WindowCard.qml WindowCapture.qml BackdropShadow.qml UpdateNotice.qml WorkspaceStrip.qml WindowBorders.qml SettingsView.qml ThemedControl.qml ThemeDivider.qml PluginSettings.qml WallpaperSource.qml WallpaperBackdrop.qml ThemedIcons.qml
 
 # Lint the runtime fixture after injecting its host functions and imports.
 ./tests/check-settings-runtime --lint
 
 # One file per call: bash -n checks only its first argument and hands the
 # rest to that script as arguments.
-for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-wallpaper-runtime tests/check-blur-lock; do
+for script in background-blur-session tests/live/check-ipc tests/check-theme-runtime tests/check-settings-runtime tests/check-hot-corner-runtime tests/check-wallpaper-runtime tests/check-themed-icons-runtime tests/check-blur-lock; do
   bash -n "$script"
 done
 timeout 15s ./tests/check-blur-lock
