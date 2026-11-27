@@ -48,19 +48,18 @@ o.bind("SUPER + F11", "Show desktop", "omarchy-shell expose toggleDesktop")
 
 Any unused chord works. Avoid modifier-only bindings such as standalone Super; Hyprland cannot reliably distinguish them from the start of normal Super shortcuts.
 
-To keep workspace swipes from changing the desktop behind Exposé, replace your workspace gesture in `~/.config/hypr/input.lua` with:
+To keep workspace swipes from changing the desktop behind Exposé, load its gesture helper once from `~/.config/hypr/input.lua`, then run `hyprctl reload`:
 
 ```lua
-local expose_gesture_path = os.getenv("HOME") .. "/.config/omarchy/plugins/expose.window-overview/workspace-gesture.lua"
-local expose_gesture_loader = loadfile(expose_gesture_path)
-if expose_gesture_loader then
-  expose_gesture_loader()({ fingers = 4, scale = 0.5 })
-else
-  hl.gesture({ fingers = 4, direction = "horizontal", scale = 0.5, action = "workspace" })
-end
+local expose_gesture = loadfile(os.getenv("HOME") .. "/.config/omarchy/plugins/expose.window-overview/workspace-gesture.lua")
+if expose_gesture then expose_gesture()() end
 ```
 
-Adjust `fingers` and `scale` to match your preferred gesture. Only the workspace gesture is swallowed while Exposé is open; media keys and other compositor shortcuts keep working.
+On Omarchy 4.6 and later, this pauses Omarchy's three-finger workspace swipe while Exposé is open. For Hyprland's workspace swipe, which follows your fingers, pass a finger count and speed, as in `expose_gesture()({ fingers = 4, scale = 0.5 })`. It takes the place of Omarchy's gesture on those fingers and is paused the same way. Where Omarchy has no gestures of its own (before 4.6, or with `omarchy_default_gestures = false`), the helper sets up Hyprland's swipe, on three fingers unless you say otherwise.
+
+The helper sets up these gestures itself. If `input.lua` already loads it, keep that one call or change its options rather than adding a second, and take out any workspace gesture, or `unset` of an Omarchy gesture on those fingers, that you added yourself: Hyprland reports a gesture set or removed twice as a config error.
+
+Only workspace swipes are paused while Exposé is open; other gestures, media keys, and compositor shortcuts keep working.
 
 ### Update
 
@@ -70,7 +69,7 @@ omarchy plugin update expose.window-overview --yes
 
 ### Remove
 
-Delete the Exposé binding from `~/.config/hypr/bindings.lua`, then:
+Delete the Exposé lines from `~/.config/hypr/bindings.lua` and `~/.config/hypr/input.lua`, then:
 
 ```sh
 omarchy plugin remove expose.window-overview --yes

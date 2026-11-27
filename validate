@@ -26,6 +26,7 @@ QT_QPA_PLATFORM=offscreen timeout 300s "$qt6_bin/qmltestrunner" -input tests
 ./tests/check-hot-corner-runtime
 ./tests/check-theme-runtime
 ./tests/check-wallpaper-runtime
+lua tests/check-workspace-gesture.lua
 
 # Make the installed UI component types visible to qmllint. Of Commons, only
 # Color is: since Qt 6.12.1 qmllint warns about a type read through a namespace
