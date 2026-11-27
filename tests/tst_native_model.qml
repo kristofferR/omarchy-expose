@@ -44,6 +44,13 @@ TestCase {
         compare(WindowModel.formatWorkspaceLabel(undefined, "slot"), "");
     }
 
+    function test_minimizedWindowsAreNotOnASpecialWorkspace() {
+        verify(WindowModel.isOnSpecialWorkspace({ workspace: { name: "special:scratchpad" } }));
+        verify(!WindowModel.isOnSpecialWorkspace({ workspace: { name: "special:minimized" } }));
+        verify(!WindowModel.isOnSpecialWorkspace({ workspace: { name: "3" } }));
+        verify(!WindowModel.isOnSpecialWorkspace(null));
+    }
+
     function test_numbersOmarchyMonitorBlocksLikeTheBar() {
         compare(WindowModel.formatWorkspaceLabel("14", "full"), "4");
         compare(WindowModel.formatWorkspaceLabel("20", "full"), "10");
