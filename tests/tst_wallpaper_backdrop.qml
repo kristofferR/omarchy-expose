@@ -93,9 +93,12 @@ TestCase {
         tryCompare(backdrop, "ready", true);
         backdrop.blur = 4;
         var blurred = grabBlurred();
-        verify(blurred.red(4, 30) < 60, "the black part stays at the left edge");
-        verify(blurred.red(25, 30) > 70 && blurred.red(25, 30) < 185, "the edge stays at x = 25");
-        verify(blurred.red(60, 30) > 220, "the white part keeps its place");
+        // A grab is in device pixels, which a scaled display has more of.
+        var scale = blurred.width / backdrop.width;
+        function redAt(x) { return blurred.red(Math.round(x * scale), Math.round(30 * scale)); }
+        verify(redAt(4) < 60, "the black part stays at the left edge");
+        verify(redAt(25) > 70 && redAt(25) < 185, "the edge stays at x = 25");
+        verify(redAt(60) > 220, "the white part keeps its place");
     }
 
     function test_blurredEdgesStayWallpaper() {
