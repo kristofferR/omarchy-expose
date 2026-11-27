@@ -1,4 +1,6 @@
+pragma ComponentBehavior: Bound
 import QtQuick
+import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 
@@ -68,6 +70,28 @@ Item {
         running: root.active
         repeat: true
         onTriggered: root.refresh()
+    }
+
+    // Omarchy replaces the link in place. A watch on the folder holding it
+    // sees that, where a watch on the link follows it to the old image.
+    // While retained, this keeps the path current between openings, so the
+    // next opening shows the new wallpaper already decoded. Created only
+    // while resolving: a folder model without a folder watches the working
+    // directory instead.
+    Instantiator {
+        active: root.resolving
+        model: 1
+        delegate: FolderListModel {
+            readonly property string linkFolder: root.backgroundLink.replace(/\/[^\/]*$/, "")
+            folder: "file://" + linkFolder.split("/").map(encodeURIComponent).join("/")
+            nameFilters: [root.backgroundLink.replace(/^.*\//, "")]
+            showDirs: false
+            showHidden: true
+            onStatusChanged: {
+                if (status === FolderListModel.Ready)
+                    root.refresh();
+            }
+        }
     }
 
     Process {

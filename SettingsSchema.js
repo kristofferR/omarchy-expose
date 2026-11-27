@@ -121,6 +121,7 @@ var specs = {
             { label: "Right", value: "right" }
         ]
     },
+    specialWorkspaces: { fallback: true },
     workspaceStrip: { fallback: true },
     // Only applies while the workspace strip is shown.
     workspaceDrag: { fallback: true }

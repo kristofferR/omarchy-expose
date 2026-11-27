@@ -521,9 +521,13 @@ Ui.BorderSurface {
 
     component FooterIcon: Image {
         property int iconSize: 24
+        readonly property int pixels: Math.ceil(Style.space(iconSize) * Screen.devicePixelRatio)
         Layout.preferredWidth: Style.space(iconSize)
         Layout.preferredHeight: Style.space(iconSize)
         source: card.iconSource
+        // Omarchy's drawn icons are 512 px SVGs; decode them at the size shown.
+        sourceSize.width: pixels
+        sourceSize.height: pixels
         fillMode: Image.PreserveAspectFit
         asynchronous: true
     }

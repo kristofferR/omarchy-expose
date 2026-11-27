@@ -1,0 +1,34 @@
+#!/bin/bash
+# Redraw a temporary themed icon without touching the user's icons.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+test_dir=$(mktemp -d)
+trap 'rm -rf "$test_dir"' EXIT
+cp ThemedIcons.qml "$test_dir/"
+cp tests/runtime/themed-icons.qml "$test_dir/shell.qml"
+mkdir "$test_dir/drawn" "$test_dir/links"
+icon() {
+  printf '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="%s"/></svg>\n' "$1"
+}
+icon red > "$test_dir/drawn/probe.svg"
+icon blue > "$test_dir/next.svg"
+icon green > "$test_dir/own-icon.svg"
+ln -s "$test_dir/drawn/probe.svg" "$test_dir/links/probe.svg"
+ln -s "$test_dir/own-icon.svg" "$test_dir/links/own.svg"
+printf '1\t1\n' > "$test_dir/icons.revision"
+
+QT_QPA_PLATFORM=offscreen EXPOSE_ICONS_TEST_DIR="$test_dir" \
+  timeout 15s quickshell --no-color -p "$test_dir/shell.qml" > "$test_dir/output" 2>&1 || {
+    cat "$test_dir/output"
+    exit 1
+  }
+cat "$test_dir/output"
+rg -q 'PASS: drawn icon lookup.*redraw on a new revision' "$test_dir/output"
+if rg -q 'FAIL:|TypeError|ReferenceError|Unable to assign|Binding loop|Failed to load configuration' "$test_dir/output"; then
+  exit 1
+fi
+# The point of the revision: the icon on screen is the new drawing.
+if cmp -s "$test_dir/first.png" "$test_dir/second.png"; then
+  echo "FAIL: the icon still shows its previous drawing" >&2
+  exit 1
+fi

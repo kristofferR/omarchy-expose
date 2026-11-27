@@ -49,6 +49,11 @@ function isMinimized(toplevel) {
     return Boolean(workspace) && String(workspace.name || "") === MINIMIZED_WORKSPACE;
 }
 
+// The scratchpad or another special workspace, other than the dock's.
+function isOnSpecialWorkspace(toplevel) {
+    return workspaceName(toplevel).indexOf("special:") === 0 && !isMinimized(toplevel);
+}
+
 // Omarchy gives every monitor its own block of ten workspaces (1-10, 11-20, ...)
 // and the bar numbers each block 1-10, so numeric names print their slot.
 // Workspace names are otherwise free-form. Plugins that give every monitor its

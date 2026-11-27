@@ -73,9 +73,18 @@ ShellRoot {
                 wallpaper.retained = true;
                 wallpaper.active = false;
                 test.require(wallpaper.resolvedPath === test.second, "a retained source keeps its path while inactive");
+                // A wallpaper chosen while closed must be current at the next
+                // opening, not resolved only once the overview is showing.
+                test.link(test.first);
+                test.phase = 8;
+                test.ticks = 0;
+            } else if (test.phase === 8 && wallpaper.resolvedPath !== test.first) {
+                test.require(test.ticks < 30, "a retained source follows replacement while inactive");
+            } else if (test.phase === 8) {
+                test.require(!wallpaper.active, "a retained source follows replacement while inactive");
                 wallpaper.retained = false;
                 test.require(wallpaper.resolvedPath === "", "releasing a retained, inactive source clears its path");
-                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link, recovery, video still and retention");
+                console.log("PASS: wallpaper link resolution, encoded paths, live replacement, inactive cleanup, broken link, recovery, video still, retention and retained replacement");
                 Qt.quit();
             }
         }

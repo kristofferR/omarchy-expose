@@ -4,9 +4,9 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
-import qs.Commons // qmllint disable import
-import qs.Commons as Commons // qmllint disable import
-import qs.Ui as Ui // qmllint disable import
+import qs.Commons
+import qs.Commons as Commons
+import qs.Ui as Ui
 import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
@@ -190,6 +190,7 @@ Item {
     readonly property bool showFooter: SettingsSchema.read(root.pluginEntry, "showFooter")
     readonly property bool closeButton: SettingsSchema.read(root.pluginEntry, "closeButton")
     readonly property string closeButtonSide: SettingsSchema.read(root.pluginEntry, "closeButtonSide")
+    readonly property bool specialWorkspaces: SettingsSchema.read(root.pluginEntry, "specialWorkspaces")
     readonly property bool workspaceStrip: SettingsSchema.read(root.pluginEntry, "workspaceStrip")
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
@@ -224,6 +225,9 @@ Item {
     // releases the keyboard.
     property var pendingActivation: null
     property var pendingWorkspace: null
+    // Each display's workspace when a close began. The current-workspace
+    // scope keeps to it, so cards do not change under a closing overview.
+    property var closingWorkspaces: null
     // The window whose card is being dragged toward the workspace strip.
     property var draggedToplevel: null
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
@@ -350,6 +354,7 @@ Item {
     // What Enter opens.
     readonly property var selection: WindowModel.selectionFor(root.filteredToplevels, root.selectedToplevel, root.originToplevel)
 
+    onSpecialWorkspacesChanged: root.handleToplevelCollectionChanged()
     onMultiMonitorModeChanged: {
         root.hoveredToplevel = null;
         root.clearPreview();
@@ -376,6 +381,7 @@ Item {
         root.pendingActivation = null;
         root.pendingWorkspace = null;
         root.glideLandingTop = null;
+        root.closingWorkspaces = null;
         root.draggedToplevel = null;
         root.addedWorkspaces = [];
         compositorBorders.refresh();
@@ -435,6 +441,14 @@ Item {
 
     function startDismiss(notifyShell) {
         root.stopGlideGate();
+        if (root.opened && !root.closingWorkspaces) {
+            var held = {};
+            for (var index = 0; index < Quickshell.screens.length; index++) {
+                var name = String(Quickshell.screens[index].name || "");
+                held[name] = root.workspaceForScreen(name);
+            }
+            root.closingWorkspaces = held;
+        }
         root.openingPending = false;
         root.closeSettings();
         root.hoveredToplevel = null;
@@ -1353,12 +1367,18 @@ Item {
         onTriggered: root.closingToplevels = []
     }
 
+    function listedToplevels() {
+        var result = [];
+        for (var index = 0; index < root.allToplevels.length; index++) {
+            var top = root.allToplevels[index];
+            if (WindowModel.isEligible(top) && (root.specialWorkspaces || !WindowModel.isOnSpecialWorkspace(top)))
+                result.push(top);
+        }
+        return result;
+    }
+
     function resetSessionToplevels() {
-        var next = [];
-        for (var index = 0; index < root.allToplevels.length; index++)
-            if (WindowModel.isEligible(root.allToplevels[index]))
-                next.push(root.allToplevels[index]);
-        root.sessionToplevels = next;
+        root.sessionToplevels = root.listedToplevels();
         root.captureSessionAspectRatios();
         root.modelRevision++;
     }
@@ -1366,10 +1386,7 @@ Item {
     function syncSessionToplevels() {
         if (!root.surfaceMounted && !root.openingPending)
             return false;
-        var current = [];
-        for (var currentIndex = 0; currentIndex < root.allToplevels.length; currentIndex++)
-            if (WindowModel.isEligible(root.allToplevels[currentIndex]))
-                current.push(root.allToplevels[currentIndex]);
+        var current = root.listedToplevels();
 
         var next = [];
         var nextRatios = [];
@@ -1475,7 +1492,7 @@ Item {
 
     function toplevelsForScreen(screenName) {
         var needle = root.filterText.toLowerCase();
-        var currentWorkspace = root.workspaceForScreen(screenName);
+        var currentWorkspace = (root.closingWorkspaces && root.closingWorkspaces[screenName]) || root.workspaceForScreen(screenName);
         var candidates = root.toplevelsOnScreen(screenName);
         var result = [];
         for (var index = 0; index < candidates.length; index++) {
@@ -1582,9 +1599,9 @@ Item {
             ? String(entry.icon || "application-x-executable")
             : String(identity.candidates[0] || "application-x-executable");
         var appLibrary = root.shell && root.shell.appLibrary ? root.shell.appLibrary : null;
-        var result = appLibrary && typeof appLibrary.iconSource === "function"
-            ? String(appLibrary.iconSource(iconName) || "")
-            : "";
+        var result = themedIcons.source(iconName);
+        if (!result && appLibrary && typeof appLibrary.iconSource === "function")
+            result = String(appLibrary.iconSource(iconName) || "");
         if (!result)
             result = Quickshell.iconPath(iconName, true);
         // Drop identities no open window has, so closed or renamed windows do
@@ -1699,6 +1716,11 @@ Item {
     Connections {
         target: root.shell && root.shell.appLibrary ? root.shell.appLibrary : null
         function onIconIndexChanged() { root.iconCache = {}; }
+    }
+
+    ThemedIcons {
+        id: themedIcons
+        onRevisionChanged: root.iconCache = {}
     }
 
     Timer {
@@ -1974,6 +1996,7 @@ Item {
         function closeButtonSide(side: string): string { return root.setSettingFromIpc("closeButtonSide", side); }
         function initialWorkspaceScope(scope: string): string { return root.setSettingFromIpc("initialWorkspaceScope", scope); }
         function workspaceLabelStyle(style: string): string { return root.setSettingFromIpc("workspaceLabelStyle", style); }
+        function specialWorkspaces(mode: string): string { return root.setSettingFromIpc("specialWorkspaces", mode); }
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
         function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
@@ -2079,7 +2102,21 @@ Item {
         id: cornerTarget
         required property bool onTop
         required property bool onLeft
-        readonly property bool hovered: enabled && (horizontalTarget.containsMouse || verticalTarget.containsMouse)
+        // Hovered while enabled, with the pointer in either strip, and seen
+        // there since the corner was last enabled. A corner cannot observe the
+        // pointer while disabled or hidden, so containsMouse can still say
+        // "inside" from before: a corner hidden under the overview comes back
+        // believing the pointer is still in it. Only an enter or a move counts
+        // as seeing the pointer again.
+        // The state is updated explicitly rather than bound, because what the
+        // corner does when entered can disable it (opening can mount the
+        // overview at once); a binding would re-enter itself, loop and stay
+        // true. It is set before signalling, so a nested update from inside a
+        // handler leaves it consistent.
+        readonly property bool hovered: cornerTarget.hoverState
+        property bool hoverState: false
+        property bool pointerSeen: false
+        readonly property bool pointerInside: horizontalTarget.containsMouse || verticalTarget.containsMouse
         signal entered()
         signal exited()
 
@@ -2089,8 +2126,12 @@ Item {
         // The two strips overlap in the corner square, so hovering is tracked
         // across both: sliding from one into the other must not restart the
         // dwell or report a spurious exit.
-        onHoveredChanged: {
-            if (cornerTarget.hovered) {
+        function updateHover() {
+            var now = cornerTarget.enabled && cornerTarget.pointerInside && cornerTarget.pointerSeen;
+            if (now === cornerTarget.hoverState)
+                return;
+            cornerTarget.hoverState = now;
+            if (now) {
                 if (root.effectiveHotCornerDelay > 0)
                     dwellTimer.restart();
                 else
@@ -2099,6 +2140,21 @@ Item {
                 dwellTimer.stop();
                 cornerTarget.exited();
             }
+        }
+        function notePointer() {
+            if (cornerTarget.pointerSeen || !cornerTarget.enabled)
+                return;
+            cornerTarget.pointerSeen = true;
+            cornerTarget.updateHover();
+        }
+        onPointerInsideChanged: {
+            if (!cornerTarget.pointerInside)
+                cornerTarget.pointerSeen = false;
+            cornerTarget.updateHover();
+        }
+        onEnabledChanged: {
+            cornerTarget.pointerSeen = false;
+            cornerTarget.updateHover();
         }
 
         Timer {
@@ -2118,6 +2174,8 @@ Item {
             height: root.hotCornerDepth
             hoverEnabled: true
             acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.notePointer()
+            onPositionChanged: cornerTarget.notePointer()
         }
 
         MouseArea {
@@ -2128,6 +2186,8 @@ Item {
             height: parent.height
             hoverEnabled: true
             acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.notePointer()
+            onPositionChanged: cornerTarget.notePointer()
         }
     }
 
