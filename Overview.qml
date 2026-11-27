@@ -2016,7 +2016,21 @@ Item {
         id: cornerTarget
         required property bool onTop
         required property bool onLeft
-        readonly property bool hovered: enabled && (horizontalTarget.containsMouse || verticalTarget.containsMouse)
+        // Hovered while enabled, with the pointer in either strip, and seen
+        // there since the corner was last enabled. A corner cannot observe the
+        // pointer while disabled or hidden, so containsMouse can still say
+        // "inside" from before: a corner hidden under the overview comes back
+        // believing the pointer is still in it. Only an enter or a move counts
+        // as seeing the pointer again.
+        // The state is updated explicitly rather than bound, because what the
+        // corner does when entered can disable it (opening can mount the
+        // overview at once); a binding would re-enter itself, loop and stay
+        // true. It is set before signalling, so a nested update from inside a
+        // handler leaves it consistent.
+        readonly property bool hovered: cornerTarget.hoverState
+        property bool hoverState: false
+        property bool pointerSeen: false
+        readonly property bool pointerInside: horizontalTarget.containsMouse || verticalTarget.containsMouse
         signal entered()
         signal exited()
 
@@ -2026,8 +2040,12 @@ Item {
         // The two strips overlap in the corner square, so hovering is tracked
         // across both: sliding from one into the other must not restart the
         // dwell or report a spurious exit.
-        onHoveredChanged: {
-            if (cornerTarget.hovered) {
+        function updateHover() {
+            var now = cornerTarget.enabled && cornerTarget.pointerInside && cornerTarget.pointerSeen;
+            if (now === cornerTarget.hoverState)
+                return;
+            cornerTarget.hoverState = now;
+            if (now) {
                 if (root.effectiveHotCornerDelay > 0)
                     dwellTimer.restart();
                 else
@@ -2036,6 +2054,21 @@ Item {
                 dwellTimer.stop();
                 cornerTarget.exited();
             }
+        }
+        function notePointer() {
+            if (cornerTarget.pointerSeen || !cornerTarget.enabled)
+                return;
+            cornerTarget.pointerSeen = true;
+            cornerTarget.updateHover();
+        }
+        onPointerInsideChanged: {
+            if (!cornerTarget.pointerInside)
+                cornerTarget.pointerSeen = false;
+            cornerTarget.updateHover();
+        }
+        onEnabledChanged: {
+            cornerTarget.pointerSeen = false;
+            cornerTarget.updateHover();
         }
 
         Timer {
@@ -2055,6 +2088,8 @@ Item {
             height: root.hotCornerDepth
             hoverEnabled: true
             acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.notePointer()
+            onPositionChanged: cornerTarget.notePointer()
         }
 
         MouseArea {
@@ -2065,6 +2100,8 @@ Item {
             height: parent.height
             hoverEnabled: true
             acceptedButtons: Qt.NoButton
+            onEntered: cornerTarget.notePointer()
+            onPositionChanged: cornerTarget.notePointer()
         }
     }
 
