@@ -35,6 +35,7 @@ ShellRoot {
         property bool specialWorkspaces: true
         property bool workspaceStrip: false
         property bool workspaceDrag: true
+        property bool workspaceStripIcons: false
         property bool separateTiming: false
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
