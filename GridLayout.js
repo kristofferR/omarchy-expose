@@ -1,38 +1,55 @@
 .pragma library
 
-// Window grid geometry: packs cards into balanced rows, places Quick Look, and
-// finds the spatial neighbour for arrow keys. Pure: callers pass aspect ratios.
+// Window grid geometry: lays cards out in rows in list order, places Quick
+// Look, and finds the card under a point or beside a card for arrow keys.
+// Pure: callers pass aspect ratios.
 
-function assignCompositionRows(entries, rowCount) {
-    var rows = [];
-    for (var rowIndex = 0; rowIndex < rowCount; rowIndex++)
-        rows.push({ entries: [], naturalWidth: 0 });
+function naturalWidth(entry) {
+    return Math.sqrt(entry.weight * entry.ratio);
+}
 
-    var ordered = entries.slice();
-    ordered.sort(function (a, b) {
-        var widthA = Math.sqrt(a.weight * a.ratio);
-        var widthB = Math.sqrt(b.weight * b.ratio);
-        if (widthA !== widthB)
-            return widthB - widthA;
-        return a.index - b.index;
-    });
+// For every row count up to maxRows, the cards split, in order, into rows
+// whose widest row is as narrow as it can be: rowsByCount[r] holds r rows.
+// Rows keep the list order, so the grid reads left to right and top to bottom
+// in the order the windows are listed. Ties fill the upper rows first.
+function orderedRows(entries, maxRows) {
+    var count = entries.length;
+    var prefix = [0];
+    for (var index = 0; index < count; index++)
+        prefix.push(prefix[index] + naturalWidth(entries[index]));
 
-    for (var entryIndex = 0; entryIndex < ordered.length; entryIndex++) {
-        var bestRow = 0;
-        for (var candidateRow = 1; candidateRow < rows.length; candidateRow++) {
-            if (rows[candidateRow].naturalWidth < rows[bestRow].naturalWidth
-                    || (rows[candidateRow].naturalWidth === rows[bestRow].naturalWidth
-                        && rows[candidateRow].entries.length < rows[bestRow].entries.length))
-                bestRow = candidateRow;
+    // widest[r][i]: the narrowest widest row splitting the first i cards into
+    // r rows, the last of which starts at split[r][i].
+    var widest = [[0]];
+    var split = [[]];
+    for (var row = 1; row <= maxRows; row++) {
+        widest.push([]);
+        split.push([]);
+        for (var last = row; last <= count; last++) {
+            widest[row][last] = Number.MAX_VALUE;
+            for (var start = row - 1; start < last; start++) {
+                var candidate = Math.max(widest[row - 1][start], prefix[last] - prefix[start]);
+                // Widths summed in a different order differ in the last bits.
+                if (candidate <= widest[row][last] + 1e-9) {
+                    widest[row][last] = candidate;
+                    split[row][last] = start;
+                }
+            }
         }
-        var entry = ordered[entryIndex];
-        rows[bestRow].entries.push(entry);
-        rows[bestRow].naturalWidth += Math.sqrt(entry.weight * entry.ratio);
     }
 
-    for (var sortRow = 0; sortRow < rows.length; sortRow++)
-        rows[sortRow].entries.sort(function (a, b) { return a.index - b.index; });
-    return rows;
+    var rowsByCount = [];
+    for (var rowCount = 1; rowCount <= maxRows; rowCount++) {
+        var rows = [];
+        var stop = count;
+        for (var back = rowCount; back >= 1; back--) {
+            var begin = split[back][stop];
+            rows.unshift({ entries: entries.slice(begin, stop) });
+            stop = begin;
+        }
+        rowsByCount[rowCount] = rows;
+    }
+    return rowsByCount;
 }
 
 function composeRows(rows, scale, width, height, gap, padding, footerHeight) {
@@ -46,7 +63,7 @@ function composeRows(rows, scale, width, height, gap, padding, footerHeight) {
         var rowHeight = 0;
         for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
             var entry = entries[entryIndex];
-            var previewWidth = scale * Math.sqrt(entry.weight * entry.ratio);
+            var previewWidth = scale * naturalWidth(entry);
             var previewHeight = scale * Math.sqrt(entry.weight / entry.ratio);
             var card = {
                 index: entry.index,
@@ -89,10 +106,10 @@ function composeRows(rows, scale, width, height, gap, padding, footerHeight) {
     return result;
 }
 
-// Card rectangles for windows of the given aspect ratios, indexed like ratios.
-// Every row count that fits is tried and the largest cards win: a card's title
-// band and padding make it taller than its preview, so no estimate from the
-// previews' shapes alone can rule a row count out.
+// Card rectangles for windows of the given aspect ratios, indexed like ratios
+// and placed in that order. Every row count that fits is tried and the largest
+// cards win: a card's title band and padding make it taller than its preview,
+// so no estimate from the previews' shapes alone can rule a row count out.
 function computeLayout(ratios, width, height, gap, padding, footerHeight) {
     var count = ratios.length;
     if (!count || width <= 0 || height <= 0)
@@ -105,25 +122,15 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
     for (var index = 0; index < count; index++) {
         var ratio = ratios[index];
         var adaptiveWeight = Math.max(0.72, Math.min(1.28, Math.sqrt(ratio / 1.6)));
-        entries.push({
-            index: index,
-            ratio: ratio,
-            weight: adaptiveWeight,
-            extremity: Math.max(ratio, 1 / ratio)
-        });
+        entries.push({ index: index, ratio: ratio, weight: adaptiveWeight });
     }
-    entries.sort(function (a, b) {
-        if (a.extremity !== b.extremity)
-            return b.extremity - a.extremity;
-        return a.index - b.index;
-    });
 
     var high = Math.min(availableWidth, availableHeight);
     var footerSpacing = footerHeight > 0 ? padding : 0;
     for (var entryIndex = 0; entryIndex < entries.length; entryIndex++) {
         var entry = entries[entryIndex];
         high = Math.min(high,
-            (availableWidth - padding * 2) / Math.sqrt(entry.weight * entry.ratio),
+            (availableWidth - padding * 2) / naturalWidth(entry),
             (availableHeight - footerHeight - padding * 2 - footerSpacing) / Math.sqrt(entry.weight / entry.ratio));
     }
     high = Math.max(1, high);
@@ -132,8 +139,9 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
     var bestScale = -1;
     var minimumCardHeight = footerHeight + padding * 2 + footerSpacing;
     var maxRows = Math.max(1, Math.min(count, Math.floor((availableHeight + gap) / (minimumCardHeight + gap))));
+    var rowsByCount = orderedRows(entries, maxRows);
     for (var rowCount = 1; rowCount <= maxRows; rowCount++) {
-        var rows = assignCompositionRows(entries, rowCount);
+        var rows = rowsByCount[rowCount];
         var low = 0;
         var rowHigh = high;
         var rowBest = null;
@@ -153,7 +161,7 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
         }
     }
     if (!best)
-        best = composeRows(assignCompositionRows(entries, 1), 1, availableWidth, availableHeight, gap, padding, footerHeight) || [];
+        best = composeRows(rowsByCount[1], 1, availableWidth, availableHeight, gap, padding, footerHeight) || [];
     for (var resultIndex = 0; resultIndex < best.length; resultIndex++) {
         if (!best[resultIndex])
             continue;
@@ -184,6 +192,16 @@ function previewRect(ratio, centered, sourceRect, width, height, padding, footer
         width: cardWidth,
         height: cardHeight
     };
+}
+
+// Index of the card containing the point, or -1.
+function indexAt(layout, x, y) {
+    for (var index = 0; index < (layout || []).length; index++) {
+        var rect = layout[index];
+        if (rect && x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height)
+            return index;
+    }
+    return -1;
 }
 
 // Whether b's centre lies within a's vertical span.

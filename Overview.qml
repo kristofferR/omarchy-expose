@@ -11,6 +11,7 @@ import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "WindowOrder.js" as WindowOrder
 import "GlideMotion.js" as GlideMotion
 import "WorkspaceModel.js" as WorkspaceModel
 import "ScreenLayout.js" as ScreenLayout
@@ -195,6 +196,15 @@ Item {
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
     readonly property bool workspaceStripIcons: SettingsSchema.read(root.pluginEntry, "workspaceStripIcons")
+    readonly property bool reorderWindows: SettingsSchema.read(root.pluginEntry, "reorderWindows")
+    // Turning reordering off goes back to the desktop's order.
+    onReorderWindowsChanged: {
+        if (root.reorderWindows)
+            return;
+        root.customOrder = [];
+        if (root.surfaceMounted || root.openingPending)
+            root.setSessionOrder(WindowOrder.arrange(root.sessionToplevels, []));
+    }
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -229,8 +239,13 @@ Item {
     // Each display's workspace when a close began. The current-workspace
     // scope keeps to it, so cards do not change under a closing overview.
     property var closingWorkspaces: null
-    // The window whose card is being dragged toward the workspace strip.
+    // The window whose card is being dragged, and the window whose place it
+    // takes if dropped now (null over anything but another card).
     property var draggedToplevel: null
+    property var reorderTarget: null
+    // The order cards were dragged into, kept across openings until the shell
+    // restarts; see WindowOrder.arrange.
+    property var customOrder: []
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
     // Workspaces added with + that have no window yet; see WorkspaceModel.placeholder.
     property var addedWorkspaces: []
@@ -415,6 +430,7 @@ Item {
         root.glideLandingWorkspaces = {};
         root.closingWorkspaces = null;
         root.draggedToplevel = null;
+        root.reorderTarget = null;
         root.addedWorkspaces = [];
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
@@ -1163,6 +1179,8 @@ Item {
         if (!membershipChanged)
             root.modelRevision++;
         root.clearUnlistedPreview();
+        if (sessionOrderSettle.running)
+            Qt.callLater(root.settleSessionOrder);
     }
 
     function clearUnlistedPreview() {
@@ -1428,9 +1446,50 @@ Item {
     }
 
     function resetSessionToplevels() {
-        root.sessionToplevels = root.listedToplevels();
+        root.customOrder = root.customOrder.filter(function (top) { return top && root.allToplevels.indexOf(top) !== -1; });
+        root.sessionToplevels = WindowOrder.arrange(root.listedToplevels(), root.customOrder);
         root.captureSessionAspectRatios();
         root.modelRevision++;
+        sessionOrderSettle.restart();
+    }
+
+    // Window positions arrive with the refresh an opening asks for, just after
+    // the grid is first arranged. Until then the order may follow where the
+    // windows were at the previous refresh, so it is arranged again as they
+    // arrive; after that it holds still while the overview is open.
+    Timer {
+        id: sessionOrderSettle
+        interval: 300
+    }
+
+    function settleSessionOrder() {
+        if (sessionOrderSettle.running)
+            root.setSessionOrder(WindowOrder.arrange(root.sessionToplevels, root.customOrder));
+    }
+
+    // Puts the session's windows in a new order, their aspect ratios with them.
+    function setSessionOrder(next) {
+        var previous = root.sessionToplevels;
+        if (root.toplevelListsEqual(next, previous))
+            return;
+        var ratios = root.sessionAspectRatios;
+        root.sessionAspectRatios = next.map(function (top) {
+            return ratios[previous.indexOf(top)] || root.liveAspectRatioFor(top);
+        });
+        root.sessionToplevels = next;
+        root.modelRevision++;
+    }
+
+    // Dropping a card on another moves its window to that window's place.
+    function reorderWindow(dragged, target) {
+        if (!root.reorderWindows)
+            return;
+        var next = WindowOrder.moved(root.sessionToplevels, dragged, target);
+        if (next === root.sessionToplevels)
+            return;
+        sessionOrderSettle.stop();
+        root.setSessionOrder(next);
+        root.customOrder = next.slice();
     }
 
     function syncSessionToplevels() {
@@ -1447,12 +1506,10 @@ Item {
             next.push(existing);
             nextRatios.push(root.sessionAspectRatios[oldIndex] || root.liveAspectRatioFor(existing));
         }
-        for (var newIndex = 0; newIndex < current.length; newIndex++) {
-            var candidate = current[newIndex];
-            if (next.indexOf(candidate) !== -1)
-                continue;
-            next.push(candidate);
-            nextRatios.push(root.liveAspectRatioFor(candidate));
+        var added = WindowOrder.desktopOrder(current.filter(function (top) { return next.indexOf(top) === -1; }));
+        for (var newIndex = 0; newIndex < added.length; newIndex++) {
+            next.push(added[newIndex]);
+            nextRatios.push(root.liveAspectRatioFor(added[newIndex]));
         }
 
         var changed = next.length !== root.sessionToplevels.length;
@@ -1556,6 +1613,12 @@ Item {
                 result.push(top);
         }
         return result;
+    }
+
+    // Whether two lists hold the same windows, in any order. A card's place
+    // comes from its slot, so a new order alone needs no new cards.
+    function sameToplevels(left, right) {
+        return left.length === right.length && left.every(function (top) { return right.indexOf(top) !== -1; });
     }
 
     function toplevelListsEqual(left, right) {
@@ -2052,6 +2115,7 @@ Item {
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
         function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
         function workspaceStripIcons(mode: string): string { return root.setSettingFromIpc("workspaceStripIcons", mode); }
+        function reorderWindows(mode: string): string { return root.setSettingFromIpc("reorderWindows", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
         // The filter, windows, and selection describe the open overview only.
         function state(): string {
@@ -2497,7 +2561,7 @@ Item {
             property var cardToplevels: []
 
             function syncCardToplevels() {
-                if (!root.toplevelListsEqual(overviewWindow.cardToplevels, overviewWindow.cardToplevelsSource))
+                if (!root.sameToplevels(overviewWindow.cardToplevels, overviewWindow.cardToplevelsSource))
                     overviewWindow.cardToplevels = overviewWindow.cardToplevelsSource;
             }
 
@@ -2712,12 +2776,13 @@ Item {
                         id: overviewArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        // The gap leaves room for a hovered card's lift and outline;
+                        // more only shrinks the cards on a short display.
+                        readonly property real gap: Style.space(32)
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
-                            // The gap leaves room for a hovered card's lift and outline;
-                            // more only shrinks the cards on a short display.
-                            return GridLayout.computeLayout(ratios, width, height, Style.space(32), Style.spacing.sm, root.windowFooterHeight);
+                            return GridLayout.computeLayout(ratios, width, height, overviewArea.gap, Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {
@@ -2749,6 +2814,28 @@ Item {
                                     layoutAreaHeight: overviewArea.height
                                 }
                                 }
+
+                            // Where a dragged card lands: beside the card whose place
+                            // it takes, on the side that card moves away from.
+                            Rectangle {
+                                id: reorderMarker
+                                readonly property int targetIndex: overviewWindow.screenToplevels.indexOf(root.reorderTarget)
+                                readonly property int draggedIndex: overviewWindow.screenToplevels.indexOf(root.draggedToplevel)
+                                readonly property var targetRect: reorderMarker.targetIndex >= 0 && reorderMarker.draggedIndex >= 0
+                                    ? overviewArea.windowLayout[reorderMarker.targetIndex] || null
+                                    : null
+                                readonly property bool after: reorderMarker.draggedIndex < reorderMarker.targetIndex
+                                visible: reorderMarker.targetRect !== null
+                                z: 15
+                                width: Style.space(4)
+                                radius: width / 2
+                                color: Commons.Color.accent
+                                x: !reorderMarker.targetRect ? 0 : (reorderMarker.after
+                                    ? reorderMarker.targetRect.x + reorderMarker.targetRect.width + overviewArea.gap / 2
+                                    : reorderMarker.targetRect.x - overviewArea.gap / 2) - width / 2
+                                y: reorderMarker.targetRect ? reorderMarker.targetRect.y + Style.spacing.sm : 0
+                                height: reorderMarker.targetRect ? Math.max(0, reorderMarker.targetRect.height - Style.spacing.sm * 2) : 0
+                            }
                         }
 
                         Text {

@@ -106,6 +106,30 @@ TestCase {
         }
     }
 
+    // Cards keep their list order: left to right, then the next row down.
+    function test_cardsReadInListOrder() {
+        var rects = GridLayout.computeLayout([1, 1, 1, 1], 900, 900, gap, padding, footer);
+        compare(rowCount(rects), 2);
+        verify(rects[0].y === rects[1].y && rects[0].x < rects[1].x, "0 and 1 share the top row");
+        verify(rects[2].y === rects[3].y && rects[2].x < rects[3].x, "2 and 3 share the next row");
+        verify(rects[2].y > rects[0].y, "2 is below 0");
+    }
+
+    // An uneven split fills the upper rows first.
+    function test_upperRowsFillFirst() {
+        var rects = GridLayout.computeLayout([1.6, 1.6, 1.6], 900, 900, gap, padding, footer);
+        compare(rowCount(rects), 2);
+        compare(rects[0].y, rects[1].y);
+        verify(rects[2].y > rects[0].y);
+    }
+
+    function test_indexAtFindsTheCardUnderAPoint() {
+        compare(GridLayout.indexAt(grid, 50, 50), 0);
+        compare(GridLayout.indexAt(grid, 250, 250), 3);
+        compare(GridLayout.indexAt(grid, 150, 50), -1);
+        compare(GridLayout.indexAt([], 0, 0), -1);
+    }
+
     function test_twoWideWindowsSitSideBySide() {
         compare(rowCount(layoutFor([2, 2])), 1);
     }

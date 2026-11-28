@@ -125,7 +125,8 @@ var specs = {
     workspaceStrip: { fallback: true },
     // Only applies while the workspace strip is shown.
     workspaceDrag: { fallback: true },
-    workspaceStripIcons: { fallback: false }
+    workspaceStripIcons: { fallback: false },
+    reorderWindows: { fallback: true }
 };
 
 function spec(name) {

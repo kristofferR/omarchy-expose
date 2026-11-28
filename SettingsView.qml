@@ -992,7 +992,7 @@ Item {
         var categoryButton = settingsCategoryRepeater.itemAt(settingsView.controller.settingsCategoryIndex);
         var controls = [
             [backgroundModeChoices, backgroundBlurSlider, backgroundDimSlider, bottomTextToggle],
-            [livePreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices],
+            [livePreviewsToggle, selectionStyleChoices, previewPlacementChoices, movePointerToggle, closeButtonToggle, closeButtonSideChoices, reorderWindowsToggle],
             [windowFooterChoices, workspaceLabelStyleChoices],
             [initialWorkspaceScopeChoices, displayModeChoicesControl, specialWorkspacesToggle, workspaceStripToggle, workspaceDragToggle, workspaceStripIconsToggle],
             [hotCornerToggle, hotCornerTopLeftAction, hotCornerTopLeftCommand, hotCornerTopRightAction, hotCornerTopRightCommand, hotCornerBottomLeftAction, hotCornerBottomLeftCommand, hotCornerBottomRightAction, hotCornerBottomRightCommand, hotCornerAllDisplaysToggle, hotCornerIgnoreFullscreenToggle, hotCornerDelaySlider],
@@ -1341,6 +1341,19 @@ Item {
                                 value: settingsView.controller.closeButtonSide
                                 options: SettingsSchema.options("closeButtonSide")
                                 onChosen: function (value) { settingsView.controller.setSetting("closeButtonSide", value); }
+                            }
+                        }
+
+                        SettingRow {
+                            label: "Reorder by dragging"
+                            description: "Windows are listed as they sit on the desktop. Drag a window onto another to move it to that place; the order is kept until Omarchy Shell restarts. Turn off to go back to the desktop's order."
+
+                            Item { Layout.fillWidth: true }
+
+                            SettingToggle {
+                                id: reorderWindowsToggle
+                                checked: settingsView.controller.reorderWindows
+                                onToggled: function (checked) { settingsView.controller.setSetting("reorderWindows", checked); }
                             }
                         }
                     }
