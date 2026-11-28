@@ -1643,9 +1643,9 @@ Item {
         return root.liveAspectRatioFor(top);
     }
 
-    function previewRectFor(top, sourceRect, width, height, padding, footerHeight) {
+    function previewRectFor(top, sourceRect, bounds, padding, footerHeight) {
         return GridLayout.previewRect(root.aspectRatioFor(top), root.previewPlacement === "centered",
-            sourceRect, width, height, padding, footerHeight);
+            sourceRect, bounds, padding, footerHeight);
     }
 
     // Steps to the nearest card in a direction, across every mounted grid.
@@ -2670,6 +2670,7 @@ Item {
                 }
 
                 ColumnLayout {
+                    id: overviewColumn
                     anchors.fill: parent
                     anchors.margins: Style.spacing.sm
                     spacing: Style.spacing.md
@@ -2776,9 +2777,13 @@ Item {
                         id: overviewArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        // Above the footer hints, which an enlarged preview covers.
+                        z: 1
                         // The gap leaves room for a hovered card's lift and outline;
                         // more only shrinks the cards on a short display.
                         readonly property real gap: Style.space(32)
+                        readonly property rect previewBounds: Qt.rect(-overviewColumn.x - overviewArea.x,
+                            -overviewColumn.y - overviewArea.y, overviewWindow.width, overviewWindow.height)
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
@@ -2810,8 +2815,7 @@ Item {
                                     workspaceStrip: workspaceStripLoader.item
                                     screenName: overviewWindow.screenName
                                     windowLayout: overviewArea.windowLayout
-                                    layoutAreaWidth: overviewArea.width
-                                    layoutAreaHeight: overviewArea.height
+                                    previewBounds: overviewArea.previewBounds
                                 }
                                 }
 

@@ -171,24 +171,27 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
     return best;
 }
 
-// The enlarged Quick Look card: centred on the area, or on sourceRect in place.
-function previewRect(ratio, centered, sourceRect, width, height, padding, footerHeight) {
-    var maxWidth = width * 0.84;
-    var maxHeight = height * 0.78;
+// The enlarged Quick Look card within bounds, the display in the grid's
+// coordinates: centred on the display, or on sourceRect in place. It floats
+// over the search bar and strip too, so a window can grow when the grid
+// already fills the display's height, as on an ultrawide.
+function previewRect(ratio, centered, sourceRect, bounds, padding, footerHeight) {
+    var maxWidth = bounds.width * 0.9;
+    var maxHeight = bounds.height * 0.9;
     var footerSpacing = footerHeight > 0 ? padding : 0;
     var previewWidth = Math.max(1, Math.min(maxWidth - padding * 2, (maxHeight - footerHeight - padding * 2 - footerSpacing) * ratio));
     var previewHeight = Math.max(1, previewWidth / ratio);
     var cardWidth = previewWidth + padding * 2;
     var cardHeight = previewHeight + footerHeight + padding * 2 + footerSpacing;
-    var centerX = width / 2;
-    var centerY = height / 2;
+    var centerX = bounds.x + bounds.width / 2;
+    var centerY = bounds.y + bounds.height / 2;
     if (!centered && sourceRect) {
         centerX = sourceRect.x + sourceRect.width / 2;
         centerY = sourceRect.y + sourceRect.height / 2;
     }
     return {
-        x: Math.max(padding, Math.min(width - cardWidth - padding, centerX - cardWidth / 2)),
-        y: Math.max(padding, Math.min(height - cardHeight - padding, centerY - cardHeight / 2)),
+        x: Math.max(bounds.x + padding, Math.min(bounds.x + bounds.width - cardWidth - padding, centerX - cardWidth / 2)),
+        y: Math.max(bounds.y + padding, Math.min(bounds.y + bounds.height - cardHeight - padding, centerY - cardHeight / 2)),
         width: cardWidth,
         height: cardHeight
     };

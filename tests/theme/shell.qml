@@ -153,8 +153,7 @@ ShellRoot {
                 screenToplevels: [modelData]
                 acceptsKeyboard: false
                 windowLayout: [Qt.rect(960, 25, 240, 160)]
-                layoutAreaWidth: 1240
-                layoutAreaHeight: 1040
+                previewBounds: Qt.rect(0, 0, 1240, 1040)
             }
         }
     }

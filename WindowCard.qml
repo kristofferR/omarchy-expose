@@ -16,8 +16,8 @@ Ui.BorderSurface {
     required property var screenToplevels
     required property bool acceptsKeyboard
     required property var windowLayout
-    required property real layoutAreaWidth
-    required property real layoutAreaHeight
+    // The display in the grid's coordinates, which Quick Look grows within.
+    required property rect previewBounds
     // The display's workspace strip, which a card can be dragged onto; null
     // when the strip is off.
     property var workspaceStrip: null
@@ -74,7 +74,7 @@ Ui.BorderSurface {
     // animates toward the origin nor flies back in from it.
     readonly property var packedRectSource: inLayout ? card.windowLayout[slot] : null
     property var packedRect: Qt.rect(0, 0, 1, 1)
-    readonly property var previewRect: card.controller.previewRectFor(modelData, packedRect, card.layoutAreaWidth, card.layoutAreaHeight, Style.spacing.sm, card.controller.windowFooterHeight)
+    readonly property var previewRect: card.controller.previewRectFor(modelData, packedRect, card.previewBounds, Style.spacing.sm, card.controller.windowFooterHeight)
     // Glide flies every preview to its grid slot; Quick Look opened in
     // flight takes over once the previews have landed.
     readonly property var layoutRect: previewed && !glideActive ? previewRect : packedRect

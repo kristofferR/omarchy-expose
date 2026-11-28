@@ -144,12 +144,25 @@ TestCase {
 
     function test_quickLookCentersOrStaysOnItsCard() {
         var source = { x: 100, y: 100, width: 300, height: 200 };
-        var centered = GridLayout.previewRect(1.6, true, source, areaWidth, areaHeight, padding, footer);
+        var area = { x: 0, y: 0, width: areaWidth, height: areaHeight };
+        var centered = GridLayout.previewRect(1.6, true, source, area, padding, footer);
         fuzzyCompare(centered.x + centered.width / 2, areaWidth / 2, 0.5);
         fuzzyCompare(centered.y + centered.height / 2, areaHeight / 2, 0.5);
-        var inPlace = GridLayout.previewRect(1.6, false, source, areaWidth, areaHeight, padding, footer);
+        var inPlace = GridLayout.previewRect(1.6, false, source, area, padding, footer);
         verify(inPlace.x + inPlace.width / 2 < areaWidth / 2, "in place stays toward its card");
         verify(inPlace.x >= padding && inPlace.y >= padding, "in place stays on screen");
+    }
+
+    // On an ultrawide the grid already fills the height under the search bar
+    // and strip, so Quick Look grows over them, within the display.
+    function test_quickLookGrowsPastTheGridWithinTheDisplay() {
+        var display = { x: 0, y: -180, width: 4096, height: 1152 };
+        var source = { x: 2900, y: 100, width: 1130, height: 640 };
+        var rect = GridLayout.previewRect(1.78, false, source, display, padding, footer);
+        verify(rect.height > 1000, "preview " + rect.height + " tall");
+        verify(rect.y < 0, "reaches above the grid");
+        verify(rect.y >= display.y + padding && rect.y + rect.height <= display.y + display.height - padding, "stays on the display");
+        verify(rect.x + rect.width <= display.width - padding, "stays inside the right edge");
     }
 
     // Two by two: 0 1 / 2 3.
