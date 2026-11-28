@@ -287,6 +287,7 @@ Item {
     readonly property bool glideMotion: root.glideStyle && !root.glideFading
     readonly property bool glideOpening: root.motionTarget > 0
     readonly property real glideCover: root.glideMotion ? GlideMotion.coverOpacity(root.motionProgress, root.glideOpening) : 1
+    readonly property real glideBackdrop: root.glideMotion ? GlideMotion.backdropStrength(root.motionProgress) : 1
     readonly property real glideChrome: root.glideMotion && !root.motionSettled ? GlideMotion.chromeOpacity(root.motionProgress) : 1
     // Bumped whenever a transition starts, so Glide cards look up where their
     // windows are on screen afresh.
@@ -2475,6 +2476,7 @@ Item {
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
+                blurStrength: root.glideBackdrop
                 // The screen's ratio, as the cached copy above uses: the window's can
                 // start at 1 and change once the compositor sends its scale.
                 pixelRatio: surface.modelData.devicePixelRatio
@@ -2485,7 +2487,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: "black"
-            opacity: root.effectiveBackgroundDim / 100 * root.glideCover
+            opacity: root.effectiveBackgroundDim / 100 * root.glideCover * root.glideBackdrop
         }
 
         // Losing the keyboard means Hyprland has already handed focus back,

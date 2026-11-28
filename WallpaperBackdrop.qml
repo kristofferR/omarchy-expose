@@ -6,6 +6,9 @@ Rectangle {
 
     property url source: ""
     property real blur: 0
+    // How much of that blur shows, from 0 to 1, for fading it in and out. The
+    // blur's copies stay as they are whatever this is.
+    property real blurStrength: 1
     property real pixelRatio: 1
     // Ready once everything drawn is loaded: the wallpaper, and with blur also
     // every copy the blur is drawn from (they load separately, even though
@@ -112,7 +115,7 @@ Rectangle {
         blurEnabled: true
         // Close to Hyprland's blur of the desktop at the same setting.
         blurMax: 64
-        blur: Math.max(0, Math.min(1, root.blur / 20))
+        blur: Math.max(0, Math.min(1, root.blur / 20)) * root.blurStrength
         autoPaddingEnabled: false
     }
 }

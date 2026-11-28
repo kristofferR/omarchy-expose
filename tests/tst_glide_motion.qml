@@ -93,6 +93,16 @@ TestCase {
         compare(GlideMotion.coverOpacity(0, false), 0);
     }
 
+    // The blur and dim are gone before a closing's cover starts to leave, so
+    // they never pop away with it.
+    function test_backdropFadesBeforeTheCoverLeaves() {
+        compare(GlideMotion.backdropStrength(1), 1);
+        verify(GlideMotion.backdropStrength(0.5) > 0.5 && GlideMotion.backdropStrength(0.5) < 1);
+        for (var progress = 0; progress <= 1; progress += 0.01)
+            if (GlideMotion.coverOpacity(progress, false) < 1)
+                compare(GlideMotion.backdropStrength(progress), 0);
+    }
+
     function test_titlesWaitForThePreviewsToLand() {
         compare(GlideMotion.chromeOpacity(0.5), 0);
         compare(GlideMotion.chromeOpacity(1), 1);
