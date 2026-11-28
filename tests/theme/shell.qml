@@ -54,6 +54,7 @@ ShellRoot {
         property var hoveredToplevel: null
         property var originToplevel: null
         property bool opened: false
+        property bool surfaceMounted: false
         property int windowFooterHeight: 40
         property bool motionSettled: true
         property real motionProgress: 1

@@ -404,11 +404,14 @@ Ui.BorderSurface {
                             Math.ceil(parent.height * card.glideTextureScale * Screen.devicePixelRatio))
                         : Qt.size(0, 0)
 
+                    // Live while the overlay is up, closing included: a preview
+                    // that froze as it flew home would jump when its window
+                    // took over.
                     WindowCapture {
                         id: capture
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
-                        live: card.controller.livePreviews && card.controller.opened && card.inLayout
+                        live: card.controller.livePreviews && card.controller.surfaceMounted && card.inLayout
                     }
 
                 }
