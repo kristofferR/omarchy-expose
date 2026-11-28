@@ -123,6 +123,21 @@ TestCase {
         verify(rects[2].y > rects[0].y);
     }
 
+    // Each card's padding and the gaps between cards take width before any
+    // preview does. Fourteen narrow cards in one row would leave them none,
+    // though the same cards fit in order over two rows.
+    function test_crowdedMixedShapesStillFit() {
+        var ratios = [];
+        for (var narrow = 0; narrow < 14; narrow++)
+            ratios.push(0.45);
+        for (var wide = 0; wide < 7; wide++)
+            ratios.push(4);
+        var rects = GridLayout.computeLayout(ratios, 640, 300, 32, padding, footer);
+        compare(rects.length, ratios.length);
+        for (var index = 0; index < rects.length; index++)
+            verify(rects[index].x >= 0 && rects[index].x + rects[index].width <= 640 + 0.001, "card " + index + " within the width");
+    }
+
     function test_indexAtFindsTheCardUnderAPoint() {
         compare(GridLayout.indexAt(grid, 50, 50), 0);
         compare(GridLayout.indexAt(grid, 250, 250), 3);

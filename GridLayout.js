@@ -8,30 +8,38 @@ function naturalWidth(entry) {
     return Math.sqrt(entry.weight * entry.ratio);
 }
 
-// For every row count up to maxRows, the cards split, in order, into rows
-// whose widest row is as narrow as it can be: rowsByCount[r] holds r rows.
-// Rows keep the list order, so the grid reads left to right and top to bottom
-// in the order the windows are listed. Ties fill the upper rows first.
-function orderedRows(entries, maxRows) {
+// For every row count up to maxRows, the cards split, in order, into the rows
+// that fit the width at the largest scale: rowsByCount[r] holds r rows. A row
+// of n cards spends n paddings and n - 1 gaps before its previews get any
+// width, so many small cards in a row can leave them none. Rows keep the list
+// order, so the grid reads left to right and top to bottom in the order the
+// windows are listed. Ties fill the upper rows first.
+function orderedRows(entries, maxRows, width, gap, padding) {
     var count = entries.length;
     var prefix = [0];
     for (var index = 0; index < count; index++)
         prefix.push(prefix[index] + naturalWidth(entries[index]));
 
-    // widest[r][i]: the narrowest widest row splitting the first i cards into
-    // r rows, the last of which starts at split[r][i].
-    var widest = [[0]];
+    // The scale at which the cards from `first` up to `last` fill the width.
+    function rowScale(first, last) {
+        var cards = last - first;
+        return (width - cards * padding * 2 - (cards - 1) * gap) / (prefix[last] - prefix[first]);
+    }
+
+    // largest[r][i]: the largest scale at which the first i cards fit in r
+    // rows, the last of which starts at split[r][i].
+    var largest = [[Number.MAX_VALUE]];
     var split = [[]];
     for (var row = 1; row <= maxRows; row++) {
-        widest.push([]);
+        largest.push([]);
         split.push([]);
         for (var last = row; last <= count; last++) {
-            widest[row][last] = Number.MAX_VALUE;
+            largest[row][last] = -Number.MAX_VALUE;
             for (var start = row - 1; start < last; start++) {
-                var candidate = Math.max(widest[row - 1][start], prefix[last] - prefix[start]);
+                var candidate = Math.min(largest[row - 1][start], rowScale(start, last));
                 // Widths summed in a different order differ in the last bits.
-                if (candidate <= widest[row][last] + 1e-9) {
-                    widest[row][last] = candidate;
+                if (candidate >= largest[row][last] - 1e-9) {
+                    largest[row][last] = candidate;
                     split[row][last] = start;
                 }
             }
@@ -139,7 +147,7 @@ function computeLayout(ratios, width, height, gap, padding, footerHeight) {
     var bestScale = -1;
     var minimumCardHeight = footerHeight + padding * 2 + footerSpacing;
     var maxRows = Math.max(1, Math.min(count, Math.floor((availableHeight + gap) / (minimumCardHeight + gap))));
-    var rowsByCount = orderedRows(entries, maxRows);
+    var rowsByCount = orderedRows(entries, maxRows, availableWidth, gap, padding);
     for (var rowCount = 1; rowCount <= maxRows; rowCount++) {
         var rows = rowsByCount[rowCount];
         var low = 0;
