@@ -133,7 +133,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Opening animation: Original (default), Glide (windows fly between their places on screen and in the grid, as in Mission Control), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
-- Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90)
+- Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90). Glide always shows the wallpaper, since its previews are the windows themselves
 - Live previews: on (default) or off, which shows a still of each window instead and uses fewer resources on slower computers
 - Selection highlight: outline (default) or lift, which raises and lights only the window Enter opens and marks the current one with a dot
 - Quick Look position: in-place or centered

@@ -94,13 +94,6 @@ function coverOpacity(progress, opening) {
     return smoothstep(0, opening ? 0.15 : 0.04, progress);
 }
 
-// In Desktop mode the overview rests on the live, blurred desktop. The cover
-// (the wallpaper) hides the real windows only while previews are in flight,
-// and gives way to the blurred desktop as they land.
-function desktopCoverOpacity(progress, opening) {
-    return coverOpacity(progress, opening) * (1 - smoothstep(0.75, 1, progress));
-}
-
 // Titles, borders, and buttons appear only as the previews land.
 function chromeOpacity(progress) {
     return smoothstep(0.65, 1, progress);

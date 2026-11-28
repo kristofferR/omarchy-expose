@@ -250,7 +250,10 @@ Item {
     property real backgroundDimPreview: -1
     property real hotCornerDelayPreview: -1
     readonly property real effectiveBackgroundBlur: root.backgroundBlurPreview >= 0 ? root.backgroundBlurPreview : root.backgroundBlur
-    readonly property real desktopBackgroundBlur: root.backgroundMode === "desktop" ? root.effectiveBackgroundBlur : 0
+    // Glide always rests on the wallpaper: its previews are the windows, so the
+    // windows themselves must not show behind the grid.
+    readonly property bool wallpaperBackdrop: root.backgroundMode === "wallpaper" || root.glideStyle
+    readonly property real desktopBackgroundBlur: root.wallpaperBackdrop ? 0 : root.effectiveBackgroundBlur
     readonly property real effectiveBackgroundDim: root.backgroundDimPreview >= 0 ? root.backgroundDimPreview : root.backgroundDim
     readonly property int effectiveHotCornerDelay: root.hotCornerDelayPreview >= 0 ? Math.round(root.hotCornerDelayPreview) : root.hotCornerDelay
     readonly property int previewAnimationDuration: Style.duration(root.previewSlowMotion || root.previewNavigationSlowMotion ? 4000 : 190)
@@ -1803,8 +1806,8 @@ Item {
 
     WallpaperSource {
         id: wallpaperSource
-        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip || root.glideStyle) && (root.openingPending || root.surfaceMounted)
-        retained: root.backgroundMode === "wallpaper" || root.glideStyle
+        active: (root.wallpaperBackdrop || root.workspaceStrip) && (root.openingPending || root.surfaceMounted)
+        retained: root.wallpaperBackdrop
     }
 
     // A hidden copy of each display's wallpaper backdrop keeps its decoded
@@ -1812,7 +1815,7 @@ Item {
     // image this large from its cache at once, so every opening would decode
     // it again and show the base colour until it was ready.
     Variants {
-        model: root.backgroundMode === "wallpaper" || root.glideStyle ? Quickshell.screens : []
+        model: root.wallpaperBackdrop ? Quickshell.screens : []
 
         WallpaperBackdrop {
             required property var modelData
@@ -1829,7 +1832,9 @@ Item {
         id: backgroundBlurUpdate
         interval: 16
         onTriggered: {
-            if (!backgroundBlurSession.running)
+            // A restore in flight must see its close acknowledged first; a
+            // reopen then writes the latest value (see the session's reader).
+            if (!backgroundBlurSession.running || root.backgroundBlurReleasePhase === 1)
                 return;
             var requested = root.requestedBackgroundBlur();
             if (requested === root.lastRequestedBlur)
@@ -2316,11 +2321,8 @@ Item {
         // Glide draws its previews opaque from the first frame, over their own
         // windows; its backdrop fades instead of the whole overlay.
         HyprlandWindow.opacity: root.glideMotion ? 1 : root.motionProgress
-        // Glide blurs the desktop only once its cover hides it, so the blur
-        // never appears around previews still lying on their windows.
         BackgroundEffect.blurRegion: root.desktopBackgroundBlur > 0 // qmllint disable missing-type
                 && !root.backgroundBlurFailed
-                && root.glideCover >= 0.999
             ? backgroundBlurRegion
             : null
         readonly property bool pointerInside: overviewPointer.hovered
@@ -2342,32 +2344,18 @@ Item {
             item: surface.contentItem
         }
 
+        // In Glide it is also the cover that hides the real windows while the
+        // overview is open: up before the previews leave them, down only once
+        // they have flown back.
         Loader {
             anchors.fill: parent
-            active: root.backgroundMode === "wallpaper"
+            active: root.wallpaperBackdrop
             opacity: root.glideCover
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
                 // The screen's ratio, as the cached copy above uses: the window's can
                 // start at 1 and change once the compositor sends its scale.
-                pixelRatio: surface.modelData.devicePixelRatio
-                color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
-            }
-        }
-
-        // Glide's cover in Desktop mode: the wallpaper, blurred as the
-        // desktop will be, hides the real windows while previews fly.
-        Loader {
-            id: glideDesktopCover
-            anchors.fill: parent
-            readonly property real coverOpacity: root.glideMotion ? GlideMotion.desktopCoverOpacity(root.motionProgress, root.glideOpening) : 0
-            active: root.glideStyle && root.backgroundMode !== "wallpaper"
-            visible: active && coverOpacity > 0
-            opacity: coverOpacity
-            sourceComponent: WallpaperBackdrop {
-                source: wallpaperSource.source
-                blur: root.effectiveBackgroundBlur
                 pixelRatio: surface.modelData.devicePixelRatio
                 color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
             }

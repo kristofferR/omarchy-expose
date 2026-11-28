@@ -93,12 +93,6 @@ TestCase {
         compare(GlideMotion.coverOpacity(0, false), 0);
     }
 
-    function test_desktopCoverGivesWayToTheBlurredDesktopAsPreviewsLand() {
-        compare(GlideMotion.desktopCoverOpacity(0.5, true), 1);
-        compare(GlideMotion.desktopCoverOpacity(1, true), 0);
-        compare(GlideMotion.desktopCoverOpacity(0.5, false), 1);
-    }
-
     function test_titlesWaitForThePreviewsToLand() {
         compare(GlideMotion.chromeOpacity(0.5), 0);
         compare(GlideMotion.chromeOpacity(1), 1);

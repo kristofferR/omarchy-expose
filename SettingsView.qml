@@ -1193,7 +1193,7 @@ Item {
 
                         SettingRow {
                             label: "Background"
-                            description: "Show the desktop or your current Omarchy wallpaper behind the window cards. Wallpaper covers the original windows."
+                            description: "Show the desktop or your current Omarchy wallpaper behind the window cards. Wallpaper covers the original windows. Glide always shows the wallpaper."
 
                             SettingChoices {
                                 id: backgroundModeChoices
