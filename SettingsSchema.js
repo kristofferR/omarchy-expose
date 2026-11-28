@@ -48,10 +48,10 @@ var specs = {
         ]
     },
     animationStyle: {
-        fallback: "original",
+        fallback: "glide",
         options: [
-            { label: "Original", value: "original" },
             { label: "Glide", value: "glide" },
+            { label: "Original", value: "original" },
             { label: "Fade", value: "fade" },
             { label: "Zoom", value: "zoom" },
             { label: "Slide", value: "slide" }

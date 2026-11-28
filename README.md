@@ -6,7 +6,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 
 ## Highlights
 
-- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too. On a slower computer, turn them off to show a still of each window instead, which uses fewer resources.
+- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. Behind the grid, the Omarchy desktop stays live too in every style but Glide, which rests on the wallpaper. On a slower computer, turn them off to show a still of each window instead, which uses fewer resources.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace, and pick which of the two the overview opens with. Each display uses its own active workspace in the current-workspace scope. Workspaces are numbered 1-10 on every monitor, as in the bar, and windows minimized to the dock show as **Minimized**; picking one brings it back to the current workspace.
@@ -134,7 +134,7 @@ Settings saved by older versions keep working: the one corner chosen there opens
 
 Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-6 jump to a section, Up/Down move between controls, Left/Right adjust sliders and choices, Space or Enter flip toggles and press buttons, Escape closes. Changes apply immediately. Settings are grouped into **Appearance**, **Windows**, **Window labels**, **Workspaces**, **Hot corners**, and **Motion**, with explanatory text beneath the controls:
 
-- Opening animation: Original (default), Glide (windows fly between their places on screen and in the grid, as in Mission Control), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
+- Opening animation: Glide (default: windows fly between their places on screen and in the grid, as in Mission Control), Original, Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90). Glide always shows the wallpaper, since its previews are the windows themselves
@@ -168,10 +168,10 @@ omarchy-shell expose toggleApplication           # the focused app's windows; al
 omarchy-shell expose toggleDesktop               # show the desktop, or bring the windows back
 omarchy-shell expose desktop show                # show | hide | toggle | state
 omarchy-shell expose settings toggle             # also: open, close
-omarchy-shell expose animationStyle original     # original | glide | fade | zoom | slide
-omarchy-shell expose animationDuration original 190    # linked in/out, 100-800 ms
-omarchy-shell expose animationDurationIn original 190  # separate opening speed
-omarchy-shell expose animationDurationOut original 190 # separate closing speed
+omarchy-shell expose animationStyle glide        # glide | original | fade | zoom | slide
+omarchy-shell expose animationDuration glide 420       # linked in/out, 100-800 ms
+omarchy-shell expose animationDurationIn glide 420     # separate opening speed
+omarchy-shell expose animationDurationOut glide 420    # separate closing speed
 omarchy-shell expose slideDirection left         # left | right | up | down, both halves
 omarchy-shell expose slideDirectionIn left       # separate opening side, also splits slide timing
 omarchy-shell expose slideDirectionOut right     # separate closing side, also splits slide timing

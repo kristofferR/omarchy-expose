@@ -7,6 +7,7 @@ TestCase {
 
     function test_missingEntryReadsFallbacks() {
         compare(Schema.read(null, "windowFooterStyle"), "floating");
+        compare(Schema.read(null, "animationStyle"), "glide");
         compare(Schema.read(null, "backgroundBlur"), 4);
         compare(Schema.read(null, "moveCursorToWindow"), true);
         compare(Schema.read(null, "hotCornerAllDisplays"), false);
