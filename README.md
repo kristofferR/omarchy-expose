@@ -6,7 +6,7 @@ macOS-style Exposé for Omarchy: one key or a hot corner shows every open window
 
 ## Highlights
 
-- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. The Omarchy desktop behind the grid stays live too. On a slower computer, turn them off to show a still of each window instead, which uses fewer resources.
+- **Live previews.** Cards are real screencopy views, so videos keep playing and terminals keep scrolling. Behind the grid, the Omarchy desktop stays live too in every style but Glide, which rests on the wallpaper. On a slower computer, turn them off to show a still of each window instead, which uses fewer resources.
 - **Quick Look.** Space enlarges any preview and restores it again. Shift+Space does it in slow motion, like the classic macOS Easter egg.
 - **Search.** Just start typing to filter windows by title or application.
 - **Workspace scope.** Press Tab to switch between every window and windows on the current workspace, and pick which of the two the overview opens with. Each display uses its own active workspace in the current-workspace scope. Workspaces are numbered 1-10 on every monitor, as in the bar, and windows minimized to the dock show as **Minimized**; picking one brings it back to the current workspace.
@@ -92,7 +92,11 @@ Removal leaves nothing behind: Exposé keeps no files outside its plugin directo
 | Enter | Activate the selected window |
 | Escape | Restore an enlarged preview; press again to close |
 
-Clicking a card activates it; middle-clicking closes it, as does its ✕ button when that setting is on. With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. With more than one display, a row of display tiles sits above the strip. Click a tile to see that display's workspaces. Drop a card on a tile to move the window to that display's active workspace, or hold it there until the display's workspaces appear and drop it on one of them. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
+Clicking a card activates it; middle-clicking closes it, as does its ✕ button when that setting is on.
+
+Cards are laid out in reading order, and that order follows the desktop: displays from left to right, then workspaces by number, then each workspace's windows from left to right and top to bottom, with special workspaces and minimized windows last. Drag a card onto another to move the window to that place; the windows in between shift over, and an accent bar marks where it will land. The order you drag into is kept across openings until Omarchy Shell restarts, and windows opened since then join the end. Turning off **Reorder by dragging** returns to the desktop's order.
+
+With the workspace strip on, dragging a card onto a workspace thumbnail, or onto **+** for a new workspace, moves the window there and keeps Exposé open; Escape or dropping anywhere else cancels. With more than one display, a row of display tiles sits above the strip. Click a tile to see that display's workspaces. Drop a card on a tile to move the window to that display's active workspace, or hold it there until the display's workspaces appear and drop it on one of them. Activation moves the pointer to the chosen window by default; this is a setting, not a change to Hyprland's global cursor behavior.
 
 Every display gets the same background blur and dim. With **All displays**, one grid on the opening display shows every window. With **This display**, that grid shows only windows already on that display. With **Each display**, every display shows a grid of its own windows. Keyboard input and Settings stay on the opening display, while arrow keys select windows across displays. Cards on every display can also be clicked. Search applies to all grids, and the current-workspace scope uses each display's active workspace. Clicking empty space dismisses Exposé without clicking through to the desktop.
 
@@ -130,7 +134,7 @@ Settings saved by older versions keep working: the one corner chosen there opens
 
 Open **Settings** from the footer while the overview is open. It is fully keyboard driven: 1-6 jump to a section, Up/Down move between controls, Left/Right adjust sliders and choices, Space or Enter flip toggles and press buttons, Escape closes. Changes apply immediately. Settings are grouped into **Appearance**, **Windows**, **Window labels**, **Workspaces**, **Hot corners**, and **Motion**, with explanatory text beneath the controls:
 
-- Opening animation: Original (default), Glide (windows fly between their places on screen and in the grid, as in Mission Control), Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
+- Opening animation: Glide (default: windows fly between their places on screen and in the grid, as in Mission Control), Original, Fade, Zoom, or Slide. With Omarchy's animations off (`omarchy toggle animations`), the overview appears and disappears at once
 - Animation duration saved per mode, linked for in/out by default or expandable to separate timings
 - Slide direction: left (default), right, up, or down. Splitting in/out splits both speed and direction
 - Background: Desktop (default) or Wallpaper, with blur (0–20) and dim (0–90). Glide always shows the wallpaper, since its previews are the windows themselves
@@ -147,6 +151,7 @@ Open **Settings** from the footer while the overview is open. It is fully keyboa
 - Hot corners on/off, an action for each corner from a list (All windows, App windows, Desktop, Notifications, Apps, Screensaver, Lock screen, Command, or Off; top left opens all windows by default), a command for each Command corner, All displays (off by default), Ignore fullscreen windows (off by default), and activation delay (0–1000 ms of pointer dwell before it fires; 0 is instant)
 - Move cursor to the activated window on/off
 - Close button: off (default) or on, a ✕ on the window under the pointer that closes it, in its top right (default) or top left corner
+- Reorder by dragging: on (default) or off. Off returns the cards to the desktop's order
 
 **Wallpaper** covers the original desktop windows with the current Omarchy
 wallpaper on every display, cropped to fill each screen. It follows background
@@ -163,10 +168,10 @@ omarchy-shell expose toggleApplication           # the focused app's windows; al
 omarchy-shell expose toggleDesktop               # show the desktop, or bring the windows back
 omarchy-shell expose desktop show                # show | hide | toggle | state
 omarchy-shell expose settings toggle             # also: open, close
-omarchy-shell expose animationStyle original     # original | glide | fade | zoom | slide
-omarchy-shell expose animationDuration original 190    # linked in/out, 100-800 ms
-omarchy-shell expose animationDurationIn original 190  # separate opening speed
-omarchy-shell expose animationDurationOut original 190 # separate closing speed
+omarchy-shell expose animationStyle glide        # glide | original | fade | zoom | slide
+omarchy-shell expose animationDuration glide 420       # linked in/out, 100-800 ms
+omarchy-shell expose animationDurationIn glide 420     # separate opening speed
+omarchy-shell expose animationDurationOut glide 420    # separate closing speed
 omarchy-shell expose slideDirection left         # left | right | up | down, both halves
 omarchy-shell expose slideDirectionIn left       # separate opening side, also splits slide timing
 omarchy-shell expose slideDirectionOut right     # separate closing side, also splits slide timing
@@ -196,6 +201,7 @@ omarchy-shell expose workspaceStripIcons off     # on | off, with the strip on
 omarchy-shell expose showFooter on               # on | off
 omarchy-shell expose closeButton off             # off | on
 omarchy-shell expose closeButtonSide right       # left | right
+omarchy-shell expose reorderWindows on           # on | off: off returns to the desktop's order
 ```
 
 Scripts can also read state and drive an open overview the way its keys do:

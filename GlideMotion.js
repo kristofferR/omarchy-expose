@@ -85,13 +85,26 @@ function smoothstep(edge0, edge1, value) {
     return t * t * (3 - 2 * t);
 }
 
+// Below this progress a closing's cover starts to leave.
+var coverClosingEdge = 0.04;
+
 // The backdrop that covers the desktop behind the previews. The previews are
 // opaque from the first frame and lie exactly on their windows, so the real
 // windows only show where a preview has moved off them; the backdrop covers
 // them quickly on opening, and stays until the previews have landed on
 // closing, so a window is never seen twice in flight.
 function coverOpacity(progress, opening) {
-    return smoothstep(0, opening ? 0.15 : 0.04, progress);
+    return smoothstep(0, opening ? 0.15 : coverClosingEdge, progress);
+}
+
+// How much of the cover's blur and dim shows. They used to leave with the
+// cover, in the last moments of a closing, and popped away. They fade over the
+// flight instead and are gone by the time the cover starts to leave, so it
+// leaves looking like the desktop's own wallpaper. Progress eases out, covering
+// most of its way at the start; the root spreads the fade about evenly.
+function backdropStrength(progress) {
+    var p = Math.max(0, Math.min(1, Number(progress)));
+    return Math.sqrt(Math.max(0, (p - coverClosingEdge) / (1 - coverClosingEdge)));
 }
 
 // Titles, borders, and buttons appear only as the previews land.

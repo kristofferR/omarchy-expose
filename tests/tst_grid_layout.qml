@@ -106,6 +106,45 @@ TestCase {
         }
     }
 
+    // Cards keep their list order: left to right, then the next row down.
+    function test_cardsReadInListOrder() {
+        var rects = GridLayout.computeLayout([1, 1, 1, 1], 900, 900, gap, padding, footer);
+        compare(rowCount(rects), 2);
+        verify(rects[0].y === rects[1].y && rects[0].x < rects[1].x, "0 and 1 share the top row");
+        verify(rects[2].y === rects[3].y && rects[2].x < rects[3].x, "2 and 3 share the next row");
+        verify(rects[2].y > rects[0].y, "2 is below 0");
+    }
+
+    // An uneven split fills the upper rows first.
+    function test_upperRowsFillFirst() {
+        var rects = GridLayout.computeLayout([1.6, 1.6, 1.6], 900, 900, gap, padding, footer);
+        compare(rowCount(rects), 2);
+        compare(rects[0].y, rects[1].y);
+        verify(rects[2].y > rects[0].y);
+    }
+
+    // Each card's padding and the gaps between cards take width before any
+    // preview does. Fourteen narrow cards in one row would leave them none,
+    // though the same cards fit in order over two rows.
+    function test_crowdedMixedShapesStillFit() {
+        var ratios = [];
+        for (var narrow = 0; narrow < 14; narrow++)
+            ratios.push(0.45);
+        for (var wide = 0; wide < 7; wide++)
+            ratios.push(4);
+        var rects = GridLayout.computeLayout(ratios, 640, 300, 32, padding, footer);
+        compare(rects.length, ratios.length);
+        for (var index = 0; index < rects.length; index++)
+            verify(rects[index].x >= 0 && rects[index].x + rects[index].width <= 640 + 0.001, "card " + index + " within the width");
+    }
+
+    function test_indexAtFindsTheCardUnderAPoint() {
+        compare(GridLayout.indexAt(grid, 50, 50), 0);
+        compare(GridLayout.indexAt(grid, 250, 250), 3);
+        compare(GridLayout.indexAt(grid, 150, 50), -1);
+        compare(GridLayout.indexAt([], 0, 0), -1);
+    }
+
     function test_twoWideWindowsSitSideBySide() {
         compare(rowCount(layoutFor([2, 2])), 1);
     }
@@ -120,12 +159,25 @@ TestCase {
 
     function test_quickLookCentersOrStaysOnItsCard() {
         var source = { x: 100, y: 100, width: 300, height: 200 };
-        var centered = GridLayout.previewRect(1.6, true, source, areaWidth, areaHeight, padding, footer);
+        var area = { x: 0, y: 0, width: areaWidth, height: areaHeight };
+        var centered = GridLayout.previewRect(1.6, true, source, area, padding, footer);
         fuzzyCompare(centered.x + centered.width / 2, areaWidth / 2, 0.5);
         fuzzyCompare(centered.y + centered.height / 2, areaHeight / 2, 0.5);
-        var inPlace = GridLayout.previewRect(1.6, false, source, areaWidth, areaHeight, padding, footer);
+        var inPlace = GridLayout.previewRect(1.6, false, source, area, padding, footer);
         verify(inPlace.x + inPlace.width / 2 < areaWidth / 2, "in place stays toward its card");
         verify(inPlace.x >= padding && inPlace.y >= padding, "in place stays on screen");
+    }
+
+    // On an ultrawide the grid already fills the height under the search bar
+    // and strip, so Quick Look grows over them, within the display.
+    function test_quickLookGrowsPastTheGridWithinTheDisplay() {
+        var display = { x: 0, y: -180, width: 4096, height: 1152 };
+        var source = { x: 2900, y: 100, width: 1130, height: 640 };
+        var rect = GridLayout.previewRect(1.78, false, source, display, padding, footer);
+        verify(rect.height > 1000, "preview " + rect.height + " tall");
+        verify(rect.y < 0, "reaches above the grid");
+        verify(rect.y >= display.y + padding && rect.y + rect.height <= display.y + display.height - padding, "stays on the display");
+        verify(rect.x + rect.width <= display.width - padding, "stays inside the right edge");
     }
 
     // Two by two: 0 1 / 2 3.

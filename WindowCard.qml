@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import "WindowModel.js" as WindowModel
+import "GridLayout.js" as GridLayout
 import "GlideMotion.js" as GlideMotion
 import qs.Commons
 import qs.Commons as Commons
@@ -15,8 +16,8 @@ Ui.BorderSurface {
     required property var screenToplevels
     required property bool acceptsKeyboard
     required property var windowLayout
-    required property real layoutAreaWidth
-    required property real layoutAreaHeight
+    // The display in the grid's coordinates, which Quick Look grows within.
+    required property rect previewBounds
     // The display's workspace strip, which a card can be dragged onto; null
     // when the strip is off.
     property var workspaceStrip: null
@@ -73,7 +74,7 @@ Ui.BorderSurface {
     // animates toward the origin nor flies back in from it.
     readonly property var packedRectSource: inLayout ? card.windowLayout[slot] : null
     property var packedRect: Qt.rect(0, 0, 1, 1)
-    readonly property var previewRect: card.controller.previewRectFor(modelData, packedRect, card.layoutAreaWidth, card.layoutAreaHeight, Style.spacing.sm, card.controller.windowFooterHeight)
+    readonly property var previewRect: card.controller.previewRectFor(modelData, packedRect, card.previewBounds, Style.spacing.sm, card.controller.windowFooterHeight)
     // Glide flies every preview to its grid slot; Quick Look opened in
     // flight takes over once the previews have landed.
     readonly property var layoutRect: previewed && !glideActive ? previewRect : packedRect
@@ -90,11 +91,14 @@ Ui.BorderSurface {
         card.latchGlideStart();
 
     }
-    // Dragging toward the workspace strip. The card shrinks around the point
-    // it was picked up at and follows the pointer through a transform, so its
-    // layout is untouched; a cancelled drop slides it back.
-    readonly property bool canDrag: card.workspaceStrip !== null && card.controller.dragToWorkspaces
-        && card.controller.motionSettled && !card.previewOnThisScreen && !WindowModel.isPinned(modelData)
+    // Dragging onto another card to take its place, or onto the workspace
+    // strip. The card shrinks around the point it was picked up at and follows
+    // the pointer through a transform, so its layout is untouched; a cancelled
+    // drop slides it back.
+    readonly property bool canDragToStrip: card.workspaceStrip !== null && card.controller.dragToWorkspaces
+        && !WindowModel.isPinned(modelData)
+    readonly property bool canDrag: (card.canDragToStrip || card.controller.reorderWindows)
+        && card.controller.motionSettled && !card.previewOnThisScreen
     property bool dragging: false
     property real dragX: 0
     property real dragY: 0
@@ -118,8 +122,20 @@ Ui.BorderSurface {
             card.controller.draggedToplevel = null;
         card.dragX = 0;
         card.dragY = 0;
+        var target = card.controller.reorderTarget;
+        card.controller.reorderTarget = null;
+        if (drop && target)
+            card.controller.reorderWindow(card.modelData, target);
         if (card.workspaceStrip)
-            card.workspaceStrip.endDrag(drop ? card.modelData : null);
+            card.workspaceStrip.endDrag(drop && !target && card.canDragToStrip ? card.modelData : null);
+    }
+
+    // Aims the drop at the card under a scene point, other than this one.
+    function aimReorder(scenePoint) {
+        var inGrid = card.parent.mapFromItem(null, scenePoint.x, scenePoint.y);
+        var index = card.controller.reorderWindows ? GridLayout.indexAt(card.windowLayout, inGrid.x, inGrid.y) : -1;
+        var top = index >= 0 ? card.screenToplevels[index] : null;
+        card.controller.reorderTarget = top && top !== card.modelData ? top : null;
     }
 
     // Glide: while the overview opens or closes, the preview is drawn over the
@@ -277,12 +293,19 @@ Ui.BorderSurface {
             }
             card.dragX = dx;
             card.dragY = dy;
-            card.workspaceStrip.dragTo(null, point.x, point.y);
+            // From the scene point: the event's local position predates the
+            // transform just set.
+            card.aimReorder(point);
+            if (card.canDragToStrip)
+                card.workspaceStrip.dragTo(null, point.x, point.y);
         }
-        onReleased: {
+        onReleased: function(mouse) {
             cardMouse.mayDrag = false;
-            if (card.dragging)
-                card.endDrag(true);
+            if (!card.dragging)
+                return;
+            // The grid may have changed under a still pointer, as Tab does.
+            card.aimReorder(cardMouse.mapToItem(null, mouse.x, mouse.y));
+            card.endDrag(true);
         }
         onCanceled: {
             cardMouse.mayDrag = false;
@@ -381,11 +404,14 @@ Ui.BorderSurface {
                             Math.ceil(parent.height * card.glideTextureScale * Screen.devicePixelRatio))
                         : Qt.size(0, 0)
 
+                    // Live while the overlay is up, closing included: a preview
+                    // that froze as it flew home would jump when its window
+                    // took over.
                     WindowCapture {
                         id: capture
                         anchors.fill: parent
                         source: card.controller.captureSourceFor(card.modelData)
-                        live: card.controller.livePreviews && card.controller.opened && card.inLayout
+                        live: card.controller.livePreviews && card.controller.surfaceMounted && card.inLayout
                     }
 
                 }

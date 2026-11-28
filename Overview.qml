@@ -11,6 +11,7 @@ import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "WindowOrder.js" as WindowOrder
 import "GlideMotion.js" as GlideMotion
 import "WorkspaceModel.js" as WorkspaceModel
 import "ScreenLayout.js" as ScreenLayout
@@ -195,6 +196,15 @@ Item {
     readonly property bool workspaceDrag: SettingsSchema.read(root.pluginEntry, "workspaceDrag")
     readonly property bool dragToWorkspaces: root.workspaceStrip && root.workspaceDrag
     readonly property bool workspaceStripIcons: SettingsSchema.read(root.pluginEntry, "workspaceStripIcons")
+    readonly property bool reorderWindows: SettingsSchema.read(root.pluginEntry, "reorderWindows")
+    // Turning reordering off goes back to the desktop's order.
+    onReorderWindowsChanged: {
+        if (root.reorderWindows)
+            return;
+        root.customOrder = [];
+        if (root.surfaceMounted || root.openingPending)
+            root.setSessionOrder(WindowOrder.arrange(root.sessionToplevels, []));
+    }
     property bool opened: false
     property bool surfaceMounted: false
     property bool hotCornerArmed: true
@@ -229,8 +239,13 @@ Item {
     // Each display's workspace when a close began. The current-workspace
     // scope keeps to it, so cards do not change under a closing overview.
     property var closingWorkspaces: null
-    // The window whose card is being dragged toward the workspace strip.
+    // The window whose card is being dragged, and the window whose place it
+    // takes if dropped now (null over anything but another card).
     property var draggedToplevel: null
+    property var reorderTarget: null
+    // The order cards were dragged into, kept across openings until the shell
+    // restarts; see WindowOrder.arrange.
+    property var customOrder: []
     readonly property var allWorkspaces: Hyprland.workspaces ? Hyprland.workspaces.values : []
     // Workspaces added with + that have no window yet; see WorkspaceModel.placeholder.
     property var addedWorkspaces: []
@@ -272,6 +287,7 @@ Item {
     readonly property bool glideMotion: root.glideStyle && !root.glideFading
     readonly property bool glideOpening: root.motionTarget > 0
     readonly property real glideCover: root.glideMotion ? GlideMotion.coverOpacity(root.motionProgress, root.glideOpening) : 1
+    readonly property real glideBackdrop: root.glideMotion ? GlideMotion.backdropStrength(root.motionProgress) : 1
     readonly property real glideChrome: root.glideMotion && !root.motionSettled ? GlideMotion.chromeOpacity(root.motionProgress) : 1
     // Bumped whenever a transition starts, so Glide cards look up where their
     // windows are on screen afresh.
@@ -415,6 +431,8 @@ Item {
         root.glideLandingWorkspaces = {};
         root.closingWorkspaces = null;
         root.draggedToplevel = null;
+        root.reorderTarget = null;
+        root.animationReplay = null;
         root.addedWorkspaces = [];
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
@@ -471,7 +489,7 @@ Item {
     }
     Component.onCompleted: root.installLayerRule()
 
-    function startDismiss(notifyShell) {
+    function startDismiss(notifyShell, replay) {
         root.stopGlideGate();
         if (root.opened && !root.closingWorkspaces) {
             var held = {};
@@ -483,6 +501,7 @@ Item {
         }
         root.openingPending = false;
         root.closeSettings();
+        root.animationReplay = replay || null;
         root.hoveredToplevel = null;
         root.clearPreview();
         root.opened = false;
@@ -553,6 +572,7 @@ Item {
     }
 
     function switchOverviewMode(mode) {
+        root.animationReplay = null;
         root.applyOverviewMode(mode);
         root.filterText = "";
         root.hoveredToplevel = null;
@@ -564,6 +584,7 @@ Item {
     // The Desktop corner or key. With Exposé open it closes Exposé and shows
     // the desktop, as the macOS Desktop corner does from Mission Control.
     function toggleDesktop() {
+        root.animationReplay = null;
         // A Desktop waiting for Exposé to close counts as shown, so a second
         // toggle cancels it.
         if (root.desktopAfterDismiss) {
@@ -590,6 +611,7 @@ Item {
         var argv = HotCorners.argvFor(action, HotCorners.commandFor(root.pluginEntry, position));
         if (!argv)
             return;
+        root.animationReplay = null;
         // What the corner opens should not land behind the overview.
         if (root.opened || root.openingPending)
             root.dismiss();
@@ -676,13 +698,46 @@ Item {
         overviewMotionAnimation.start();
     }
 
+    // Settings' animation preview: the overview really closes and, after a
+    // moment on the desktop, opens again as it was, so both animations show as
+    // they are. Settings then returns to its page. Holds { mode, screen,
+    // category }, and `reopened` once the overview is on its way back. Anything
+    // else the user asks for meanwhile ends the preview: an opening, a
+    // dismissal, another mode, Settings, the desktop, or a corner's action.
+    property var animationReplay: null
+
     function previewAnimation() {
-        if (!root.surfaceMounted)
+        if (!root.opened || !root.motionSettled)
             return;
-        overviewMotionAnimation.stop();
-        root.motionTarget = 1;
-        root.motionProgress = 0;
-        root.animateMotionTo(1);
+        // The shell is not told: the overview is back before it could matter.
+        root.startDismiss(false, {
+            mode: root.overviewMode,
+            screen: root.effectiveOverviewScreenName,
+            category: root.settingsCategoryIndex,
+            reopened: false
+        });
+    }
+
+    Timer {
+        id: animationReplayPause
+        interval: 300
+        onTriggered: {
+            var replay = root.animationReplay;
+            if (!replay || replay.reopened || root.opened || root.openingPending || root.surfaceMounted)
+                return;
+            // The blur session's process is still on its way out.
+            if (backgroundBlurSession.running) {
+                animationReplayPause.restart();
+                return;
+            }
+            if (replay.screen) {
+                root.overviewScreenPinned = true;
+                root.overviewScreenName = replay.screen;
+            }
+            root.open(JSON.stringify({ mode: replay.mode }));
+            replay.reopened = true;
+            root.animationReplay = replay;
+        }
     }
 
     function completeMotion() {
@@ -691,6 +746,16 @@ Item {
             root.glideFading = false;
             root.scheduleBackgroundBlurUpdate();
             Qt.callLater(root.focusKeyboardSurface);
+            var replay = root.animationReplay;
+            if (replay && replay.reopened) {
+                root.openSettings(replay.category);
+                // Back on the button, the page's first control.
+                Qt.callLater(function () {
+                    var surface = root.keyboardSurface();
+                    if (surface && root.settingsOpen)
+                        surface.focusFirstSettingsControl();
+                });
+            }
             return;
         }
         backgroundBlurUpdate.stop();
@@ -723,6 +788,8 @@ Item {
         root.dismissNotifyShell = false;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
             root.shell.hide(root.pluginId);
+        if (root.animationReplay)
+            animationReplayPause.restart();
     }
 
     function updatePluginSetting(name, value) {
@@ -875,21 +942,26 @@ Item {
         root.animationOutDurationPreview = -1;
     }
 
-    function openSettings() {
-        if (!root.surfaceMounted)
+    // Opens on the first page, or on the page given.
+    function openSettings(categoryIndex) {
+        // A closing overview opens again too, rather than leaving Settings
+        // open on nothing.
+        if (!root.opened && !root.openingPending)
             root.open("{}");
+        root.animationReplay = null;
         root.closeFooterHideConfirmation();
         root.clearAnimationTimingPreview();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         root.hotCornerDelayPreview = -1;
-        root.settingsCategoryIndex = 0;
+        root.settingsCategoryIndex = Number(categoryIndex) || 0;
         root.settingsOpen = true;
         Qt.callLater(root.focusKeyboardSurface);
     }
 
     function closeSettings() {
         var restoreKeyboardFocus = root.settingsOpen && root.opened;
+        root.animationReplay = null;
         root.closeFooterHideConfirmation();
         root.settingsOpen = false;
         root.clearAnimationTimingPreview();
@@ -1163,6 +1235,8 @@ Item {
         if (!membershipChanged)
             root.modelRevision++;
         root.clearUnlistedPreview();
+        if (sessionOrderSettle.running)
+            Qt.callLater(root.settleSessionOrder);
     }
 
     function clearUnlistedPreview() {
@@ -1428,9 +1502,50 @@ Item {
     }
 
     function resetSessionToplevels() {
-        root.sessionToplevels = root.listedToplevels();
+        root.customOrder = root.customOrder.filter(function (top) { return top && root.allToplevels.indexOf(top) !== -1; });
+        root.sessionToplevels = WindowOrder.arrange(root.listedToplevels(), root.customOrder);
         root.captureSessionAspectRatios();
         root.modelRevision++;
+        sessionOrderSettle.restart();
+    }
+
+    // Window positions arrive with the refresh an opening asks for, just after
+    // the grid is first arranged. Until then the order may follow where the
+    // windows were at the previous refresh, so it is arranged again as they
+    // arrive; after that it holds still while the overview is open.
+    Timer {
+        id: sessionOrderSettle
+        interval: 300
+    }
+
+    function settleSessionOrder() {
+        if (sessionOrderSettle.running)
+            root.setSessionOrder(WindowOrder.arrange(root.sessionToplevels, root.customOrder));
+    }
+
+    // Puts the session's windows in a new order, their aspect ratios with them.
+    function setSessionOrder(next) {
+        var previous = root.sessionToplevels;
+        if (root.toplevelListsEqual(next, previous))
+            return;
+        var ratios = root.sessionAspectRatios;
+        root.sessionAspectRatios = next.map(function (top) {
+            return ratios[previous.indexOf(top)] || root.liveAspectRatioFor(top);
+        });
+        root.sessionToplevels = next;
+        root.modelRevision++;
+    }
+
+    // Dropping a card on another moves its window to that window's place.
+    function reorderWindow(dragged, target) {
+        if (!root.reorderWindows)
+            return;
+        var next = WindowOrder.moved(root.sessionToplevels, dragged, target);
+        if (next === root.sessionToplevels)
+            return;
+        sessionOrderSettle.stop();
+        root.setSessionOrder(next);
+        root.customOrder = next.slice();
     }
 
     function syncSessionToplevels() {
@@ -1447,12 +1562,10 @@ Item {
             next.push(existing);
             nextRatios.push(root.sessionAspectRatios[oldIndex] || root.liveAspectRatioFor(existing));
         }
-        for (var newIndex = 0; newIndex < current.length; newIndex++) {
-            var candidate = current[newIndex];
-            if (next.indexOf(candidate) !== -1)
-                continue;
-            next.push(candidate);
-            nextRatios.push(root.liveAspectRatioFor(candidate));
+        var added = WindowOrder.desktopOrder(current.filter(function (top) { return next.indexOf(top) === -1; }));
+        for (var newIndex = 0; newIndex < added.length; newIndex++) {
+            next.push(added[newIndex]);
+            nextRatios.push(root.liveAspectRatioFor(added[newIndex]));
         }
 
         var changed = next.length !== root.sessionToplevels.length;
@@ -1558,6 +1671,12 @@ Item {
         return result;
     }
 
+    // Whether two lists hold the same windows, in any order. A card's place
+    // comes from its slot, so a new order alone needs no new cards.
+    function sameToplevels(left, right) {
+        return left.length === right.length && left.every(function (top) { return right.indexOf(top) !== -1; });
+    }
+
     function toplevelListsEqual(left, right) {
         if (left.length !== right.length)
             return false;
@@ -1580,9 +1699,9 @@ Item {
         return root.liveAspectRatioFor(top);
     }
 
-    function previewRectFor(top, sourceRect, width, height, padding, footerHeight) {
+    function previewRectFor(top, sourceRect, bounds, padding, footerHeight) {
         return GridLayout.previewRect(root.aspectRatioFor(top), root.previewPlacement === "centered",
-            sourceRect, width, height, padding, footerHeight);
+            sourceRect, bounds, padding, footerHeight);
     }
 
     // Steps to the nearest card in a direction, across every mounted grid.
@@ -1984,6 +2103,8 @@ Item {
             return "ok";
         }
         function desktop(mode: string): string {
+            if (mode === "show" || mode === "hide")
+                root.animationReplay = null;
             if (mode === "show") {
                 // A Desktop already waiting for Exposé to close stays queued.
                 if (root.desktopAfterDismiss)
@@ -2052,6 +2173,7 @@ Item {
         function workspaceStrip(mode: string): string { return root.setSettingFromIpc("workspaceStrip", mode); }
         function workspaceDrag(mode: string): string { return root.setSettingFromIpc("workspaceDrag", mode); }
         function workspaceStripIcons(mode: string): string { return root.setSettingFromIpc("workspaceStripIcons", mode); }
+        function reorderWindows(mode: string): string { return root.setSettingFromIpc("reorderWindows", mode); }
         // What the overview is doing now, as JSON, for scripts and live checks.
         // The filter, windows, and selection describe the open overview only.
         function state(): string {
@@ -2354,6 +2476,7 @@ Item {
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
+                blurStrength: root.glideBackdrop
                 // The screen's ratio, as the cached copy above uses: the window's can
                 // start at 1 and change once the compositor sends its scale.
                 pixelRatio: surface.modelData.devicePixelRatio
@@ -2364,7 +2487,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: "black"
-            opacity: root.effectiveBackgroundDim / 100 * root.glideCover
+            opacity: root.effectiveBackgroundDim / 100 * root.glideCover * root.glideBackdrop
         }
 
         // Losing the keyboard means Hyprland has already handed focus back,
@@ -2497,7 +2620,7 @@ Item {
             property var cardToplevels: []
 
             function syncCardToplevels() {
-                if (!root.toplevelListsEqual(overviewWindow.cardToplevels, overviewWindow.cardToplevelsSource))
+                if (!root.sameToplevels(overviewWindow.cardToplevels, overviewWindow.cardToplevelsSource))
                     overviewWindow.cardToplevels = overviewWindow.cardToplevelsSource;
             }
 
@@ -2606,6 +2729,7 @@ Item {
                 }
 
                 ColumnLayout {
+                    id: overviewColumn
                     anchors.fill: parent
                     anchors.margins: Style.spacing.sm
                     spacing: Style.spacing.md
@@ -2712,12 +2836,17 @@ Item {
                         id: overviewArea
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        // Above the footer hints, which an enlarged preview covers.
+                        z: 1
+                        // The gap leaves room for a hovered card's lift and outline;
+                        // more only shrinks the cards on a short display.
+                        readonly property real gap: Style.space(32)
+                        readonly property rect previewBounds: Qt.rect(-overviewColumn.x - overviewArea.x,
+                            -overviewColumn.y - overviewArea.y, overviewWindow.width, overviewWindow.height)
                         readonly property var windowLayout: {
                             var revision = root.modelRevision;
                             var ratios = overviewWindow.screenToplevels.map(function (top) { return root.aspectRatioFor(top); });
-                            // The gap leaves room for a hovered card's lift and outline;
-                            // more only shrinks the cards on a short display.
-                            return GridLayout.computeLayout(ratios, width, height, Style.space(32), Style.spacing.sm, root.windowFooterHeight);
+                            return GridLayout.computeLayout(ratios, width, height, overviewArea.gap, Style.spacing.sm, root.windowFooterHeight);
                         }
 
                         Item {
@@ -2745,10 +2874,31 @@ Item {
                                     workspaceStrip: workspaceStripLoader.item
                                     screenName: overviewWindow.screenName
                                     windowLayout: overviewArea.windowLayout
-                                    layoutAreaWidth: overviewArea.width
-                                    layoutAreaHeight: overviewArea.height
+                                    previewBounds: overviewArea.previewBounds
                                 }
                                 }
+
+                            // Where a dragged card lands: beside the card whose place
+                            // it takes, on the side that card moves away from.
+                            Rectangle {
+                                id: reorderMarker
+                                readonly property int targetIndex: overviewWindow.screenToplevels.indexOf(root.reorderTarget)
+                                readonly property int draggedIndex: overviewWindow.screenToplevels.indexOf(root.draggedToplevel)
+                                readonly property var targetRect: reorderMarker.targetIndex >= 0 && reorderMarker.draggedIndex >= 0
+                                    ? overviewArea.windowLayout[reorderMarker.targetIndex] || null
+                                    : null
+                                readonly property bool after: reorderMarker.draggedIndex < reorderMarker.targetIndex
+                                visible: reorderMarker.targetRect !== null
+                                z: 15
+                                width: Style.space(4)
+                                radius: width / 2
+                                color: Commons.Color.accent
+                                x: !reorderMarker.targetRect ? 0 : (reorderMarker.after
+                                    ? reorderMarker.targetRect.x + reorderMarker.targetRect.width + overviewArea.gap / 2
+                                    : reorderMarker.targetRect.x - overviewArea.gap / 2) - width / 2
+                                y: reorderMarker.targetRect ? reorderMarker.targetRect.y + Style.spacing.sm : 0
+                                height: reorderMarker.targetRect ? Math.max(0, reorderMarker.targetRect.height - Style.spacing.sm * 2) : 0
+                            }
                         }
 
                         Text {

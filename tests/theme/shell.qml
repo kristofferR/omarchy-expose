@@ -36,6 +36,7 @@ ShellRoot {
         property bool workspaceStrip: false
         property bool workspaceDrag: true
         property bool workspaceStripIcons: false
+        property bool reorderWindows: true
         property bool separateTiming: false
         property string previewPlacement: "in-place"
         property string windowFooterStyle: "floating"
@@ -53,6 +54,7 @@ ShellRoot {
         property var hoveredToplevel: null
         property var originToplevel: null
         property bool opened: false
+        property bool surfaceMounted: false
         property int windowFooterHeight: 40
         property bool motionSettled: true
         property real motionProgress: 1
@@ -152,8 +154,7 @@ ShellRoot {
                 screenToplevels: [modelData]
                 acceptsKeyboard: false
                 windowLayout: [Qt.rect(960, 25, 240, 160)]
-                layoutAreaWidth: 1240
-                layoutAreaHeight: 1040
+                previewBounds: Qt.rect(0, 0, 1240, 1040)
             }
         }
     }
@@ -177,7 +178,7 @@ ShellRoot {
         // Page 3 skips the drag toggle, which is disabled while the strip is off.
         // Page 4: category, enable, four corner actions, top right's command,
         // all displays, ignore fullscreen, delay.
-        var expectedCounts = [5, 6, 3, 5, 10, 8];
+        var expectedCounts = [5, 7, 3, 5, 10, 8];
         require(items.length === expectedCounts[index % 6], "focusable controls on page " + index);
         settings.focusSettingsCategory();
         require(items[0].activeFocus, "category focus on page " + index);

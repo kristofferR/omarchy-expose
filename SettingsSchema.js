@@ -48,10 +48,10 @@ var specs = {
         ]
     },
     animationStyle: {
-        fallback: "original",
+        fallback: "glide",
         options: [
-            { label: "Original", value: "original" },
             { label: "Glide", value: "glide" },
+            { label: "Original", value: "original" },
             { label: "Fade", value: "fade" },
             { label: "Zoom", value: "zoom" },
             { label: "Slide", value: "slide" }
@@ -125,7 +125,8 @@ var specs = {
     workspaceStrip: { fallback: true },
     // Only applies while the workspace strip is shown.
     workspaceDrag: { fallback: true },
-    workspaceStripIcons: { fallback: false }
+    workspaceStripIcons: { fallback: false },
+    reorderWindows: { fallback: true }
 };
 
 function spec(name) {
