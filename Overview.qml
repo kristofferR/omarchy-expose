@@ -11,6 +11,7 @@ import "DisplayModel.js" as DisplayModel
 import "GridLayout.js" as GridLayout
 import "IconResolver.js" as IconResolver
 import "WindowModel.js" as WindowModel
+import "GlideMotion.js" as GlideMotion
 import "WorkspaceModel.js" as WorkspaceModel
 import "ScreenLayout.js" as ScreenLayout
 import "SettingsSchema.js" as SettingsSchema
@@ -62,7 +63,7 @@ Item {
     readonly property bool livePreviews: SettingsSchema.read(root.pluginEntry, "livePreviews")
     readonly property var animationStyles: SettingsSchema.values("animationStyle")
     readonly property string animationStyle: SettingsSchema.read(root.pluginEntry, "animationStyle")
-    readonly property var defaultAnimationDurations: ({ original: 190, fade: 400, zoom: 320, slide: 320 })
+    readonly property var defaultAnimationDurations: ({ original: 190, glide: 420, fade: 400, zoom: 320, slide: 320 })
     readonly property var animationTimings: {
         var configuredTimings = root.pluginEntry && root.pluginEntry.animationTimings
             && typeof root.pluginEntry.animationTimings === "object"
@@ -98,6 +99,7 @@ Item {
         }
         return {
             original: timingFor("original"),
+            glide: timingFor("glide"),
             fade: timingFor("fade"),
             zoom: timingFor("zoom"),
             slide: timingFor("slide")
@@ -260,6 +262,51 @@ Item {
     // 0 idle, 1 restoring the desktop blur while the surface is transparent.
     property int backgroundBlurReleasePhase: 0
     property real motionProgress: 0
+    readonly property bool glideStyle: root.animationStyle === "glide"
+    // A closing with no window to fly home (an empty workspace, or one the
+    // grid does not list) fades the overview out whole, as the other styles do.
+    property bool glideFading: false
+    readonly property bool glideMotion: root.glideStyle && !root.glideFading
+    readonly property bool glideOpening: root.motionTarget > 0
+    readonly property real glideCover: root.glideMotion ? GlideMotion.coverOpacity(root.motionProgress, root.glideOpening) : 1
+    readonly property real glideChrome: root.glideMotion && !root.motionSettled ? GlideMotion.chromeOpacity(root.motionProgress) : 1
+    // Bumped whenever a transition starts, so Glide cards look up where their
+    // windows are on screen afresh.
+    property int motionEpoch: 0
+    // Glide holds the opening until the overlay has drawn and the captures
+    // show their windows; the first frames otherwise take long enough that
+    // the animation would start halfway, over empty previews.
+    property bool glideGateActive: false
+    // The window chosen to close onto. It is focused as soon as the overview
+    // lets go of the keyboard, so its preview lands on top of its own kind.
+    property var glideLandingTop: null
+    // The workspace each display is about to show, by display name, when the
+    // overview closes onto another workspace: its GlideMotion.workspaceKey.
+    // Previews then land on the windows that will be there, not on the ones
+    // being left.
+    property var glideLandingWorkspaces: ({})
+    function setGlideLanding(workspaceKey, monitor) {
+        var landing = {};
+        if (monitor && workspaceKey)
+            landing[monitor.name] = String(workspaceKey);
+        root.glideLandingWorkspaces = landing;
+    }
+    // Whether Glide has a preview to fly home.
+    function glideAnythingLands() {
+        var surfaces = surfaceInstances.instances;
+        for (var index = 0; index < surfaces.length; index++)
+            if (surfaces[index] && surfaces[index].anyCardLands())
+                return true;
+        return false;
+    }
+    onSurfaceMountedChanged: {
+        if (!root.surfaceMounted)
+            root.glideFading = false;
+    }
+    property int glideCapturesWaiting: 0
+    function glideCaptureWaiting(waiting) {
+        root.glideCapturesWaiting = Math.max(0, root.glideCapturesWaiting + (waiting ? 1 : -1));
+    }
     property real motionTarget: 0
     // Cards bind to this instead of motionProgress so the animation only
     // notifies them twice, not once per frame.
@@ -361,6 +408,8 @@ Item {
         // Reopening before the overlay is gone cancels the activation.
         root.pendingActivation = null;
         root.pendingWorkspace = null;
+        root.glideLandingTop = null;
+        root.glideLandingWorkspaces = {};
         root.closingWorkspaces = null;
         root.draggedToplevel = null;
         root.addedWorkspaces = [];
@@ -420,6 +469,7 @@ Item {
     Component.onCompleted: root.installLayerRule()
 
     function startDismiss(notifyShell) {
+        root.stopGlideGate();
         if (root.opened && !root.closingWorkspaces) {
             var held = {};
             for (var index = 0; index < Quickshell.screens.length; index++) {
@@ -437,6 +487,8 @@ Item {
         if (root.backgroundBlurReleasePhase > 0)
             return;
         if (root.surfaceMounted) {
+            if (root.glideStyle && root.motionSettled && !root.glideAnythingLands())
+                root.glideFading = true;
             root.animateMotionTo(0);
             return;
         }
@@ -574,12 +626,19 @@ Item {
                 return;
             root.openingPending = false;
             root.opened = true;
-            root.animateMotionTo(1);
+            if (root.glideMotion && !Style.reduceMotion) {
+                root.glideGateActive = true;
+                glideGate.reset();
+                glideGate.start();
+            } else {
+                root.animateMotionTo(1);
+            }
             root.focusKeyboardSurface();
         });
     }
 
     function animateMotionTo(target) {
+        root.stopGlideGate();
         var next = target >= 0.5 ? 1 : 0;
         overviewMotionAnimation.stop();
         root.motionTarget = next;
@@ -593,15 +652,24 @@ Item {
         }
         if (root.motionProgress <= 0.001 || root.motionProgress >= 0.999)
             root.slideMotionDirection = String(root.slideDirection[next > 0 ? "in" : "out"]);
+        root.motionEpoch++;
         overviewMotionAnimation.from = root.motionProgress;
         overviewMotionAnimation.to = next;
         var configuredDuration = next > root.motionProgress
             ? root.animationInDurationFor(root.animationStyle)
             : root.animationOutDurationFor(root.animationStyle);
         overviewMotionAnimation.duration = Math.max(1, Math.round(configuredDuration * distance));
-        overviewMotionAnimation.easing.type = root.animationStyle === "original"
-            ? Easing.OutQuart
-            : (next > root.motionProgress ? Easing.OutCubic : Easing.InCubic);
+        if (root.glideStyle) {
+            // One ease-out both ways: windows leave at once, without a jump on
+            // the first frame, and settle softly into the grid or back onto
+            // the desktop.
+            overviewMotionAnimation.easing.type = Easing.BezierSpline;
+            overviewMotionAnimation.easing.bezierCurve = [0.25, 0.75, 0.25, 1, 1, 1];
+        } else {
+            overviewMotionAnimation.easing.type = root.animationStyle === "original"
+                ? Easing.OutQuart
+                : (next > root.motionProgress ? Easing.OutCubic : Easing.InCubic);
+        }
         overviewMotionAnimation.start();
     }
 
@@ -617,6 +685,7 @@ Item {
     function completeMotion() {
         root.motionProgress = root.motionTarget;
         if (root.motionTarget > 0) {
+            root.glideFading = false;
             root.scheduleBackgroundBlurUpdate();
             Qt.callLater(root.focusKeyboardSurface);
             return;
@@ -1117,6 +1186,13 @@ Item {
             return;
         root.pendingWorkspace = null;
         root.pendingActivation = top;
+        root.glideLandingTop = top;
+        // A window on a special workspace comes to the workspace shown, or is
+        // shown over it; the display keeps its workspace.
+        var workspace = top.workspace;
+        var special = !workspace || String(workspace.name || "").indexOf("special:") === 0;
+        var ipc = WindowModel.ipcFor(top);
+        root.setGlideLanding(special || !ipc ? "" : GlideMotion.workspaceKey(ipc.workspace), special ? null : workspace.monitor);
         root.dismiss();
     }
 
@@ -1158,6 +1234,15 @@ Item {
             return;
         root.pendingActivation = null;
         root.pendingWorkspace = { id: id, screen: String(screenName || "") };
+        // An existing workspace shows on its own display; a new one opens on
+        // the display asked for, or the focused one.
+        var monitor = root.monitorForScreen(screenName) || Hyprland.focusedMonitor;
+        for (var index = 0; index < root.allWorkspaces.length; index++) {
+            var workspace = root.allWorkspaces[index];
+            if (workspace && Number(workspace.id) === Number(id) && workspace.monitor)
+                monitor = workspace.monitor;
+        }
+        root.setGlideLanding(String(id), monitor);
         root.dismiss();
     }
 
@@ -1290,6 +1375,22 @@ Item {
     // Hyprland drops the shell's whole Wayland connection when it is asked to
     // capture a window that has just been destroyed.
     property var closingToplevels: []
+
+    // Where a window is on screen, local to `screenName` (any display when
+    // empty), or null when it is not on screen.
+    function glideStartRectFor(top, screenName) {
+        var ipc = WindowModel.ipcFor(top);
+        var monitors = Hyprland.monitors ? Hyprland.monitors.values : [];
+        for (var index = 0; index < monitors.length; index++) {
+            var monitor = monitors[index];
+            if (!monitor || (screenName && monitor.name !== screenName))
+                continue;
+            var rect = GlideMotion.startRect(ipc, monitor.lastIpcObject, root.glideLandingWorkspaces[monitor.name]);
+            if (rect)
+                return rect;
+        }
+        return null;
+    }
 
     function captureSourceFor(top) {
         return root.closingToplevels.indexOf(top) === -1 ? WindowModel.waylandFor(top) : null;
@@ -1680,6 +1781,19 @@ Item {
         }
     }
 
+    function stopGlideGate() {
+        glideGate.stop();
+        root.glideGateActive = false;
+    }
+
+    FrameAnimation {
+        id: glideGate
+        onTriggered: {
+            if ((glideGate.currentFrame >= 2 && root.glideCapturesWaiting <= 0) || glideGate.elapsedTime > 0.3)
+                root.animateMotionTo(1);
+        }
+    }
+
     NumberAnimation {
         id: overviewMotionAnimation
         target: root
@@ -1689,8 +1803,8 @@ Item {
 
     WallpaperSource {
         id: wallpaperSource
-        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip) && (root.openingPending || root.surfaceMounted)
-        retained: root.backgroundMode === "wallpaper"
+        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip || root.glideStyle) && (root.openingPending || root.surfaceMounted)
+        retained: root.backgroundMode === "wallpaper" || root.glideStyle
     }
 
     // A hidden copy of each display's wallpaper backdrop keeps its decoded
@@ -1698,7 +1812,7 @@ Item {
     // image this large from its cache at once, so every opening would decode
     // it again and show the base colour until it was ready.
     Variants {
-        model: root.backgroundMode === "wallpaper" ? Quickshell.screens : []
+        model: root.backgroundMode === "wallpaper" || root.glideStyle ? Quickshell.screens : []
 
         WallpaperBackdrop {
             required property var modelData
@@ -2199,9 +2313,14 @@ Item {
         // Hyprland restricts pointer hit testing to exclusive surfaces too.
         // Every backdrop must participate so clicks on other displays arrive.
         WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
-        HyprlandWindow.opacity: root.motionProgress
+        // Glide draws its previews opaque from the first frame, over their own
+        // windows; its backdrop fades instead of the whole overlay.
+        HyprlandWindow.opacity: root.glideMotion ? 1 : root.motionProgress
+        // Glide blurs the desktop only once its cover hides it, so the blur
+        // never appears around previews still lying on their windows.
         BackgroundEffect.blurRegion: root.desktopBackgroundBlur > 0 // qmllint disable missing-type
                 && !root.backgroundBlurFailed
+                && root.glideCover >= 0.999
             ? backgroundBlurRegion
             : null
         readonly property bool pointerInside: overviewPointer.hovered
@@ -2226,6 +2345,7 @@ Item {
         Loader {
             anchors.fill: parent
             active: root.backgroundMode === "wallpaper"
+            opacity: root.glideCover
             sourceComponent: WallpaperBackdrop {
                 source: wallpaperSource.source
                 blur: root.effectiveBackgroundBlur
@@ -2236,10 +2356,27 @@ Item {
             }
         }
 
+        // Glide's cover in Desktop mode: the wallpaper, blurred as the
+        // desktop will be, hides the real windows while previews fly.
+        Loader {
+            id: glideDesktopCover
+            anchors.fill: parent
+            readonly property real coverOpacity: root.glideMotion ? GlideMotion.desktopCoverOpacity(root.motionProgress, root.glideOpening) : 0
+            active: root.glideStyle && root.backgroundMode !== "wallpaper"
+            visible: active && coverOpacity > 0
+            opacity: coverOpacity
+            sourceComponent: WallpaperBackdrop {
+                source: wallpaperSource.source
+                blur: root.effectiveBackgroundBlur
+                pixelRatio: surface.modelData.devicePixelRatio
+                color: Qt.rgba(Commons.Color.background.r, Commons.Color.background.g, Commons.Color.background.b, 1)
+            }
+        }
+
         Rectangle {
             anchors.fill: parent
             color: "black"
-            opacity: root.effectiveBackgroundDim / 100
+            opacity: root.effectiveBackgroundDim / 100 * root.glideCover
         }
 
         // Losing the keyboard means Hyprland has already handed focus back,
@@ -2256,6 +2393,9 @@ Item {
         MouseArea {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
+            // Glide's short wait for the captures shows the desktop as it is;
+            // a click then is not meant for the overview.
+            enabled: !root.glideGateActive
             onClicked: {
                 // A click beside Quick Look closes the preview, on the display
                 // showing it; anywhere else it dismisses the overview.
@@ -2388,6 +2528,15 @@ Item {
                 }
                 return null;
             }
+            // Whether any card here has a place on screen to fly home to.
+            function anyCardLands() {
+                for (var index = 0; index < cardRepeater.count; index++) {
+                    var card = cardRepeater.itemAt(index);
+                    if (card && card.inLayout && card.glideLandingRect()) // qmllint disable missing-property
+                        return true;
+                }
+                return false;
+            }
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))
 
@@ -2475,6 +2624,7 @@ Item {
 
                     Ui.BorderSurface {
                         id: searchBar
+                        opacity: root.glideChrome
                         Layout.alignment: Qt.AlignHCenter
                         Layout.preferredWidth: Math.min(Style.space(760), overviewWindow.width - Style.space(48))
                         Layout.preferredHeight: Style.space(48)
@@ -2560,6 +2710,7 @@ Item {
                         Layout.preferredHeight: item ? item.implicitHeight : 0 // qmllint disable missing-property
                         active: root.workspaceStrip
                         visible: active
+                        opacity: root.glideChrome
 
                         sourceComponent: WorkspaceStrip {
                             controller: root
@@ -2604,6 +2755,7 @@ Item {
                                     screenToplevels: overviewWindow.screenToplevels
                                     acceptsKeyboard: overviewWindow.acceptsKeyboard || root.multiMonitorMode === "all-monitors"
                                     workspaceStrip: workspaceStripLoader.item
+                                    screenName: overviewWindow.screenName
                                     windowLayout: overviewArea.windowLayout
                                     layoutAreaWidth: overviewArea.width
                                     layoutAreaHeight: overviewArea.height
@@ -2633,6 +2785,7 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Style.spacing.xl
                         visible: root.showFooter && overviewWindow.acceptsKeyboard
+                        opacity: root.glideChrome
                         // The hints sit on the backdrop, like the floating card footers.
                         layer.enabled: true
                         layer.effect: BackdropShadow {}
@@ -2686,6 +2839,18 @@ Item {
                             hostWindow: overviewWindow
                         }
                     }
+                }
+
+                // Glide's short wait for the captures shows the desktop as it
+                // is, with cards that are not visible yet: a click, scroll or
+                // hover then is not meant for the overview. Keys still work.
+                MouseArea {
+                    anchors.fill: parent
+                    z: 300
+                    enabled: root.glideGateActive
+                    acceptedButtons: Qt.AllButtons
+                    hoverEnabled: true
+                    onWheel: function (wheel) { wheel.accepted = true; }
                 }
             }
         }

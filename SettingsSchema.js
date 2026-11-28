@@ -51,6 +51,7 @@ var specs = {
         fallback: "original",
         options: [
             { label: "Original", value: "original" },
+            { label: "Glide", value: "glide" },
             { label: "Fade", value: "fade" },
             { label: "Zoom", value: "zoom" },
             { label: "Slide", value: "slide" }
