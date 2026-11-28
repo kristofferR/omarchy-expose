@@ -5,10 +5,26 @@
 // travels back on closing. Windows that are not on screen (another workspace,
 // minimized) grow into place instead of flying in from nowhere.
 
+// What tells one workspace from another in Hyprland's IPC: its address since
+// Hyprland 0.57 (a numbered workspace's id, any other's name; only numbered
+// ones still carry an id), and its id before that. The name comes last, as
+// two workspaces can be renamed alike.
+function workspaceKey(workspace) {
+    if (!workspace)
+        return "";
+    var parts = [workspace.address, workspace.id, workspace.name];
+    for (var index = 0; index < parts.length; index++)
+        if (parts[index] !== undefined && parts[index] !== null && String(parts[index]) !== "")
+            return String(parts[index]);
+    return "";
+}
+
 // Where the window is drawn on its display, in display-local coordinates, or
 // null when it is not on screen there. `ipc` is the window's Hyprland client
-// object and `monitorIpc` the display's monitor object.
-function startRect(ipc, monitorIpc) {
+// object and `monitorIpc` the display's monitor object. `landingWorkspace` is
+// the key of the workspace the display is about to show, when the overview
+// closes onto another one than it shows now.
+function startRect(ipc, monitorIpc, landingWorkspace) {
     if (!ipc || !monitorIpc || ipc.hidden === true || ipc.mapped === false)
         return null;
     var at = ipc.at;
@@ -19,12 +35,14 @@ function startRect(ipc, monitorIpc) {
     var height = Number(size[1]);
     if (!(width > 0) || !(height > 0))
         return null;
-    var workspace = ipc.workspace ? Number(ipc.workspace.id) : NaN;
-    var active = monitorIpc.activeWorkspace ? Number(monitorIpc.activeWorkspace.id) : NaN;
-    var special = monitorIpc.specialWorkspace ? Number(monitorIpc.specialWorkspace.id) : 0;
+    var workspace = workspaceKey(ipc.workspace);
+    var active = landingWorkspace ? String(landingWorkspace) : workspaceKey(monitorIpc.activeWorkspace);
+    // No special workspace shown reads as an empty address, or as id 0 before
+    // Hyprland 0.57.
+    var special = workspaceKey(monitorIpc.specialWorkspace);
     // A pinned window shows on every workspace of its display.
-    var shown = ipc.pinned === true || workspace === active || (special !== 0 && workspace === special);
-    if (!isFinite(workspace) || !shown)
+    var shown = ipc.pinned === true || workspace === active || (special !== "" && special !== "0" && workspace === special);
+    if (workspace === "" || !shown)
         return null;
     if (ipc.monitor !== undefined && monitorIpc.id !== undefined && Number(ipc.monitor) !== Number(monitorIpc.id))
         return null;

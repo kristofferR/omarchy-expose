@@ -132,10 +132,11 @@ Ui.BorderSurface {
     // in flight cannot make the preview jump. A window whose capture has no
     // frame yet grows in place instead of flying in as a blank card.
     property var glideStart: null
+    function glideLandingRect() {
+        return capture.hasContent ? card.controller.glideStartRectFor(card.modelData, card.screenName) : null;
+    }
     function latchGlideStart() {
-        card.glideStart = card.glideActive && capture.hasContent
-            ? card.controller.glideStartRectFor(card.modelData, card.screenName)
-            : null;
+        card.glideStart = card.glideActive ? card.glideLandingRect() : null;
     }
     onGlideActiveChanged: card.latchGlideStart()
     Connections {
@@ -224,7 +225,8 @@ Ui.BorderSurface {
     y: layoutRect.y
     width: layoutRect.width
     height: layoutRect.height
-    z: glideActive ? glideStackZ + (previewed ? 20 : 0) : (dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))))
+    // Previews in flight pass over the ones that only grow or fade in place.
+    z: glideActive ? glideStackZ + (glideStart ? 2 : 0) + (previewed ? 20 : 0) : (dragging || dragX !== 0 || dragY !== 0 ? 20 : (previewed ? 11 : (exitingPreview ? 10 : (lifted ? 1 : 0))))
     scale: lifted ? 1 + 0.04 * glideChrome : 1
     radius: integratedFooter ? Style.cornerRadius : 0
     readonly property color integratedColor: Commons.Color.menu.background

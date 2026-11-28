@@ -262,7 +262,11 @@ Item {
     // 0 idle, 1 restoring the desktop blur while the surface is transparent.
     property int backgroundBlurReleasePhase: 0
     property real motionProgress: 0
-    readonly property bool glideMotion: root.animationStyle === "glide"
+    readonly property bool glideStyle: root.animationStyle === "glide"
+    // A closing with no window to fly home (an empty workspace, or one the
+    // grid does not list) fades the overview out whole, as the other styles do.
+    property bool glideFading: false
+    readonly property bool glideMotion: root.glideStyle && !root.glideFading
     readonly property bool glideOpening: root.motionTarget > 0
     readonly property real glideCover: root.glideMotion ? GlideMotion.coverOpacity(root.motionProgress, root.glideOpening) : 1
     readonly property real glideChrome: root.glideMotion && !root.motionSettled ? GlideMotion.chromeOpacity(root.motionProgress) : 1
@@ -276,6 +280,29 @@ Item {
     // The window chosen to close onto. It is focused as soon as the overview
     // lets go of the keyboard, so its preview lands on top of its own kind.
     property var glideLandingTop: null
+    // The workspace each display is about to show, by display name, when the
+    // overview closes onto another workspace: its GlideMotion.workspaceKey.
+    // Previews then land on the windows that will be there, not on the ones
+    // being left.
+    property var glideLandingWorkspaces: ({})
+    function setGlideLanding(workspaceKey, monitor) {
+        var landing = {};
+        if (monitor && workspaceKey)
+            landing[monitor.name] = String(workspaceKey);
+        root.glideLandingWorkspaces = landing;
+    }
+    // Whether Glide has a preview to fly home.
+    function glideAnythingLands() {
+        var surfaces = surfaceInstances.instances;
+        for (var index = 0; index < surfaces.length; index++)
+            if (surfaces[index] && surfaces[index].anyCardLands())
+                return true;
+        return false;
+    }
+    onSurfaceMountedChanged: {
+        if (!root.surfaceMounted)
+            root.glideFading = false;
+    }
     property int glideCapturesWaiting: 0
     function glideCaptureWaiting(waiting) {
         root.glideCapturesWaiting = Math.max(0, root.glideCapturesWaiting + (waiting ? 1 : -1));
@@ -382,6 +409,7 @@ Item {
         root.pendingActivation = null;
         root.pendingWorkspace = null;
         root.glideLandingTop = null;
+        root.glideLandingWorkspaces = {};
         root.closingWorkspaces = null;
         root.draggedToplevel = null;
         root.addedWorkspaces = [];
@@ -459,6 +487,8 @@ Item {
         if (root.backgroundBlurReleasePhase > 0)
             return;
         if (root.surfaceMounted) {
+            if (root.glideStyle && root.motionSettled && !root.glideAnythingLands())
+                root.glideFading = true;
             root.animateMotionTo(0);
             return;
         }
@@ -629,7 +659,7 @@ Item {
             ? root.animationInDurationFor(root.animationStyle)
             : root.animationOutDurationFor(root.animationStyle);
         overviewMotionAnimation.duration = Math.max(1, Math.round(configuredDuration * distance));
-        if (root.glideMotion) {
+        if (root.glideStyle) {
             // One ease-out both ways: windows leave at once, without a jump on
             // the first frame, and settle softly into the grid or back onto
             // the desktop.
@@ -655,6 +685,7 @@ Item {
     function completeMotion() {
         root.motionProgress = root.motionTarget;
         if (root.motionTarget > 0) {
+            root.glideFading = false;
             root.scheduleBackgroundBlurUpdate();
             Qt.callLater(root.focusKeyboardSurface);
             return;
@@ -1156,6 +1187,12 @@ Item {
         root.pendingWorkspace = null;
         root.pendingActivation = top;
         root.glideLandingTop = top;
+        // A window on a special workspace comes to the workspace shown, or is
+        // shown over it; the display keeps its workspace.
+        var workspace = top.workspace;
+        var special = !workspace || String(workspace.name || "").indexOf("special:") === 0;
+        var ipc = WindowModel.ipcFor(top);
+        root.setGlideLanding(special || !ipc ? "" : GlideMotion.workspaceKey(ipc.workspace), special ? null : workspace.monitor);
         root.dismiss();
     }
 
@@ -1197,6 +1234,15 @@ Item {
             return;
         root.pendingActivation = null;
         root.pendingWorkspace = { id: id, screen: String(screenName || "") };
+        // An existing workspace shows on its own display; a new one opens on
+        // the display asked for, or the focused one.
+        var monitor = root.monitorForScreen(screenName) || Hyprland.focusedMonitor;
+        for (var index = 0; index < root.allWorkspaces.length; index++) {
+            var workspace = root.allWorkspaces[index];
+            if (workspace && Number(workspace.id) === Number(id) && workspace.monitor)
+                monitor = workspace.monitor;
+        }
+        root.setGlideLanding(String(id), monitor);
         root.dismiss();
     }
 
@@ -1339,7 +1385,7 @@ Item {
             var monitor = monitors[index];
             if (!monitor || (screenName && monitor.name !== screenName))
                 continue;
-            var rect = GlideMotion.startRect(ipc, monitor.lastIpcObject);
+            var rect = GlideMotion.startRect(ipc, monitor.lastIpcObject, root.glideLandingWorkspaces[monitor.name]);
             if (rect)
                 return rect;
         }
@@ -1757,8 +1803,8 @@ Item {
 
     WallpaperSource {
         id: wallpaperSource
-        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip || root.glideMotion) && (root.openingPending || root.surfaceMounted)
-        retained: root.backgroundMode === "wallpaper" || root.glideMotion
+        active: (root.backgroundMode === "wallpaper" || root.workspaceStrip || root.glideStyle) && (root.openingPending || root.surfaceMounted)
+        retained: root.backgroundMode === "wallpaper" || root.glideStyle
     }
 
     // A hidden copy of each display's wallpaper backdrop keeps its decoded
@@ -1766,7 +1812,7 @@ Item {
     // image this large from its cache at once, so every opening would decode
     // it again and show the base colour until it was ready.
     Variants {
-        model: root.backgroundMode === "wallpaper" || root.glideMotion ? Quickshell.screens : []
+        model: root.backgroundMode === "wallpaper" || root.glideStyle ? Quickshell.screens : []
 
         WallpaperBackdrop {
             required property var modelData
@@ -2315,8 +2361,8 @@ Item {
         Loader {
             id: glideDesktopCover
             anchors.fill: parent
-            readonly property real coverOpacity: GlideMotion.desktopCoverOpacity(root.motionProgress, root.glideOpening)
-            active: root.glideMotion && root.backgroundMode !== "wallpaper"
+            readonly property real coverOpacity: root.glideMotion ? GlideMotion.desktopCoverOpacity(root.motionProgress, root.glideOpening) : 0
+            active: root.glideStyle && root.backgroundMode !== "wallpaper"
             visible: active && coverOpacity > 0
             opacity: coverOpacity
             sourceComponent: WallpaperBackdrop {
@@ -2481,6 +2527,15 @@ Item {
                         return card.inLayout ? card.captureItem : null; // qmllint disable missing-property
                 }
                 return null;
+            }
+            // Whether any card here has a place on screen to fly home to.
+            function anyCardLands() {
+                for (var index = 0; index < cardRepeater.count; index++) {
+                    var card = cardRepeater.itemAt(index);
+                    if (card && card.inLayout && card.glideLandingRect()) // qmllint disable missing-property
+                        return true;
+                }
+                return false;
             }
             readonly property string screenWorkspaceLabel: root.activeWorkspaceLabelForScreen(String(modelData.name || ""))
             readonly property string screenScopeLabel: root.workspaceScopeLabelForScreen(String(modelData.name || ""))

@@ -32,6 +32,35 @@ TestCase {
         compare(GlideMotion.startRect({}, monitor), null);
     }
 
+    function test_closingOntoAnotherWorkspaceLandsOnItsWindows() {
+        // The display shows workspace 3 and is about to show 4.
+        compare(GlideMotion.startRect(client({workspace: {id: 4}}), monitor, "4"), {x: 100, y: 50, width: 800, height: 600});
+        compare(GlideMotion.startRect(client({}), monitor, "4"), null);
+        verify(GlideMotion.startRect(client({workspace: {id: 7}, pinned: true}), monitor, "4") !== null);
+    }
+
+    function test_workspacesAreToldApartAsHyprlandNamesThem() {
+        // Hyprland 0.57: an address for every workspace, an id for numbered ones only.
+        function shows(active, special) {
+            return {id: 1, x: 2560, y: 0, activeWorkspace: active, specialWorkspace: special || {address: "", type: "", name: ""}};
+        }
+        var mail = {address: "mail", type: "normal", name: "mail"};
+        var chat = {address: "chat", type: "normal", name: "chat"};
+        verify(GlideMotion.startRect(client({workspace: mail}), shows(mail)) !== null);
+        compare(GlideMotion.startRect(client({workspace: chat}), shows(mail)), null);
+        verify(GlideMotion.startRect(client({workspace: chat}), shows(mail), "chat") !== null);
+        var three = {address: "3", id: 3, type: "normal", name: "3"};
+        var scratchpad = {address: "special:scratchpad", type: "special", name: "special:scratchpad"};
+        verify(GlideMotion.startRect(client({workspace: scratchpad}), shows(three, scratchpad)) !== null);
+        verify(GlideMotion.startRect(client({workspace: three}), shows(three, scratchpad)) !== null);
+        // Workspace 4 renamed "3" is still not workspace 3.
+        compare(GlideMotion.startRect(client({workspace: {address: "4", id: 4, type: "normal", name: "3"}}), shows(three)), null);
+        // Before 0.57 there is no address, and no special workspace shown has id 0.
+        var old = {id: 1, x: 2560, y: 0, activeWorkspace: {id: 3, name: "3"}, specialWorkspace: {id: 0, name: ""}};
+        verify(GlideMotion.startRect(client({workspace: {id: 3, name: "3"}}), old) !== null);
+        compare(GlideMotion.startRect(client({workspace: {id: -1337, name: "mail"}}), old), null);
+    }
+
     function test_shownSpecialWorkspaceCountsAsOnScreen() {
         var shown = {id: 1, x: 2560, y: 0, activeWorkspace: {id: 3}, specialWorkspace: {id: -99}};
         verify(GlideMotion.startRect(client({workspace: {id: -99}}), shown) !== null);
