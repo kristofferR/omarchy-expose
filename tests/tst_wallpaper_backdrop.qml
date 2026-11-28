@@ -59,6 +59,7 @@ TestCase {
         tryCompare(backdrop, "ready", true);
         var sharp = grabImage(backdrop);
         backdrop.blur = 20;
+        tryCompare(backdrop, "ready", true);
         var blurred = grabImage(backdrop);
         verify(blurred.red(45, 30) > sharp.red(45, 30), "blur softens the black/white boundary");
         compare(blurred.alpha(50, 30), 255);
@@ -79,6 +80,7 @@ TestCase {
     // The offscreen test platform draws no MultiEffect blur, so these
     // checks run only where Qt renders on a GPU.
     function grabBlurred() {
+        tryCompare(backdrop, "ready", true);
         waitForRendering(backdrop);
         var image = grabImage(backdrop);
         if (Qt.colorEqual(image.pixel(60, 30), backdrop.color))

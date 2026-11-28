@@ -38,6 +38,10 @@ Rectangle {
     // every copy below shares it.
     readonly property url loadSource: root.width > 0 && root.height > 0 ? root.source : ""
     readonly property size decodeSize: Qt.size(Math.ceil(root.width * root.pixelRatio), Math.ceil(root.height * root.pixelRatio))
+    // The blur is drawn from copies half as large each way: it hides the
+    // difference, and every opening uploads them to the GPU anew, which at a
+    // large display's full size held up the first frames of the opening.
+    readonly property size blurDecodeSize: Qt.size(Math.ceil(root.decodeSize.width / 2), Math.ceil(root.decodeSize.height / 2))
 
     Image {
         id: wallpaper
@@ -47,6 +51,17 @@ Rectangle {
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         visible: root.blur <= 0
+    }
+
+    // Keeps the blur's smaller image decoded while there is no blur, as the
+    // sharp one above stays loaded under a blur: Qt drops an unreferenced image
+    // from its cache, and turning the blur on or off would wait on a decode.
+    Image {
+        source: root.loadSource
+        sourceSize: root.blurDecodeSize
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        visible: false
     }
 
     Item {
@@ -74,7 +89,7 @@ Rectangle {
                 width: root.width
                 height: root.height
                 source: root.loadSource
-                sourceSize: root.decodeSize
+                sourceSize: root.blurDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 clip: true
