@@ -431,6 +431,7 @@ Item {
         root.closingWorkspaces = null;
         root.draggedToplevel = null;
         root.reorderTarget = null;
+        root.animationReplay = null;
         root.addedWorkspaces = [];
         compositorBorders.refresh();
         var blurRestoreInFlight = root.backgroundBlurReleasePhase === 1 && backgroundBlurSession.running;
@@ -487,7 +488,7 @@ Item {
     }
     Component.onCompleted: root.installLayerRule()
 
-    function startDismiss(notifyShell) {
+    function startDismiss(notifyShell, replay) {
         root.stopGlideGate();
         if (root.opened && !root.closingWorkspaces) {
             var held = {};
@@ -499,6 +500,7 @@ Item {
         }
         root.openingPending = false;
         root.closeSettings();
+        root.animationReplay = replay || null;
         root.hoveredToplevel = null;
         root.clearPreview();
         root.opened = false;
@@ -569,6 +571,7 @@ Item {
     }
 
     function switchOverviewMode(mode) {
+        root.animationReplay = null;
         root.applyOverviewMode(mode);
         root.filterText = "";
         root.hoveredToplevel = null;
@@ -580,6 +583,7 @@ Item {
     // The Desktop corner or key. With Exposé open it closes Exposé and shows
     // the desktop, as the macOS Desktop corner does from Mission Control.
     function toggleDesktop() {
+        root.animationReplay = null;
         // A Desktop waiting for Exposé to close counts as shown, so a second
         // toggle cancels it.
         if (root.desktopAfterDismiss) {
@@ -606,6 +610,7 @@ Item {
         var argv = HotCorners.argvFor(action, HotCorners.commandFor(root.pluginEntry, position));
         if (!argv)
             return;
+        root.animationReplay = null;
         // What the corner opens should not land behind the overview.
         if (root.opened || root.openingPending)
             root.dismiss();
@@ -692,13 +697,46 @@ Item {
         overviewMotionAnimation.start();
     }
 
+    // Settings' animation preview: the overview really closes and, after a
+    // moment on the desktop, opens again as it was, so both animations show as
+    // they are. Settings then returns to its page. Holds { mode, screen,
+    // category }, and `reopened` once the overview is on its way back. Anything
+    // else the user asks for meanwhile ends the preview: an opening, a
+    // dismissal, another mode, Settings, the desktop, or a corner's action.
+    property var animationReplay: null
+
     function previewAnimation() {
-        if (!root.surfaceMounted)
+        if (!root.opened || !root.motionSettled)
             return;
-        overviewMotionAnimation.stop();
-        root.motionTarget = 1;
-        root.motionProgress = 0;
-        root.animateMotionTo(1);
+        // The shell is not told: the overview is back before it could matter.
+        root.startDismiss(false, {
+            mode: root.overviewMode,
+            screen: root.effectiveOverviewScreenName,
+            category: root.settingsCategoryIndex,
+            reopened: false
+        });
+    }
+
+    Timer {
+        id: animationReplayPause
+        interval: 300
+        onTriggered: {
+            var replay = root.animationReplay;
+            if (!replay || replay.reopened || root.opened || root.openingPending || root.surfaceMounted)
+                return;
+            // The blur session's process is still on its way out.
+            if (backgroundBlurSession.running) {
+                animationReplayPause.restart();
+                return;
+            }
+            if (replay.screen) {
+                root.overviewScreenPinned = true;
+                root.overviewScreenName = replay.screen;
+            }
+            root.open(JSON.stringify({ mode: replay.mode }));
+            replay.reopened = true;
+            root.animationReplay = replay;
+        }
     }
 
     function completeMotion() {
@@ -707,6 +745,16 @@ Item {
             root.glideFading = false;
             root.scheduleBackgroundBlurUpdate();
             Qt.callLater(root.focusKeyboardSurface);
+            var replay = root.animationReplay;
+            if (replay && replay.reopened) {
+                root.openSettings(replay.category);
+                // Back on the button, the page's first control.
+                Qt.callLater(function () {
+                    var surface = root.keyboardSurface();
+                    if (surface && root.settingsOpen)
+                        surface.focusFirstSettingsControl();
+                });
+            }
             return;
         }
         backgroundBlurUpdate.stop();
@@ -739,6 +787,8 @@ Item {
         root.dismissNotifyShell = false;
         if (notifyShell && root.shell && typeof root.shell.hide === "function")
             root.shell.hide(root.pluginId);
+        if (root.animationReplay)
+            animationReplayPause.restart();
     }
 
     function updatePluginSetting(name, value) {
@@ -891,21 +941,26 @@ Item {
         root.animationOutDurationPreview = -1;
     }
 
-    function openSettings() {
-        if (!root.surfaceMounted)
+    // Opens on the first page, or on the page given.
+    function openSettings(categoryIndex) {
+        // A closing overview opens again too, rather than leaving Settings
+        // open on nothing.
+        if (!root.opened && !root.openingPending)
             root.open("{}");
+        root.animationReplay = null;
         root.closeFooterHideConfirmation();
         root.clearAnimationTimingPreview();
         root.backgroundBlurPreview = -1;
         root.backgroundDimPreview = -1;
         root.hotCornerDelayPreview = -1;
-        root.settingsCategoryIndex = 0;
+        root.settingsCategoryIndex = Number(categoryIndex) || 0;
         root.settingsOpen = true;
         Qt.callLater(root.focusKeyboardSurface);
     }
 
     function closeSettings() {
         var restoreKeyboardFocus = root.settingsOpen && root.opened;
+        root.animationReplay = null;
         root.closeFooterHideConfirmation();
         root.settingsOpen = false;
         root.clearAnimationTimingPreview();
@@ -2047,6 +2102,8 @@ Item {
             return "ok";
         }
         function desktop(mode: string): string {
+            if (mode === "show" || mode === "hide")
+                root.animationReplay = null;
             if (mode === "show") {
                 // A Desktop already waiting for Exposé to close stays queued.
                 if (root.desktopAfterDismiss)
